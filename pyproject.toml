@@ -1,0 +1,94 @@
+[tool.poetry]
+name = "flwr-tests"
+version = "0.1.0"
+description = ""
+authors = ["John Doe <lucorbucci@gmail.com>"]
+readme = "README.md"
+packages = [{include = "flwr_tests"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+flwr = { extras = ["simulation"], version = "^1.4.0" }
+torch = "^2.0.0"
+torchvision = "^0.15.1"
+black = "^23.3.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+# --- Black config ------------------------------------------- #
+
+[tool.black]
+line-length = 88
+
+# --- isort config ------------------------------------------- #
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+line_length = 88
+lines_after_imports = 2
+
+
+
+[tool.ruff]
+line-length = 88
+select = ["ALL"]
+target-version = "py310"
+ignore = [
+    "D101",
+    "D100",
+    "D404",
+    "I001",
+    "C901",
+    "D213",
+    "D203",
+    "B905",
+    "EM101",
+    "D205",
+    "D407",
+    "E501",
+    "ANN101",
+    "D401",
+    "T201",
+    "FBT001",
+    "B006",
+    "PLR0913", # too many arguments in function
+    "G004",
+    "S101",
+    "TCH002"
+]
+fix = true
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "tests/codegen/snapshots"
+]
+src = ["pistacchio", "tests"]
+
+[tool.ruff.isort]
+known-first-party = ["pistacchio"]
+extra-standard-library = ["typing_extensions"]
+
