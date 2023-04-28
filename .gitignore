@@ -1,0 +1,97 @@
+.vector_cache
+data
+OLD
+.env
+.python-version
+.mypy_cache
+*.pyc 
+__pycache__
+src/results.txt
+model_results/
+Results/
+OLD/
+.ruff_cache/
+venv/
+# Mac OS-specific storage files
+.DS_Store
+keys.json
+wandb
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+package-lock.json
+node_modules/
+_book/
+# C extensions
+*.so
+
+charmap.json.gz
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+fasttext/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# DotEnv configuration
+.env
+
+# Database
+*.db
+*.rdb
+
+# Pychrm
+.idea
+
+
+# Spyder
+.spyproject/
+
+# Jupyter NB Checkpoints
+.ipynb_checkpoints/
+*.pyc
