@@ -6,6 +6,7 @@ import torch
 from flwr.common.typing import Scalar
 
 from dataset_utils import DatasetDownloader
+from model_utils import ModelUtils
 from utils import Utils
 
 
@@ -43,7 +44,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.net.to(self.device)
 
         # Train
-        Utils.train(self.net, trainloader, epochs=config["epochs"], device=self.device)
+        ModelUtils.train(self.net, trainloader, epochs=config["epochs"], device=self.device)
 
         # Return local model and statistics
         return Utils.get_params(self.net), len(trainloader.dataset), {}
@@ -67,7 +68,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.net.to(self.device)
 
         # Evaluate
-        loss, accuracy = Utils.test(self.net, valloader, device=self.device)
+        loss, accuracy = ModelUtils.test(self.net, valloader, device=self.device)
 
         # Return statistics
         return float(loss), len(valloader.dataset), {"accuracy": float(accuracy)}
