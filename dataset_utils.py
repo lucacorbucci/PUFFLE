@@ -10,6 +10,7 @@ from torchvision import datasets, transforms
 from torchvision.datasets import VisionDataset
 
 from common import create_lda_partitions
+from Datasets.celeba import CelebaDataset
 
 
 class DatasetDownloader:
@@ -31,6 +32,14 @@ class DatasetDownloader:
                     transforms.Normalize((0.1307,), (0.3081,)),
                 ],
             )
+        elif dataset_name == "celeba":
+            return transforms.Compose(
+                [
+                    transforms.Resize((64, 64)),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ],
+            )
         else:
             raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -40,6 +49,8 @@ class DatasetDownloader:
             return DatasetDownloader.download_cifar10(path_to_data)
         elif dataset_name == "mnist":
             return DatasetDownloader.download_mnist(path_to_data)
+        elif dataset_name == "celeba":
+            return DatasetDownloader.download_celeba(path_to_data)
         else:
             raise ValueError(f"Unknown dataset: {dataset_name}")
 
@@ -94,6 +105,29 @@ class DatasetDownloader:
 
         # returns path where training data is and testset
         return training_data, test_set
+
+    @staticmethod
+    def download_celeba(path_to_data: str = "./data"):
+        transform = transforms.Compose(
+            [
+                transforms.Resize((64, 64)),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+            ],
+        )
+
+        train_dataset = CelebaDataset(
+            csv_path="./data/celeba/train_original.csv",
+            image_path="./data/celeba/img_align_celeba",
+            transform=transform,
+        )
+        test_dataset = CelebaDataset(
+            csv_path="./data/celeba/test_original.csv",
+            image_path="./data/celeba/img_align_celeba",
+            transform=transform,
+        )
+
+        return train_dataset, test_dataset
 
     @staticmethod
     def get_dataset(path_to_data: Path, cid: str, partition: str, dataset: str):

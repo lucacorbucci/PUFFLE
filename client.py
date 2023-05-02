@@ -4,9 +4,10 @@ import flwr as fl
 import ray
 import torch
 from flwr.common.typing import Scalar
+from torch import nn
 
 from dataset_utils import DatasetDownloader
-from model_utils import ModelUtils
+from model_utils import Learning, ModelUtils
 from utils import Utils
 
 
@@ -18,6 +19,15 @@ class FlowerClient(fl.client.NumPyClient):
 
         # Instantiate model
         self.net = Utils.get_model(dataset_name)
+        self.model_regularization = None
+        self.optimizer = torch.optim.SGD(self.net.parameters(), lr=0.01)
+        self.optimizer_regularization = None
+
+        self.private = False
+        self.criterion = nn.CrossEntropyLoss()
+
+        self.DPL_lambda = None
+        self.loss_lambda = None
 
         # Determine device
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -39,12 +49,42 @@ class FlowerClient(fl.client.NumPyClient):
             workers=num_workers,
             dataset=self.dataset_name,
         )
+        test_loader = DatasetDownloader.get_dataloader(
+            self.fed_dir,
+            self.cid,
+            is_train=False,
+            batch_size=config["batch_size"],
+            workers=num_workers,
+            dataset=self.dataset_name,
+        )
 
         # Send model to device
         self.net.to(self.device)
-
-        # Train
-        ModelUtils.train(self.net, trainloader, epochs=config["epochs"], device=self.device)
+        # if config["DPL"]:
+        Learning.train_loop(
+            epochs=config["epochs"],
+            model=self.net,
+            model_regularization=self.model_regularization,
+            optimizer=self.optimizer,
+            optimizer_regularization=self.optimizer_regularization,
+            trainloader=trainloader,
+            test_loader=test_loader,
+            device=self.device,
+            private=self.private,
+            criterion=self.criterion,
+            DPL=self.DPL,
+            wandb_run=None,
+            DPL_lambda=self.DPL_lambda,
+            loss_lambda=self.loss_lambda,
+        )
+        # else:
+        #     # Train
+        #     ModelUtils.train(
+        #         self.net,
+        #         trainloader,
+        #         epochs=config["epochs"],
+        #         device=self.device,
+        #     )
 
         # Return local model and statistics
         return Utils.get_params(self.net), len(trainloader.dataset), {}
