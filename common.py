@@ -22,9 +22,9 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 from numpy.random import BitGenerator, Generator, SeedSequence
 
-XY = Tuple[np.ndarray, np.ndarray]
-XYList = List[XY]
-PartitionedDataset = Tuple[XYList, XYList]
+XYZ = Tuple[np.ndarray, np.ndarray]
+XYZList = List[XYZ]
+PartitionedDataset = Tuple[XYZList, XYZList]
 
 np.random.seed(2020)
 
@@ -37,17 +37,17 @@ def float_to_int(i: float) -> int:
     return int(i)
 
 
-def sort_by_label(x: np.ndarray, y: np.ndarray) -> XY:
+def sort_by_label(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     """Sort by label.
 
     Assuming two labels and four examples the resulting label order
     would be 1,1,2,2
     """
     idx = np.argsort(y, axis=0).reshape((y.shape[0]))
-    return (x[idx], y[idx])
+    return (x[idx], y[idx], z[idx])
 
 
-def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XY:
+def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XYZ:
     """Sort by label in repeating groups. Assuming two labels and four examples
     the resulting label order would be 1,2,1,2.
 
@@ -84,7 +84,7 @@ def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XY:
     return (x[idx], y[idx])
 
 
-def split_at_fraction(x: np.ndarray, y: np.ndarray, fraction: float) -> Tuple[XY, XY]:
+def split_at_fraction(x: np.ndarray, y: np.ndarray, fraction: float) -> Tuple[XYZ, XYZ]:
     """Split x, y at a certain fraction."""
     splitting_index = float_to_int(x.shape[0] * fraction)
     # Take everything BEFORE splitting_index
@@ -94,26 +94,26 @@ def split_at_fraction(x: np.ndarray, y: np.ndarray, fraction: float) -> Tuple[XY
     return (x_0, y_0), (x_1, y_1)
 
 
-def shuffle(x: np.ndarray, y: np.ndarray) -> XY:
+def shuffle(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     """Shuffle x and y."""
     idx = np.random.permutation(len(x))
-    return x[idx], y[idx]
+    return x[idx], y[idx], z[idx]
 
 
-def partition(x: np.ndarray, y: np.ndarray, num_partitions: int) -> List[XY]:
+def partition(x: np.ndarray, y: np.ndarray, num_partitions: int) -> List[XYZ]:
     """Return x, y as list of partitions."""
     return list(zip(np.split(x, num_partitions), np.split(y, num_partitions)))
 
 
-def combine_partitions(xy_list_0: XYList, xy_list_1: XYList) -> XYList:
+def combine_partitions(XYZ_list_0: XYZList, XYZ_list_1: XYZList) -> XYZList:
     """Combine two lists of ndarray Tuples into one list."""
     return [
         (np.concatenate([x_0, x_1], axis=0), np.concatenate([y_0, y_1], axis=0))
-        for (x_0, y_0), (x_1, y_1) in zip(xy_list_0, xy_list_1)
+        for (x_0, y_0), (x_1, y_1) in zip(XYZ_list_0, XYZ_list_1)
     ]
 
 
-def shift(x: np.ndarray, y: np.ndarray) -> XY:
+def shift(x: np.ndarray, y: np.ndarray) -> XYZ:
     """Shift x_1, y_1 so that the first half contains only labels 0 to 4 and
     the second half 5 to 9."""
     x, y = sort_by_label(x, y)
@@ -125,10 +125,10 @@ def shift(x: np.ndarray, y: np.ndarray) -> XY:
 
 
 def create_partitions(
-    unpartitioned_dataset: XY,
+    unpartitioned_dataset: XYZ,
     iid_fraction: float,
     num_partitions: int,
-) -> XYList:
+) -> XYZList:
     """Create partitioned version of a training or test set.
 
     Currently tested and supported are MNIST, FashionMNIST and
@@ -144,52 +144,52 @@ def create_partitions(
     # Shift in second split of dataset the classes into two groups
     x_1, y_1 = shift(x_1, y_1)
 
-    xy_0_partitions = partition(x_0, y_0, num_partitions)
-    xy_1_partitions = partition(x_1, y_1, num_partitions)
+    XYZ_0_partitions = partition(x_0, y_0, num_partitions)
+    XYZ_1_partitions = partition(x_1, y_1, num_partitions)
 
-    xy_partitions = combine_partitions(xy_0_partitions, xy_1_partitions)
+    XYZ_partitions = combine_partitions(XYZ_0_partitions, XYZ_1_partitions)
 
     # Adjust x and y shape
-    return [adjust_xy_shape(xy) for xy in xy_partitions]
+    return [adjust_XYZ_shape(XYZ) for XYZ in XYZ_partitions]
 
 
 def create_partitioned_dataset(
-    keras_dataset: Tuple[XY, XY],
+    keras_dataset: Tuple[XYZ, XYZ],
     iid_fraction: float,
     num_partitions: int,
-) -> Tuple[PartitionedDataset, XY]:
+) -> Tuple[PartitionedDataset, XYZ]:
     """Create partitioned version of keras dataset.
 
     Currently tested and supported are MNIST, FashionMNIST and
     CIFAR-10/100
     """
-    xy_train, xy_test = keras_dataset
+    XYZ_train, XYZ_test = keras_dataset
 
-    xy_train_partitions = create_partitions(
-        unpartitioned_dataset=xy_train,
+    XYZ_train_partitions = create_partitions(
+        unpartitioned_dataset=XYZ_train,
         iid_fraction=iid_fraction,
         num_partitions=num_partitions,
     )
 
-    xy_test_partitions = create_partitions(
-        unpartitioned_dataset=xy_test,
+    XYZ_test_partitions = create_partitions(
+        unpartitioned_dataset=XYZ_test,
         iid_fraction=iid_fraction,
         num_partitions=num_partitions,
     )
 
-    return (xy_train_partitions, xy_test_partitions), adjust_xy_shape(xy_test)
+    return (XYZ_train_partitions, XYZ_test_partitions), adjust_XYZ_shape(XYZ_test)
 
 
-def log_distribution(xy_partitions: XYList) -> None:
+def log_distribution(XYZ_partitions: XYZList) -> None:
     """Print label distribution for list of paritions."""
-    distro = [np.unique(y, return_counts=True) for _, y in xy_partitions]
+    distro = [np.unique(y, return_counts=True) for _, y in XYZ_partitions]
     for d in distro:
         print(d)
 
 
-def adjust_xy_shape(xy: XY) -> XY:
+def adjust_XYZ_shape(XYZ: XYZ) -> XYZ:
     """Adjust shape of both x and y."""
-    x, y = xy
+    x, y = XYZ
     if x.ndim == 3:
         x = adjust_x_shape(x)
     if y.ndim == 2:
@@ -295,9 +295,10 @@ def exclude_classes_and_normalize(
 def sample_without_replacement(
     distribution: np.ndarray,
     list_samples: List[List[np.ndarray]],
+    list_sensitive_features_per_class: List[List[np.ndarray]],
     num_samples: int,
     empty_classes: List[bool],
-) -> Tuple[XY, List[bool]]:
+) -> Tuple[XYZ, List[bool]]:
     """Samples from a list without replacement using a given distribution.
 
     Args:
@@ -308,7 +309,7 @@ def sample_without_replacement(
             This is useful to differentiate which classes should still be sampled.
 
     Returns:
-        XY: Dataset contaning samples
+        XYZ: Dataset contaning samples
         List[bool]: empty_classes.
     """
     if np.sum([len(x) for x in list_samples]) < num_samples:
@@ -327,13 +328,16 @@ def sample_without_replacement(
 
     data: List[np.ndarray] = []
     target: List[np.ndarray] = []
+    sensitive_list: List[np.ndarray] = []
 
     for _ in range(num_samples):
         sample_class = np.where(np.random.multinomial(1, distribution) == 1)[0][0]
         sample: np.ndarray = list_samples[sample_class].pop()
+        sensitive_feature = list_sensitive_features_per_class[sample_class].pop()
 
         data.append(sample)
         target.append(sample_class)
+        sensitive_list.append(sensitive_feature)
 
         # If last sample of the class was drawn, then set the
         #  probability density function (PDF) to zero for that class.
@@ -346,15 +350,16 @@ def sample_without_replacement(
             )
     data_array: np.ndarray = np.concatenate([data], axis=0)
     target_array: np.ndarray = np.array(target, dtype=np.int64)
+    sensitive_array: np.ndarray = np.array(sensitive_list, dtype=np.int64)
 
-    return (data_array, target_array), empty_classes
+    return (data_array, sensitive_array, target_array), empty_classes
 
 
-def get_partitions_distributions(partitions: XYList) -> Tuple[np.ndarray, List[int]]:
+def get_partitions_distributions(partitions: XYZList) -> Tuple[np.ndarray, List[int]]:
     """Evaluates the distribution over classes for a set of partitions.
 
     Args:
-        partitions (XYList): Input partitions
+        partitions (XYZList): Input partitions
 
     Returns:
         np.ndarray: Distributions of size (num_partitions, num_classes)
@@ -376,18 +381,18 @@ def get_partitions_distributions(partitions: XYList) -> Tuple[np.ndarray, List[i
 
 
 def create_lda_partitions(
-    dataset: XY,
+    dataset: XYZ,
     dirichlet_dist: Optional[np.ndarray] = None,
     num_partitions: int = 100,
     concentration: Union[float, np.ndarray, List[float]] = 0.5,
     accept_imbalanced: bool = False,
     seed: Optional[Union[int, SeedSequence, BitGenerator, Generator]] = None,
-) -> Tuple[XYList, np.ndarray]:
+) -> Tuple[XYZList, np.ndarray]:
     """Create imbalanced non-iid partitions using Latent Dirichlet Allocation
     (LDA) without resampling.
 
     Args:
-        dataset (XY): Dataset containing samples X and labels Y.
+        dataset (XYZ): Dataset containing samples X and labels Y.
         dirichlet_dist (numpy.ndarray, optional): previously generated distribution to
             be used. This is useful when applying the same distribution for train and
             validation sets.
@@ -409,14 +414,14 @@ def create_lda_partitions(
             See official Numpy Documentation for further details.
 
     Returns:
-        Tuple[XYList, numpy.ndarray]: List of XYList containing partitions
+        Tuple[XYZList, numpy.ndarray]: List of XYZList containing partitions
             for each dataset and the dirichlet probability density functions.
     """
     # pylint: disable=too-many-arguments,too-many-locals
 
-    x, y = dataset
-    x, y = shuffle(x, y)
-    x, y = sort_by_label(x, y)
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_label(x, y, z)
 
     if (x.shape[0] % num_partitions) and (not accept_imbalanced):
         raise ValueError(
@@ -437,10 +442,10 @@ def create_lda_partitions(
     concentration = np.asarray(concentration)
 
     # Check if concentration is Inf, if so create uniform partitions
-    partitions: List[XY] = [(_, _) for _ in range(num_partitions)]
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
     if float("inf") in concentration:
         partitions = create_partitions(
-            unpartitioned_dataset=(x, y),
+            unpartitioned_dataset=(x, y, z),
             iid_fraction=1.0,
             num_partitions=num_partitions,
         )
@@ -460,6 +465,12 @@ def create_lda_partitions(
     list_samples_per_class: List[List[np.ndarray]] = split_array_at_indices(
         x, start_indices
     )
+    list_sensitive_features_per_class: List[List[np.ndarray]] = [[]] * len(
+        list_samples_per_class
+    )
+    for class_index, index_list in enumerate(list_samples_per_class):
+        for index in list(index_list):
+            list_sensitive_features_per_class[class_index].append(y[index])
 
     if dirichlet_dist is None:
         dirichlet_dist = np.random.default_rng(seed).dirichlet(
@@ -480,6 +491,7 @@ def create_lda_partitions(
         partitions[partition_id], empty_classes = sample_without_replacement(
             distribution=dirichlet_dist[partition_id].copy(),
             list_samples=list_samples_per_class,
+            list_sensitive_features_per_class=list_sensitive_features_per_class,
             num_samples=num_samples[partition_id],
             empty_classes=empty_classes,
         )

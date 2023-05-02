@@ -3,14 +3,10 @@ from pathlib import Path
 import flwr as fl
 import ray
 import torch
-from flwr.common.typing import Scalar
-from torch import nn
-
 from dataset_utils import DatasetDownloader
-<<<<<<< HEAD
-=======
-from model_utils import Learning, ModelUtils
->>>>>>> 5a40a5c8e7ad4378cd4d0d397b62b2aa315be459
+from flwr.common.typing import Scalar
+from model_utils import Learning
+from torch import nn
 from utils import Utils
 
 
@@ -29,6 +25,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.private = False
         self.criterion = nn.CrossEntropyLoss()
 
+        self.DPL = False
         self.DPL_lambda = None
         self.loss_lambda = None
 
@@ -63,19 +60,18 @@ class FlowerClient(fl.client.NumPyClient):
 
         # Send model to device
         self.net.to(self.device)
-<<<<<<< HEAD
 
         # Train
-        Utils.train(self.net, trainloader, epochs=config["epochs"], device=self.device)
-=======
-        # if config["DPL"]:
+        # Utils.train(self.net, trainloader, epochs=config["epochs"], device=self.device)
+
+        # # if config["DPL"]:
         Learning.train_loop(
             epochs=config["epochs"],
             model=self.net,
             model_regularization=self.model_regularization,
             optimizer=self.optimizer,
             optimizer_regularization=self.optimizer_regularization,
-            trainloader=trainloader,
+            train_loader=trainloader,
             test_loader=test_loader,
             device=self.device,
             private=self.private,
@@ -93,7 +89,6 @@ class FlowerClient(fl.client.NumPyClient):
         #         epochs=config["epochs"],
         #         device=self.device,
         #     )
->>>>>>> 5a40a5c8e7ad4378cd4d0d397b62b2aa315be459
 
         # Return local model and statistics
         return Utils.get_params(self.net), len(trainloader.dataset), {}

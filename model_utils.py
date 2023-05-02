@@ -1,4 +1,12 @@
+import random
+from collections import defaultdict
+
+import numpy as np
 import torch
+import torch.nn as nn
+from opacus.utils.batch_memory_manager import BatchMemoryManager
+from sklearn.metrics import f1_score, precision_score, recall_score
+from utils import Utils
 
 
 class Learning:
@@ -47,14 +55,7 @@ class Learning:
                 precision,
                 recall,
                 max_disparity_test,
-            ) = Learning.test(
-                model,
-                test_loader,
-                device,
-                wandb_run,
-                epoch,
-                DPL_lambda
-            )
+            ) = Learning.test(model, test_loader, device, wandb_run, epoch, DPL_lambda)
 
     @staticmethod
     def compute_regularization_term(
@@ -172,7 +173,7 @@ class Learning:
             # we can just sum the two losses and then perform
             # backward on the sum of the two losses
             DPL_lambda = DPL_lambda.to(device)
-            
+
             loss = (
                 loss_lambda * criterion(outputs, target)
                 + DPL_lambda * fairness_violation
@@ -187,7 +188,7 @@ class Learning:
             # then we will sum the per sample gradients. In the case
             # of a plain model, we will just compute the backward
             # using a classic loss function
-            loss = loss_lambda * criterion(outputs, target)
+            loss = criterion(outputs, target)
 
         loss.backward()
 
@@ -198,14 +199,12 @@ class Learning:
             for p1, p2 in zip(model.parameters(), model_regularization.parameters()):
                 p1.grad_sample += p2.grad_sample
 
-        for name, param in model.named_parameters():
-            if param.requires_grad:
-                print(name)
-        import sys
-        sys.exit()
+        # for name, param in model.named_parameters():
+        #     if param.requires_grad:
+        #         print(name)
+
         optimizer.step()
         optimizer.zero_grad()
-
 
         _, predicted = torch.max(outputs.data, 1)
         correct = (predicted == target).float().sum()
@@ -217,7 +216,6 @@ class Learning:
             running_regularization_term += fairness_violation.item()
         total_correct += correct
         total += target.size(0)
-
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -235,7 +233,7 @@ class Learning:
         criterion_regularization,
         model,
         wandb_run,
-        DPL_lambda
+        DPL_lambda,
     ):
         loss = running_loss / len(train_loader)
         accuracy = total_correct / total
@@ -251,7 +249,11 @@ class Learning:
         )
 
         if wandb_run:
-            updated_lambda = DPL_lambda.item() if isinstance(DPL_lambda, torch.Tensor) else DPL_lambda
+            updated_lambda = (
+                DPL_lambda.item()
+                if isinstance(DPL_lambda, torch.Tensor)
+                else DPL_lambda
+            )
             wandb_run.log(
                 {
                     "epoch": epoch,
@@ -293,8 +295,7 @@ class Learning:
         criterion = nn.CrossEntropyLoss()
 
         model.train()
-        criterion_regularization = RegularizationLoss()
-
+        criterion_regularization = None  # RegularizationLoss()
 
         if model_regularization:
             # If we want to use the DPL regularization then we
@@ -330,7 +331,6 @@ class Learning:
                         optimizer_regularization,
                         private,
                         DPL,
-                        
                     )
         else:
             for batch_index, (data, sensitive_feature, target) in enumerate(
@@ -356,7 +356,6 @@ class Learning:
                     optimizer_regularization,
                     private,
                     DPL,
-                    
                 )
 
         Learning.evaluate_model(
@@ -431,7 +430,6 @@ class Learning:
         max_disparity_test = criterion_regularization.violation_with_dataset(
             model, test_loader, device
         )
-        
 
         test_loss = np.mean(losses)
         accuracy = correct / total
@@ -447,9 +445,7 @@ class Learning:
             f"Performance on {set_name}: loss: {test_loss}, Accuracy: {accuracy}, Max disparity Test: {max_disparity_test}"
         )
 
-        
         if wandb_run:
-            
             wandb_run.log(
                 {
                     "test_loss": test_loss,
@@ -467,6 +463,7 @@ class Learning:
             recall,
             max_disparity_test,
         )
+
 
 class ModelUtils:
     # borrowed from Pytorch quickstart example
@@ -499,4 +496,4 @@ class ModelUtils:
                 _, predicted = torch.max(outputs.data, 1)
                 correct += (predicted == labels).sum().item()
         accuracy = correct / len(testloader.dataset)
-        return loss, accuracy        return loss, accuracy
+        return loss, accuracy

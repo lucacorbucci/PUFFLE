@@ -4,13 +4,12 @@ from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
+from common import create_lda_partitions
+from Datasets.celeba import CelebaDataset
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.datasets import VisionDataset
-
-from common import create_lda_partitions
-from Datasets.celeba import CelebaDataset
 
 
 class DatasetDownloader:
@@ -108,6 +107,11 @@ class DatasetDownloader:
 
     @staticmethod
     def download_celeba(path_to_data: str = "./data"):
+        train_set = CelebaDataset(
+            csv_path="./data/celeba/train_reduced_2.csv",
+            image_path="./data/celeba/img_align_celeba",
+        )
+
         transform = transforms.Compose(
             [
                 transforms.Resize((64, 64)),
@@ -116,18 +120,23 @@ class DatasetDownloader:
             ],
         )
 
-        train_dataset = CelebaDataset(
-            csv_path="./data/celeba/train_original.csv",
-            image_path="./data/celeba/img_align_celeba",
-            transform=transform,
+        # fuse all data splits into a single "training.pt"
+        data_loc = Path(path_to_data) / "celeba-10-batches-py"
+        training_data = data_loc / "training.pt"
+        print("Generating unified Celeba dataset")
+        torch.save(
+            [train_set.data, np.array(train_set.gender), np.array(train_set.targets)],
+            training_data,
         )
-        test_dataset = CelebaDataset(
-            csv_path="./data/celeba/test_original.csv",
+
+        test_set = CelebaDataset(
+            csv_path="./data/celeba/test_reduced.csv",
             image_path="./data/celeba/img_align_celeba",
             transform=transform,
         )
 
-        return train_dataset, test_dataset
+        # returns path where training data is and testset
+        return training_data, test_set
 
     @staticmethod
     def get_dataset(path_to_data: Path, cid: str, partition: str, dataset: str):
@@ -185,9 +194,9 @@ class DatasetDownloader:
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
 
-        images, labels = torch.load(path_to_dataset)
+        images, sensitive_attribute, labels = torch.load(path_to_dataset)
         idx = np.array(range(len(images)))
-        dataset = [idx, labels]
+        dataset = [idx, sensitive_attribute, labels]
         partitions, _ = create_lda_partitions(
             dataset,
             num_partitions=pool_size,
@@ -210,9 +219,11 @@ class DatasetDownloader:
         Path.mkdir(splits_dir, parents=True)
 
         for p in range(pool_size):
-            labels = partitions[p][1]
+            labels = partitions[p][2]
+            sensitive_features = partitions[p][1]
+
             image_idx = partitions[p][0]
-            imgs = images[image_idx]
+            imgs = [images[image_id] for image_id in image_idx]
 
             # create dir
             Path.mkdir(splits_dir / str(p))
@@ -222,18 +233,23 @@ class DatasetDownloader:
                 train_idx, val_idx = DatasetDownloader.get_random_id_splits(
                     len(labels), val_ratio
                 )
-                val_imgs = imgs[val_idx]
+                # val_imgs = imgs[val_idx]
+                val_imgs = [imgs[val_id] for val_id in val_idx]
                 val_labels = labels[val_idx]
 
+                val_sensitive = sensitive_features[val_idx]
+
                 with open(splits_dir / str(p) / "val.pt", "wb") as f:
-                    torch.save([val_imgs, val_labels], f)
+                    torch.save([val_imgs, val_sensitive, val_labels], f)
 
                 # remaining images for training
-                imgs = imgs[train_idx]
+                # imgs = imgs[train_idx]
+                imgs = [imgs[train_id] for train_id in train_idx]
                 labels = labels[train_idx]
+                sensitive = sensitive_features[train_idx]
 
             with open(splits_dir / str(p) / "train.pt", "wb") as f:
-                torch.save([imgs, labels], f)
+                torch.save([imgs, sensitive, labels], f)
 
         return splits_dir
 
@@ -259,7 +275,7 @@ class TorchVision_FL(VisionDataset):
 
         if path_to_data:
             # load data and targets (path_to_data points to an specific .pt file)
-            self.data, self.targets = torch.load(path_to_data)
+            self.data, self.sensitive_features, self.targets = torch.load(path_to_data)
         else:
             self.data = data
             self.targets = targets
@@ -281,7 +297,9 @@ class TorchVision_FL(VisionDataset):
         if self.target_transform is not None:
             target = self.target_transform(target)
 
-        return img, target
+        sensitive_feature = self.sensitive_features[index]
+
+        return img, sensitive_feature, target
 
     def __len__(self) -> int:
         return len(self.data)

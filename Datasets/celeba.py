@@ -40,12 +40,22 @@ class CelebaDataset(Dataset):
         self.n_samples = len(dataframe)
         self.transform = transform
         self.image_path = image_path
-        self.images = [
-            Image.open(os.path.join(self.image_path, sample)).convert(
-                "RGB",
-            )
-            for sample in self.samples
-        ]
+        if self.transform is None:
+            self.data = [
+                Image.open(os.path.join(self.image_path, sample)).convert(
+                    "RGB",
+                )
+                for sample in self.samples
+            ]
+        else:
+            self.data = [
+                self.transform(
+                    Image.open(os.path.join(self.image_path, sample)).convert(
+                        "RGB",
+                    )
+                )
+                for sample in self.samples
+            ]
 
     def __getitem__(self, index: int):
         """Returns a sample from the dataset.
@@ -58,15 +68,9 @@ class CelebaDataset(Dataset):
             _type_: sample we want to retrieve
 
         """
-        # img = Image.open(os.path.join(self.image_path, self.samples[index])).convert(
-        #     "RGB",
-        # )
-        img = self.images[index]
-        if self.transform:
-            img = self.transform(img)
 
         return (
-            img,
+            self.data[index],
             self.gender[index],
             self.targets[index],
         )
@@ -78,5 +82,4 @@ class CelebaDataset(Dataset):
         -------
             int: size of the dataset
         """
-        return self.n_samples
         return self.n_samples

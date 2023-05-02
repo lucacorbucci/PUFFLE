@@ -2,12 +2,10 @@ import argparse
 from typing import Dict
 
 import flwr as fl
-from flwr.common.typing import Scalar
-
 from client import FlowerClient
 from dataset_utils import DatasetDownloader
+from flwr.common.typing import Scalar
 from utils import Utils
-
 
 parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
 
@@ -47,7 +45,7 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
     fed_dir = DatasetDownloader.do_fl_partitioning(
-        train_path, pool_size=pool_size, alpha=1000, num_classes=10, val_ratio=0.1
+        train_path, pool_size=pool_size, alpha=1000, num_classes=2, val_ratio=0.1
     )
 
     # configure the strategy
@@ -58,10 +56,10 @@ if __name__ == "__main__":
         min_evaluate_clients=10,
         min_available_clients=pool_size,  # All clients should be available
         on_fit_config_fn=fit_config,
-        evaluate_fn=Utils.get_evaluate_fn(
-            testset,
-            dataset_name,
-        ),  # centralised evaluation of global model
+        # evaluate_fn=Utils.get_evaluate_fn(
+        #     testset,
+        #     dataset_name,
+        # ),  # centralised evaluation of global model
     )
 
     def client_fn(cid: str):
