@@ -205,11 +205,13 @@ class DatasetDownloader:
         )
 
         # Show label distribution for first partition (purely informative)
-        partition_zero = partitions[0][1]
-        hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
-        print(
-            f"Class histogram for 0-th partition (alpha={alpha}, {num_classes} classes): {hist}"
-        )
+        for partition in partitions:
+            partition_zero = partition[2]
+            print(len(partition_zero))
+            hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
+            print(
+                f"Class histogram for 0-th partition (alpha={alpha}, {num_classes} classes): {hist}"
+            )
 
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it

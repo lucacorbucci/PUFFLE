@@ -2,9 +2,11 @@ import argparse
 from typing import Dict
 
 import flwr as fl
+import wandb
 from client import FlowerClient
 from dataset_utils import DatasetDownloader
 from flwr.common.typing import Scalar
+from model_utils import Learning
 from utils import Utils
 
 parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
@@ -16,6 +18,24 @@ parser.add_argument("--epochs", type=int, default=1)
 parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--pool_size", type=int, default=100)
 parser.add_argument("--sampled_clients", type=float, default=0.1)
+parser.add_argument("--wandb", type=bool, default=False)
+
+
+def setup_wandb(args):
+    wandb_run = wandb.init(
+        # set the wandb project where this run will be logged
+        project="FL_fairness",
+        # track hyperparameters and run metadata
+        config={
+            "learning_rate": 0.02,
+            "dataset": args.dataset,
+            "num_rounds": args.num_rounds,
+            "pool_size": args.pool_size,
+            "sampled_clients": args.sampled_clients,
+            "epochs": args.epochs,
+        },
+    )
+    return wandb_run
 
 
 def fit_config(server_round: int) -> Dict[str, Scalar]:
@@ -34,8 +54,12 @@ if __name__ == "__main__":
     dataset_name = args.dataset
 
     pool_size = args.pool_size
-    client_resources = {"num_cpus": args.num_client_cpus}
+    client_resources = {"num_cpus": args.num_client_cpus, "num_gpus": 1}
 
+    if args.wandb:
+        wandb_run = setup_wandb(args)
+    else:
+        wandb_run = None
     # Download CIFAR-10 dataset
     train_path, testset = DatasetDownloader.download_dataset(dataset_name)
 
@@ -45,36 +69,44 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
     fed_dir = DatasetDownloader.do_fl_partitioning(
-        train_path, pool_size=pool_size, alpha=1000, num_classes=2, val_ratio=0.1
+        train_path,
+        pool_size=pool_size,
+        alpha=float("inf"),
+        num_classes=2,
+        val_ratio=0.1,
     )
+    print(pool_size)
 
-    # configure the strategy
-    strategy = fl.server.strategy.FedAvg(
-        fraction_fit=0.2,
-        fraction_evaluate=0.1,
-        min_fit_clients=10,
-        min_evaluate_clients=10,
-        min_available_clients=pool_size,  # All clients should be available
-        on_fit_config_fn=fit_config,
-        # evaluate_fn=Utils.get_evaluate_fn(
-        #     testset,
-        #     dataset_name,
-        # ),  # centralised evaluation of global model
-    )
+    # # configure the strategy
+    # strategy = fl.server.strategy.FedAvg(
+    #     fraction_fit=args.sampled_clients,
+    #     fraction_evaluate=args.sampled_clients,
+    #     min_fit_clients=1,
+    #     min_evaluate_clients=1,
+    #     min_available_clients=args.sampled_clients,  # All clients should be available
+    #     on_fit_config_fn=fit_config,
+    #     evaluate_fn=Learning.get_evaluate_fn(
+    #         testset,
+    #         dataset_name,
+    #         wandb_run,
+    #     ),  # centralised evaluation of global model
+    # )
 
-    def client_fn(cid: str):
-        # create a single client instance
-        return FlowerClient(cid, fed_dir, dataset_name)
+    # def client_fn(cid: str):
+    #     # create a single client instance
+    #     return FlowerClient(cid, fed_dir, dataset_name)
 
-    # (optional) specify Ray config
-    ray_init_args = {"include_dashboard": False}
+    # # (optional) specify Ray config
+    # ray_init_args = {"include_dashboard": False}
 
-    # start simulation
-    fl.simulation.start_simulation(
-        client_fn=client_fn,
-        num_clients=pool_size,
-        client_resources=client_resources,
-        config=fl.server.ServerConfig(num_rounds=args.num_rounds),
-        strategy=strategy,
-        ray_init_args=ray_init_args,
-    )
+    # # start simulation
+    # fl.simulation.start_simulation(
+    #     client_fn=client_fn,
+    #     num_clients=pool_size,
+    #     client_resources=client_resources,
+    #     config=fl.server.ServerConfig(num_rounds=args.num_rounds),
+    #     strategy=strategy,
+    #     ray_init_args=ray_init_args,
+    # )
+    # if wandb_run:
+    #     wandb_run.finish()

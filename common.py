@@ -47,7 +47,7 @@ def sort_by_label(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     return (x[idx], y[idx], z[idx])
 
 
-def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XYZ:
+def sort_by_label_repeating(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     """Sort by label in repeating groups. Assuming two labels and four examples
     the resulting label order would be 1,2,1,2.
 
@@ -70,7 +70,7 @@ def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XYZ:
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9
         ]
     """
-    x, y = sort_by_label(x, y)
+    x, y, z = sort_by_label(x, y, z)
 
     num_example = x.shape[0]
     num_class = np.unique(y).shape[0]
@@ -81,17 +81,19 @@ def sort_by_label_repeating(x: np.ndarray, y: np.ndarray) -> XYZ:
         .reshape(num_example)
     )
 
-    return (x[idx], y[idx])
+    return (x[idx], y[idx], z[idx])
 
 
-def split_at_fraction(x: np.ndarray, y: np.ndarray, fraction: float) -> Tuple[XYZ, XYZ]:
+def split_at_fraction(
+    x: np.ndarray, y: np.ndarray, z: np.ndarray, fraction: float
+) -> Tuple[XYZ, XYZ]:
     """Split x, y at a certain fraction."""
     splitting_index = float_to_int(x.shape[0] * fraction)
     # Take everything BEFORE splitting_index
-    x_0, y_0 = x[:splitting_index], y[:splitting_index]
+    x_0, y_0, z_0 = x[:splitting_index], y[:splitting_index], z[:splitting_index]
     # Take everything AFTER splitting_index
-    x_1, y_1 = x[splitting_index:], y[splitting_index:]
-    return (x_0, y_0), (x_1, y_1)
+    x_1, y_1, z_1 = x[splitting_index:], y[splitting_index:], z[splitting_index:]
+    return (x_0, y_0, z_0), (x_1, y_1, z_1)
 
 
 def shuffle(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
@@ -100,28 +102,44 @@ def shuffle(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     return x[idx], y[idx], z[idx]
 
 
-def partition(x: np.ndarray, y: np.ndarray, num_partitions: int) -> List[XYZ]:
+def partition(
+    x: np.ndarray, y: np.ndarray, z: np.ndarray, num_partitions: int
+) -> List[XYZ]:
     """Return x, y as list of partitions."""
-    return list(zip(np.split(x, num_partitions), np.split(y, num_partitions)))
+    return list(
+        zip(
+            np.split(x, num_partitions),
+            np.split(y, num_partitions),
+            np.split(z, num_partitions),
+        ),
+    )
 
 
 def combine_partitions(XYZ_list_0: XYZList, XYZ_list_1: XYZList) -> XYZList:
     """Combine two lists of ndarray Tuples into one list."""
     return [
-        (np.concatenate([x_0, x_1], axis=0), np.concatenate([y_0, y_1], axis=0))
-        for (x_0, y_0), (x_1, y_1) in zip(XYZ_list_0, XYZ_list_1)
+        (
+            np.concatenate([x_0, x_1], axis=0),
+            np.concatenate([y_0, y_1], axis=0),
+            np.concatenate([z_0, z_1], axis=0),
+        )
+        for (x_0, y_0, z_0), (x_1, y_1, z_1) in zip(XYZ_list_0, XYZ_list_1)
     ]
 
 
-def shift(x: np.ndarray, y: np.ndarray) -> XYZ:
+def shift(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     """Shift x_1, y_1 so that the first half contains only labels 0 to 4 and
     the second half 5 to 9."""
-    x, y = sort_by_label(x, y)
+    x, y, z = sort_by_label(x, y, z)
 
-    (x_0, y_0), (x_1, y_1) = split_at_fraction(x, y, fraction=0.5)
-    (x_0, y_0), (x_1, y_1) = shuffle(x_0, y_0), shuffle(x_1, y_1)
-    x, y = np.concatenate([x_0, x_1], axis=0), np.concatenate([y_0, y_1], axis=0)
-    return x, y
+    (x_0, y_0, z_0), (x_1, y_1, z_1) = split_at_fraction(x, y, z, fraction=0.5)
+    (x_0, y_0, z_0), (x_1, y_1, z_1) = shuffle(x_0, y_0, z_0), shuffle(x_1, y_1, z_1)
+    x, y, z = (
+        np.concatenate([x_0, x_1], axis=0),
+        np.concatenate([y_0, y_1], axis=0),
+        np.concatenate([z_0, z_1], axis=0),
+    )
+    return x, y, z
 
 
 def create_partitions(
@@ -134,18 +152,18 @@ def create_partitions(
     Currently tested and supported are MNIST, FashionMNIST and
     CIFAR-10/100
     """
-    x, y = unpartitioned_dataset
+    x, y, z = unpartitioned_dataset
 
-    x, y = shuffle(x, y)
-    x, y = sort_by_label_repeating(x, y)
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_label_repeating(x, y, z)
 
-    (x_0, y_0), (x_1, y_1) = split_at_fraction(x, y, fraction=iid_fraction)
+    (x_0, y_0, z_0), (x_1, y_1, z_1) = split_at_fraction(x, y, z, fraction=iid_fraction)
 
     # Shift in second split of dataset the classes into two groups
-    x_1, y_1 = shift(x_1, y_1)
+    x_1, y_1, z_1 = shift(x_1, y_1, z_1)
 
-    XYZ_0_partitions = partition(x_0, y_0, num_partitions)
-    XYZ_1_partitions = partition(x_1, y_1, num_partitions)
+    XYZ_0_partitions = partition(x_0, y_0, z_0, num_partitions)
+    XYZ_1_partitions = partition(x_1, y_1, z_1, num_partitions)
 
     XYZ_partitions = combine_partitions(XYZ_0_partitions, XYZ_1_partitions)
 
@@ -189,12 +207,12 @@ def log_distribution(XYZ_partitions: XYZList) -> None:
 
 def adjust_XYZ_shape(XYZ: XYZ) -> XYZ:
     """Adjust shape of both x and y."""
-    x, y = XYZ
+    x, y, z = XYZ
     if x.ndim == 3:
         x = adjust_x_shape(x)
     if y.ndim == 2:
         y = adjust_y_shape(y)
-    return (x, y)
+    return (x, y, z)
 
 
 def adjust_x_shape(nda: np.ndarray) -> np.ndarray:
@@ -366,14 +384,14 @@ def get_partitions_distributions(partitions: XYZList) -> Tuple[np.ndarray, List[
     """
     # Get largest available label
     labels = set()
-    for _, y in partitions:
+    for _, y, z in partitions:
         labels.update(set(y))
     list_labels = sorted(list(labels))
     bin_edges = np.arange(len(list_labels) + 1)
 
     # Pre-allocate distributions
     distributions = np.zeros((len(partitions), len(list_labels)), dtype=np.float32)
-    for idx, (_, _y) in enumerate(partitions):
+    for idx, (_, _y, z) in enumerate(partitions):
         hist, _ = np.histogram(_y, bin_edges)
         distributions[idx] = hist / hist.sum()
 

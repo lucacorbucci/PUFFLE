@@ -77,18 +77,9 @@ class FlowerClient(fl.client.NumPyClient):
             private=self.private,
             criterion=self.criterion,
             DPL=self.DPL,
-            wandb_run=None,
             DPL_lambda=self.DPL_lambda,
             loss_lambda=self.loss_lambda,
         )
-        # else:
-        #     # Train
-        #     ModelUtils.train(
-        #         self.net,
-        #         trainloader,
-        #         epochs=config["epochs"],
-        #         device=self.device,
-        #     )
 
         # Return local model and statistics
         return Utils.get_params(self.net), len(trainloader.dataset), {}
@@ -111,8 +102,21 @@ class FlowerClient(fl.client.NumPyClient):
         # Send model to device
         self.net.to(self.device)
 
+        (
+            loss,
+            accuracy,
+            max_disparity_test,
+        ) = Learning.test(
+            self.net,
+            valloader,
+            device=self.device,
+            epoch=0,
+            DPL_lambda=self.DPL_lambda,
+            max_disparity_computation=False,
+        )
+
         # Evaluate
-        loss, accuracy = Utils.test(self.net, valloader, device=self.device)
+        # loss, accuracy = Utils.test(self.net, valloader, device=self.device)
 
         # Return statistics
         return float(loss), len(valloader.dataset), {"accuracy": float(accuracy)}

@@ -12,6 +12,7 @@ flwr = { extras = ["simulation"], version = "^1.4.0" }
 torch = "^2.0.0"
 torchvision = "^0.15.1"
 black = "^23.3.0"
+wandb = "^0.15.1"
 
 
 [build-system]

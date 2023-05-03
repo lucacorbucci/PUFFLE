@@ -1,11 +1,15 @@
 import random
 from collections import defaultdict
+from typing import Callable, Dict, List, Optional, Tuple
 
+import flwr as fl
 import numpy as np
 import torch
 import torch.nn as nn
+import wandb
+from flwr.common.typing import Scalar
 from opacus.utils.batch_memory_manager import BatchMemoryManager
-from sklearn.metrics import f1_score, precision_score, recall_score
+from Regularization.DPL import RegularizationLoss
 from utils import Utils
 
 
@@ -23,7 +27,6 @@ class Learning:
         private,
         criterion,
         DPL,
-        wandb_run,
         DPL_lambda,
         loss_lambda=1.0,
     ):
@@ -32,7 +35,7 @@ class Learning:
         random.seed(15)
 
         for epoch in range(1, epochs + 1):
-            print(f"Training epoch {epoch}")
+            # print(f"Training epoch {epoch}")
             Learning.train_model(
                 model,
                 model_regularization,
@@ -41,7 +44,6 @@ class Learning:
                 optimizer,
                 optimizer_regularization,
                 epoch,
-                wandb_run,
                 DPL,
                 DPL_lambda,
                 loss_lambda,
@@ -51,11 +53,8 @@ class Learning:
             (
                 test_loss,
                 accuracy,
-                f1score,
-                precision,
-                recall,
                 max_disparity_test,
-            ) = Learning.test(model, test_loader, device, wandb_run, epoch, DPL_lambda)
+            ) = Learning.test(model, test_loader, device, epoch, DPL_lambda)
 
     @staticmethod
     def compute_regularization_term(
@@ -199,10 +198,6 @@ class Learning:
             for p1, p2 in zip(model.parameters(), model_regularization.parameters()):
                 p1.grad_sample += p2.grad_sample
 
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print(name)
-
         optimizer.step()
         optimizer.zero_grad()
 
@@ -221,51 +216,51 @@ class Learning:
             torch.cuda.empty_cache()
         return running_loss, total_correct, running_regularization_term, total
 
-    def evaluate_model(
-        running_loss,
-        train_loader,
-        total_correct,
-        total,
-        model_regularization,
-        running_regularization_term,
-        epoch,
-        device,
-        criterion_regularization,
-        model,
-        wandb_run,
-        DPL_lambda,
-    ):
-        loss = running_loss / len(train_loader)
-        accuracy = total_correct / total
-        print(f"Training loss: {loss}, accuracy: {accuracy}")
+    # def evaluate_model(
+    #     running_loss,
+    #     train_loader,
+    #     total_correct,
+    #     total,
+    #     model_regularization,
+    #     running_regularization_term,
+    #     epoch,
+    #     device,
+    #     criterion_regularization,
+    #     model,
+    #     wandb_run,
+    #     DPL_lambda,
+    # ):
+    #     loss = running_loss / len(train_loader)
+    #     accuracy = total_correct / total
+    #     # print(f"Training loss: {loss}, accuracy: {accuracy}")
 
-        disparity_training = None
-        if model_regularization:
-            disparity_training = running_regularization_term / len(train_loader)
+    #     disparity_training = None
+    #     if model_regularization:
+    #         disparity_training = running_regularization_term / len(train_loader)
 
-        # We compute the demographic parity metric on the entire dataset after each epoch
-        max_disparity_train = criterion_regularization.violation_with_dataset(
-            model, train_loader, device
-        )
+    #     # We compute the demographic parity metric on the entire dataset after each epoch
+    #     max_disparity_train = criterion_regularization.violation_with_dataset(
+    #         model, train_loader, device
+    #     )
 
-        if wandb_run:
-            updated_lambda = (
-                DPL_lambda.item()
-                if isinstance(DPL_lambda, torch.Tensor)
-                else DPL_lambda
-            )
-            wandb_run.log(
-                {
-                    "epoch": epoch,
-                    "train_accuracy": accuracy,
-                    "train_loss": loss,
-                    "disparity_train": disparity_training,
-                    "max_disparity_train": max_disparity_train,
-                    "updated_DPL_lambda": updated_lambda,
-                }
-            )
+    #     if wandb_run:
+    #         updated_lambda = (
+    #             DPL_lambda.item()
+    #             if isinstance(DPL_lambda, torch.Tensor)
+    #             else DPL_lambda
+    #         )
+    #         wandb_run.log(
+    #             {
+    #                 "epoch": epoch,
+    #                 "train_accuracy": accuracy,
+    #                 "train_loss": loss,
+    #                 "disparity_train": disparity_training,
+    #                 "max_disparity_train": max_disparity_train,
+    #                 "updated_DPL_lambda": updated_lambda,
+    #             }
+    #         )
 
-        return loss, accuracy
+    #     return loss, accuracy
 
     @staticmethod
     def train_model(
@@ -276,7 +271,6 @@ class Learning:
         optimizer,
         optimizer_regularization,
         epoch,
-        wandb_run,
         DPL,
         DPL_lambda,
         loss_lambda,
@@ -295,7 +289,7 @@ class Learning:
         criterion = nn.CrossEntropyLoss()
 
         model.train()
-        criterion_regularization = None  # RegularizationLoss()
+        criterion_regularization = RegularizationLoss()
 
         if model_regularization:
             # If we want to use the DPL regularization then we
@@ -358,30 +352,30 @@ class Learning:
                     DPL,
                 )
 
-        Learning.evaluate_model(
-            running_loss,
-            train_loader,
-            total_correct,
-            total,
-            model_regularization,
-            running_regularization_term,
-            epoch,
-            device,
-            criterion_regularization,
-            model,
-            wandb_run,
-            DPL_lambda,
-        )
+        # Learning.evaluate_model(
+        #     running_loss,
+        #     train_loader,
+        #     total_correct,
+        #     total,
+        #     model_regularization,
+        #     running_regularization_term,
+        #     epoch,
+        #     device,
+        #     criterion_regularization,
+        #     model,
+        #     wandb_run,
+        #     DPL_lambda,
+        # )
 
     @staticmethod
     def test(
         model,
         test_loader,
         device,
-        wandb_run,
         epoch,
         set_name="test set",
         DPL_lambda=None,
+        max_disparity_computation=True,
     ):
         """_summary_
 
@@ -427,9 +421,13 @@ class Learning:
 
         criterion_regularization = RegularizationLoss()
 
-        max_disparity_test = criterion_regularization.violation_with_dataset(
-            model, test_loader, device
-        )
+        max_disparity_test = None
+        if max_disparity_computation:
+            max_disparity_test = criterion_regularization.violation_with_dataset(
+                model,
+                test_loader,
+                device,
+            )
 
         test_loss = np.mean(losses)
         accuracy = correct / total
@@ -437,32 +435,56 @@ class Learning:
         y_true = [item.item() for sublist in y_true for item in sublist]
         y_pred = [item.item() for sublist in y_pred for item in sublist]
 
-        f1score = f1_score(y_true, y_pred, average="macro")
-        precision = precision_score(y_true, y_pred, average="macro")
-        recall = recall_score(y_true, y_pred, average="macro")
-
-        print(
-            f"Performance on {set_name}: loss: {test_loss}, Accuracy: {accuracy}, Max disparity Test: {max_disparity_test}"
-        )
-
-        if wandb_run:
-            wandb_run.log(
-                {
-                    "test_loss": test_loss,
-                    "test_accuracy": accuracy,
-                    "epoch": epoch,
-                    "max_disparity_test": max_disparity_test,
-                }
-            )
-
         return (
             test_loss,
             accuracy,
-            f1score,
-            precision,
-            recall,
             max_disparity_test,
         )
+
+    @staticmethod
+    def get_evaluate_fn(
+        testset,
+        dataset_name: str,
+        wandb_run: wandb.sdk.wandb_run.Run,
+    ) -> Callable[[fl.common.NDArrays], Optional[Tuple[float, float]]]:
+        """Return an evaluation function for centralized evaluation."""
+
+        def evaluate(
+            server_round: int, parameters: fl.common.NDArrays, config: Dict[str, Scalar]
+        ) -> Optional[Tuple[float, float]]:
+            """Use the entire CIFAR-10 test set for evaluation."""
+
+            # determine device
+            device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+            model = Utils.get_model(dataset_name)
+            Utils.set_params(model, parameters)
+            model.to(device)
+
+            testloader = torch.utils.data.DataLoader(testset, batch_size=50)
+            (
+                loss,
+                accuracy,
+                max_disparity_test,
+            ) = Learning.test(
+                model,
+                testloader,
+                device=device,
+                epoch=0,
+                DPL_lambda=None,
+            )
+            if wandb_run:
+                wandb_run.log(
+                    {
+                        "epoch": server_round,
+                        "acc": accuracy,
+                        "loss": loss,
+                        "max_disparity_test": max_disparity_test,
+                    }
+                )
+            return loss, {"accuracy": accuracy}
+
+        return evaluate
 
 
 class ModelUtils:
