@@ -15,6 +15,7 @@ black = "^23.3.0"
 wandb = "^0.15.1"
 pytest = "^7.3.1"
 pandas = "^2.0.1"
+opacus = "^1.4.0"
 
 
 [build-system]
