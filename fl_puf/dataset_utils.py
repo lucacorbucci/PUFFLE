@@ -4,12 +4,13 @@ from typing import Any, Callable, Optional, Tuple
 
 import numpy as np
 import torch
-from common import create_lda_partitions
-from Datasets.celeba import CelebaDataset
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.datasets import VisionDataset
+
+from fl_puf.common import create_lda_partitions
+from fl_puf.Datasets.celeba import CelebaDataset
 
 
 class DatasetDownloader:
@@ -205,13 +206,11 @@ class DatasetDownloader:
         )
 
         # Show label distribution for first partition (purely informative)
-        for partition in partitions:
-            partition_zero = partition[2]
-            print(len(partition_zero))
-            hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
-            print(
-                f"Class histogram for 0-th partition (alpha={alpha}, {num_classes} classes): {hist}"
-            )
+        partition_zero = partitions[0][2]
+        hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
+        print(
+            f"Class histogram for 0-th partition (alpha={alpha}, {num_classes} classes): {hist}"
+        )
 
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it
@@ -235,17 +234,15 @@ class DatasetDownloader:
                 train_idx, val_idx = DatasetDownloader.get_random_id_splits(
                     len(labels), val_ratio
                 )
-                # val_imgs = imgs[val_idx]
                 val_imgs = [imgs[val_id] for val_id in val_idx]
                 val_labels = labels[val_idx]
-
                 val_sensitive = sensitive_features[val_idx]
 
                 with open(splits_dir / str(p) / "val.pt", "wb") as f:
                     torch.save([val_imgs, val_sensitive, val_labels], f)
 
-                # remaining images for training
-                # imgs = imgs[train_idx]
+                a = torch.load(splits_dir / str(p) / "val.pt")
+
                 imgs = [imgs[train_id] for train_id in train_idx]
                 labels = labels[train_idx]
                 sensitive = sensitive_features[train_idx]
@@ -302,9 +299,6 @@ class TorchVision_FL(VisionDataset):
         sensitive_feature = self.sensitive_features[index]
 
         return img, sensitive_feature, target
-
-    def __len__(self) -> int:
-        return len(self.data)
 
     def __len__(self) -> int:
         return len(self.data)

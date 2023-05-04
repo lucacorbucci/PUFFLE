@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "flwr-tests"
+name = "fl_puf"
 version = "0.1.0"
 description = ""
-authors = ["John Doe <lucorbucci@gmail.com>"]
+authors = ["Luca Corbucci <lucorbucci@gmail.com>"]
 readme = "README.md"
-packages = [{include = "flwr_tests"}]
+packages = [ { include = "fl_puf" } ]
 
 [tool.poetry.dependencies]
 python = "^3.8"
@@ -13,6 +13,8 @@ torch = "^2.0.0"
 torchvision = "^0.15.1"
 black = "^23.3.0"
 wandb = "^0.15.1"
+pytest = "^7.3.1"
+pandas = "^2.0.1"
 
 
 [build-system]

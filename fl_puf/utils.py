@@ -1,10 +1,8 @@
 from collections import OrderedDict
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List
 
-import flwr as fl
 import numpy as np
 import torch
-from flwr.common.typing import Scalar
 from Models.celeba import CelebaNet
 from Models.cifar import CifarNet
 from Models.mnist import MnistNet
