@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import torch
-from fl_puf.dataset_utils import DatasetDownloader, TorchVision_FL
+from fl_puf.Utils.dataset_utils import DatasetDownloader, TorchVision_FL
 from PIL import Image
 
 
