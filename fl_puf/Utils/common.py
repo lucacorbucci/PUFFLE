@@ -43,7 +43,7 @@ def sort_by_label(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     Assuming two labels and four examples the resulting label order
     would be 1,1,2,2
     """
-    idx = np.argsort(y, axis=0).reshape((y.shape[0]))
+    idx = np.argsort(z, axis=0).reshape((z.shape[0]))
     return (x[idx], y[idx], z[idx])
 
 
@@ -73,7 +73,9 @@ def sort_by_label_repeating(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     x, y, z = sort_by_label(x, y, z)
 
     num_example = x.shape[0]
-    num_class = np.unique(y).shape[0]
+    num_class = np.unique(z).shape[0]
+    print(num_example)
+    print(num_class)
     idx = (
         np.array(range(num_example), np.int64)
         .reshape((num_class, num_example // num_class))
@@ -200,7 +202,7 @@ def create_partitioned_dataset(
 
 def log_distribution(XYZ_partitions: XYZList) -> None:
     """Print label distribution for list of paritions."""
-    distro = [np.unique(y, return_counts=True) for _, y in XYZ_partitions]
+    distro = [np.unique(z, return_counts=True) for _, _, z in XYZ_partitions]
     for d in distro:
         print(d)
 
@@ -210,8 +212,8 @@ def adjust_XYZ_shape(XYZ: XYZ) -> XYZ:
     x, y, z = XYZ
     if x.ndim == 3:
         x = adjust_x_shape(x)
-    if y.ndim == 2:
-        y = adjust_y_shape(y)
+    if z.ndim == 2:
+        z = adjust_y_shape(z)
     return (x, y, z)
 
 
@@ -384,15 +386,15 @@ def get_partitions_distributions(partitions: XYZList) -> Tuple[np.ndarray, List[
     """
     # Get largest available label
     labels = set()
-    for _, y, z in partitions:
-        labels.update(set(y))
+    for _, _, z in partitions:
+        labels.update(set(z))
     list_labels = sorted(list(labels))
     bin_edges = np.arange(len(list_labels) + 1)
 
     # Pre-allocate distributions
     distributions = np.zeros((len(partitions), len(list_labels)), dtype=np.float32)
-    for idx, (_, _y, z) in enumerate(partitions):
-        hist, _ = np.histogram(_y, bin_edges)
+    for idx, (_, _, _z) in enumerate(partitions):
+        hist, _ = np.histogram(_z, bin_edges)
         distributions[idx] = hist / hist.sum()
 
     return distributions, list_labels
@@ -453,7 +455,7 @@ def create_lda_partitions(
         num_samples[j % num_partitions] += 1
 
     # Get number of classes and verify if they matching with
-    classes, start_indices = np.unique(y, return_index=True)
+    classes, start_indices = np.unique(z, return_index=True)
 
     # Make sure that concentration is np.array and
     # check if concentration is appropriate

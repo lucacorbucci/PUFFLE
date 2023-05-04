@@ -54,7 +54,7 @@ def setup_wandb(args):
     return wandb_run
 
 
-def fit_config(server_round: int) -> Dict[str, Scalar]:
+def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
     """Return a configuration with static batch size and (local) epochs."""
     config = {
         "epochs": args.epochs,  # number of local epochs
@@ -104,10 +104,9 @@ if __name__ == "__main__":
         min_evaluate_clients=1,
         min_available_clients=args.sampled_clients,  # All clients should be available
         on_fit_config_fn=fit_config,
+        on_evaluate_config_fn=fit_config,
         evaluate_fn=Learning.get_evaluate_fn(
-            testset,
-            dataset_name,
-            wandb_run,
+            testset, dataset_name, wandb_run, fit_config
         ),  # centralised evaluation of global model
     )
 

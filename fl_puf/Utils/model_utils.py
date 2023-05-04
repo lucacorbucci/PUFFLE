@@ -434,14 +434,16 @@ class Learning:
 
     @staticmethod
     def get_evaluate_fn(
-        testset, dataset_name: str, wandb_run: wandb.sdk.wandb_run.Run
+        testset, dataset_name: str, wandb_run: wandb.sdk.wandb_run.Run, config
     ) -> Callable[[fl.common.NDArrays], Optional[Tuple[float, float]]]:
         """Return an evaluation function for centralized evaluation."""
+        config = config()
 
         def evaluate(
             server_round: int, parameters: fl.common.NDArrays, config: Dict[str, Scalar]
         ) -> Optional[Tuple[float, float]]:
             """Use the entire CIFAR-10 test set for evaluation."""
+            # print(">>>>>> SERVER ", config)
 
             # determine device
             device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -472,7 +474,7 @@ class Learning:
                         "acc": accuracy,
                         "loss": loss,
                         "max_disparity_test": max_disparity_test,
-                    }
+                    },
                 )
             return loss, {"accuracy": accuracy}
 

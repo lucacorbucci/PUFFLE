@@ -108,7 +108,7 @@ class DatasetDownloader:
     @staticmethod
     def download_celeba(path_to_data: str = "../data"):
         train_set = CelebaDataset(
-            csv_path="../data/celeba/train_reduced_2.csv",
+            csv_path="../data/celeba/train_reduced_3.csv",
             image_path="../data/celeba/img_align_celeba",
         )
 
@@ -130,7 +130,7 @@ class DatasetDownloader:
         )
 
         test_set = CelebaDataset(
-            csv_path="../data/celeba/test_reduced.csv",
+            csv_path="../data/celeba/test_reduced_3.csv",
             image_path="../data/celeba/img_align_celeba",
             transform=transform,
         )
