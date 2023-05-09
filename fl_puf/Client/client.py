@@ -47,7 +47,7 @@ class FlowerClient(fl.client.NumPyClient):
         self.DPL_lambda = DPL_lambda
 
         # Determine device
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.dataset_name = dataset_name
 
     def get_parameters(self, config):

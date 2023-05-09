@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Callable, Optional, Tuple
@@ -107,8 +108,10 @@ class DatasetDownloader:
 
     @staticmethod
     def download_celeba(path_to_data: str = "../data"):
+        print("Downloading Celeba dataset....")
         train_set = CelebaDataset(
-            csv_path="../data/celeba/train_reduced_3.csv",
+            # csv_path="../data/celeba/train_reduced_2.csv",
+            csv_path="../data/celeba/train_original.csv",
             image_path="../data/celeba/img_align_celeba",
         )
 
@@ -121,7 +124,7 @@ class DatasetDownloader:
         )
 
         # fuse all data splits into a single "training.pt"
-        data_loc = Path(path_to_data) / "celeba-10-batches-py"
+        data_loc = Path(path_to_data) / "celeba/celeba-10-batches-py"
         training_data = data_loc / "training.pt"
         print("Generating unified Celeba dataset")
         torch.save(
@@ -130,10 +133,13 @@ class DatasetDownloader:
         )
 
         test_set = CelebaDataset(
-            csv_path="../data/celeba/test_reduced_3.csv",
+            csv_path="../data/celeba/test_original.csv",
+            # csv_path="../data/celeba/test_reduced.csv",
             image_path="../data/celeba/img_align_celeba",
             transform=transform,
         )
+
+        print("Data Correctly downloaded")
 
         # returns path where training data is and testset
         return training_data, test_set
@@ -268,6 +274,8 @@ class TorchVision_FL(VisionDataset):
         transform: Optional[Callable] = None,
     ) -> None:
         path = path_to_data.parent if path_to_data else None
+        self.dataset_path = path.parent.parent.parent if path_to_data else None
+
         super(TorchVision_FL, self).__init__(path, transform=transform)
         self.transform = transform
 
@@ -283,6 +291,12 @@ class TorchVision_FL(VisionDataset):
 
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
+        if isinstance(img, str):
+            path = self.dataset_path / "img_align_celeba/" / self.data[index]
+            img = Image.open(path).convert(
+                "RGB",
+            )
+
         if not isinstance(img, Image.Image):  # if not PIL image
             if not isinstance(img, np.ndarray):  # if torch tensor
                 img = img.numpy()

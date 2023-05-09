@@ -90,7 +90,7 @@ if __name__ == "__main__":
     fed_dir = DatasetDownloader.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
-        alpha=float("inf"),
+        alpha=1000000,
         num_classes=2,
         val_ratio=0.2,
     )
@@ -126,8 +126,14 @@ if __name__ == "__main__":
             lr=args.lr,
         )
 
+    ray_num_cpus = int(args.sampled_clients * args.pool_size) + 1
+
+    print("ray_num_cpus: ", ray_num_cpus)
     # (optional) specify Ray config
-    ray_init_args = {"include_dashboard": False}
+    ray_init_args = {
+        "include_dashboard": False,
+        "num_cpus": ray_num_cpus,
+    }
 
     # start simulation
     fl.simulation.start_simulation(
