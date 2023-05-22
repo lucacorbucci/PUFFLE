@@ -6,7 +6,11 @@ from typing import Any, Callable, Optional, Tuple
 import numpy as np
 import torch
 from fl_puf.Datasets.celeba import CelebaDataset
-from fl_puf.Utils.common import create_lda_partitions
+from fl_puf.Utils.common import (
+    create_lda_partitions,
+    create_sensitive_partition,
+    create_unbalanced_partitions,
+)
 from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
@@ -110,8 +114,8 @@ class DatasetDownloader:
     def download_celeba(path_to_data: str = "../data"):
         print("Downloading Celeba dataset....")
         train_set = CelebaDataset(
-            # csv_path="../data/celeba/train_reduced_2.csv",
-            csv_path="../data/celeba/train_original.csv",
+            csv_path="../data/celeba/train_reduced_2.csv",
+            # csv_path="../data/celeba/train_original.csv",
             image_path="../data/celeba/img_align_celeba",
         )
 
@@ -133,8 +137,8 @@ class DatasetDownloader:
         )
 
         test_set = CelebaDataset(
-            csv_path="../data/celeba/test_original.csv",
-            # csv_path="../data/celeba/test_reduced.csv",
+            # csv_path="../data/celeba/test_original.csv",
+            csv_path="../data/celeba/test_reduced.csv",
             image_path="../data/celeba/img_align_celeba",
             transform=transform,
         )
@@ -201,21 +205,53 @@ class DatasetDownloader:
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
 
         images, sensitive_attribute, labels = torch.load(path_to_dataset)
+        mapping = {-1: 0, 1: 1}
+        sensitive_attribute = np.array([mapping[item] for item in sensitive_attribute])
+
+        from collections import Counter
+
         idx = np.array(range(len(images)))
         dataset = [idx, sensitive_attribute, labels]
-        partitions, _ = create_lda_partitions(
+        # partitions, _ = create_lda_partitions(
+        #     dataset,
+        #     num_partitions=pool_size,
+        #     concentration=alpha,
+        #     accept_imbalanced=True,
+        # )
+        # print("---------------")
+        # partitions, _ = create_sensitive_partition(
+        #     dataset,
+        #     num_partitions=pool_size,
+        #     # concentration=alpha,
+        #     accept_imbalanced=True,
+        #     seed=42,
+        # )
+
+        # In this case we create just two partitions and
+        # so we have two nodes. A node will have all the data
+        # about male and the other all the data about female
+        partitions = create_unbalanced_partitions(
             dataset,
             num_partitions=pool_size,
-            concentration=alpha,
-            accept_imbalanced=True,
         )
 
-        # Show label distribution for first partition (purely informative)
-        partition_zero = partitions[0][2]
-        hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
-        print(
-            f"Class histogram for 0-th partition (alpha={alpha}, {num_classes} classes): {hist}"
-        )
+        for p in range(pool_size):
+            # Show label distribution for first partition (purely informative)
+
+            print("Counter sensitive features: ", Counter(partitions[p][1]))
+            partition_zero = partitions[p][2]
+            hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
+            print(
+                f"Class histogram for {p}-th partition (alpha={alpha}, {num_classes} classes): {hist}"
+            )
+
+            partition_zero = partitions[p][1]
+
+            hist_sv, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
+            print(
+                f"Sensitive Value histogram for {p}-th partition (alpha={alpha}, {num_classes} classes): {hist_sv}"
+            )
+            assert sum(hist) == sum(hist_sv)
 
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it

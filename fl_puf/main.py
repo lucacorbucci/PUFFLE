@@ -1,7 +1,9 @@
 import argparse
+import random
 from typing import Dict
 
 import flwr as fl
+import numpy as np
 import wandb
 from flwr.common.typing import Scalar
 
@@ -28,6 +30,7 @@ parser.add_argument("--epsilon", type=float, default=10)
 parser.add_argument("--clipping", type=float, default=10)
 parser.add_argument("--delta", type=float, default="0.1")
 parser.add_argument("--lr", type=float, default="0.1")
+parser.add_argument("--alpha", type=int, default=1000000)
 
 
 # DPL:
@@ -90,7 +93,7 @@ if __name__ == "__main__":
     fed_dir = DatasetDownloader.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
-        alpha=1000000,
+        alpha=args.alpha,
         num_classes=2,
         val_ratio=0.2,
     )

@@ -15,8 +15,7 @@
 """Commonly used functions for generating partitioned datasets."""
 
 # pylint: disable=invalid-name
-
-
+import random
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -44,6 +43,16 @@ def sort_by_label(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
     would be 1,1,2,2
     """
     idx = np.argsort(z, axis=0).reshape((z.shape[0]))
+    return (x[idx], y[idx], z[idx])
+
+
+def sort_by_sensitive_value(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
+    """Sort by label.
+
+    Assuming two labels and four examples the resulting label order
+    would be 1,1,2,2
+    """
+    idx = np.argsort(y, axis=0).reshape((y.shape[0]))
     return (x[idx], y[idx], z[idx])
 
 
@@ -350,6 +359,7 @@ def sample_without_replacement(
     target: List[np.ndarray] = []
     sensitive_list: List[np.ndarray] = []
 
+    # check this or find a different dirty solution to run an experiment
     for _ in range(num_samples):
         sample_class = np.where(np.random.multinomial(1, distribution) == 1)[0][0]
         sample: np.ndarray = list_samples[sample_class].pop()
@@ -363,6 +373,76 @@ def sample_without_replacement(
         #  probability density function (PDF) to zero for that class.
         if len(list_samples[sample_class]) == 0:
             empty_classes[sample_class] = True
+            # Be careful to distinguish between classes that had zero probability
+            # and classes that are now empty
+            distribution = exclude_classes_and_normalize(
+                distribution=distribution, exclude_dims=empty_classes
+            )
+    data_array: np.ndarray = np.concatenate([data], axis=0)
+    target_array: np.ndarray = np.array(target, dtype=np.int64)
+    sensitive_array: np.ndarray = np.array(sensitive_list, dtype=np.int64)
+
+    return (data_array, sensitive_array, target_array), empty_classes
+
+
+def sample_without_replacement_sensitive(
+    distribution: np.ndarray,
+    list_samples_per_sensitive_feature: List[List[np.ndarray]],
+    list_class_per_sensitive_feature: List[List[np.ndarray]],
+    num_samples: int,
+    empty_classes: List[bool],
+) -> Tuple[XYZ, List[bool]]:
+    """Samples from a list without replacement using a given distribution.
+
+    Args:
+        distribution (np.ndarray): Distribution used for sampling.
+        list_samples(List[List[np.ndarray]]): List of samples.
+        num_samples (int): Total number of items to be sampled.
+        empty_classes (List[bool]): List of booleans indicating which classes are empty.
+            This is useful to differentiate which classes should still be sampled.
+
+    Returns:
+        XYZ: Dataset contaning samples
+        List[bool]: empty_classes.
+    """
+    import random
+
+    if np.sum([len(x) for x in list_samples_per_sensitive_feature]) < num_samples:
+        raise ValueError(
+            """Number of samples in `list_samples` is less than `num_samples`"""
+        )
+
+    # Make sure empty classes are not sampled
+    # and solves for rare cases where
+    if not empty_classes:
+        empty_classes = len(distribution) * [False]
+
+    distribution = exclude_classes_and_normalize(
+        distribution=distribution, exclude_dims=empty_classes
+    )
+
+    data: List[np.ndarray] = []
+    target: List[np.ndarray] = []
+    sensitive_list: List[np.ndarray] = []
+
+    # check this or find a different dirty solution to run an experiment
+    for _ in range(num_samples):
+        sample_sensitive_feature = np.where(
+            np.random.multinomial(1, distribution) == 1
+        )[0][0]
+        sample: np.ndarray = list_samples_per_sensitive_feature[
+            sample_sensitive_feature
+        ].pop()
+        classes = list_class_per_sensitive_feature[sample_sensitive_feature].pop()
+
+        data.append(sample)
+        sensitive_list.append(sample_sensitive_feature)
+        target.append(classes)
+
+        # If last sample of the class was drawn, then set the
+        #  probability density function (PDF) to zero for that class.
+        if len(list_samples_per_sensitive_feature[sample_sensitive_feature]) == 0:
+            empty_classes[sample_sensitive_feature] = True
             # Be careful to distinguish between classes that had zero probability
             # and classes that are now empty
             distribution = exclude_classes_and_normalize(
@@ -436,6 +516,11 @@ def create_lda_partitions(
     Returns:
         Tuple[XYZList, numpy.ndarray]: List of XYZList containing partitions
             for each dataset and the dirichlet probability density functions.
+            The returned list contains N elements where N is the number of clients
+            and each element is a tuple containing the following:
+            - position 0 -> the samples for the client
+            - position 1 -> the sensitive features for the client
+            - position 2 -> the labels for the client
     """
     # pylint: disable=too-many-arguments,too-many-locals
 
@@ -456,7 +541,8 @@ def create_lda_partitions(
 
     # Get number of classes and verify if they matching with
     classes, start_indices = np.unique(z, return_index=True)
-
+    print(classes)
+    print(start_indices)
     # Make sure that concentration is np.array and
     # check if concentration is appropriate
     concentration = np.asarray(concentration)
@@ -517,3 +603,134 @@ def create_lda_partitions(
         )
 
     return partitions, dirichlet_dist
+
+
+def create_sensitive_partition(
+    dataset: XYZ,
+    dirichlet_dist: Optional[np.ndarray] = None,
+    num_partitions: int = 100,
+    concentration: Union[float, np.ndarray, List[float]] = 100000,
+    accept_imbalanced: bool = False,
+    seed: Optional[Union[int, SeedSequence, BitGenerator, Generator]] = None,
+) -> Tuple[XYZList, np.ndarray]:
+    """Simple function for testing purposes. It creates a partitioning
+    of the dataset based on the sensitive attribute.
+    In particular, it creates `num_partitions` partitions, each one containing
+    all the samples with the same sensitive attribute value.
+
+    Args:
+        dataset (_type_): dataset we want to split
+        num_partitions (_type_): number of partitions we want to create
+
+    Returns:
+        _type_: _description_
+    """
+    # pylint: disable=too-many-arguments,too-many-locals
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_sensitive_value(x, y, z)
+
+    if (x.shape[0] % num_partitions) and (not accept_imbalanced):
+        raise ValueError(
+            """Total number of samples must be a multiple of `num_partitions`.
+               If imbalanced classes are allowed, set
+               `accept_imbalanced=True`."""
+        )
+
+    num_samples = num_partitions * [0]
+    for j in range(x.shape[0]):
+        num_samples[j % num_partitions] += 1
+
+    # Get number of sensitive values and verify if they matching with
+    sensitive_values, start_indices = np.unique(y, return_index=True)
+    # Make sure that concentration is np.array and
+    # check if concentration is appropriate
+    concentration = np.asarray(concentration)
+
+    # Check if concentration is Inf, if so create uniform partitions
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+    # TODO FIXME
+    # if float("inf") in concentration:
+    #     partitions = create_partitions(
+    #         unpartitioned_dataset=(x, y, z),
+    #         iid_fraction=1.0,
+    #         num_partitions=num_partitions,
+    #     )
+    #     dirichlet_dist = get_partitions_distributions(partitions)[0]
+
+    #     return partitions, dirichlet_dist
+
+    if concentration.size == 1:
+        concentration = np.repeat(concentration, sensitive_values.size)
+    elif concentration.size != sensitive_values.size:  # Sequence
+        raise ValueError(
+            f"The size of the provided concentration ({concentration.size}) ",
+            f"must be either 1 or equal number of classes {sensitive_values.size})",
+        )
+
+    # Split into list of list of samples per class
+    list_samples_per_sensitive_feature: List[List[np.ndarray]] = split_array_at_indices(
+        x,
+        start_indices,
+    )
+
+    list_class_per_sensitive_feature: List[List[np.ndarray]] = [[]] * len(
+        list_samples_per_sensitive_feature,
+    )
+
+    for sensitive_feature, index_list in enumerate(list_samples_per_sensitive_feature):
+        print(index_list)
+        for index in list(index_list):
+            list_class_per_sensitive_feature[sensitive_feature].append(z[index])
+
+    if dirichlet_dist is None:
+        dirichlet_dist = np.random.default_rng(seed).dirichlet(
+            alpha=concentration,
+            size=num_partitions,
+        )
+
+    if dirichlet_dist.size != 0:
+        if dirichlet_dist.shape != (num_partitions, sensitive_values.size):
+            raise ValueError(
+                f"""The shape of the provided dirichlet distribution
+                 ({dirichlet_dist.shape}) must match the provided number
+                  of partitions and classes ({num_partitions},{sensitive_values.size})"""
+            )
+    # Assuming balanced distribution
+    empty_classes = sensitive_values.size * [False]
+    for partition_id in range(num_partitions):
+        partitions[partition_id], empty_classes = sample_without_replacement_sensitive(
+            distribution=dirichlet_dist[partition_id].copy(),
+            list_samples_per_sensitive_feature=list_samples_per_sensitive_feature,
+            list_class_per_sensitive_feature=list_class_per_sensitive_feature,
+            num_samples=num_samples[partition_id],
+            empty_classes=empty_classes,
+        )
+
+    return partitions, dirichlet_dist
+
+
+def create_unbalanced_partitions(dataset, num_partitions=2):
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_sensitive_value(x, y, z)
+
+    sensitive_values, start_indices = np.unique(y, return_index=True)
+
+    print(sensitive_values, start_indices)
+
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+
+    # just a stupid example
+    partitions[0] = (
+        x[: start_indices[1]],
+        y[: start_indices[1]],
+        z[: start_indices[1]],
+    )
+    partitions[1] = (
+        x[start_indices[1] :],
+        y[start_indices[1] :],
+        z[start_indices[1] :],
+    )
+
+    return partitions
