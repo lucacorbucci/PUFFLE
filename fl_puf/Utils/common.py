@@ -16,6 +16,7 @@
 
 # pylint: disable=invalid-name
 import random
+from collections import Counter
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -83,8 +84,6 @@ def sort_by_label_repeating(x: np.ndarray, y: np.ndarray, z: np.ndarray) -> XYZ:
 
     num_example = x.shape[0]
     num_class = np.unique(z).shape[0]
-    print(num_example)
-    print(num_class)
     idx = (
         np.array(range(num_example), np.int64)
         .reshape((num_class, num_example // num_class))
@@ -541,8 +540,6 @@ def create_lda_partitions(
 
     # Get number of classes and verify if they matching with
     classes, start_indices = np.unique(z, return_index=True)
-    print(classes)
-    print(start_indices)
     # Make sure that concentration is np.array and
     # check if concentration is appropriate
     concentration = np.asarray(concentration)
@@ -679,7 +676,6 @@ def create_sensitive_partition(
     )
 
     for sensitive_feature, index_list in enumerate(list_samples_per_sensitive_feature):
-        print(index_list)
         for index in list(index_list):
             list_class_per_sensitive_feature[sensitive_feature].append(z[index])
 
@@ -717,20 +713,349 @@ def create_unbalanced_partitions(dataset, num_partitions=2):
 
     sensitive_values, start_indices = np.unique(y, return_index=True)
 
-    print(sensitive_values, start_indices)
-
     partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
 
     # just a stupid example
+    print(f"Assigning {start_indices[1]} samples with Male = {y[0]} to user 0")
     partitions[0] = (
         x[: start_indices[1]],
         y[: start_indices[1]],
         z[: start_indices[1]],
     )
+    print(
+        f"Assigning {len(y) - start_indices[1]} samples with Male = {y[start_indices[1]]} to user 1"
+    )
+
     partitions[1] = (
         x[start_indices[1] :],
         y[start_indices[1] :],
         z[start_indices[1] :],
     )
 
+    return partitions
+
+
+def create_unbalanced_partitions_max_size(
+    dataset, num_partitions, max_size, unbalanced_ratio
+):
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_sensitive_value(x, y, z)
+    if len(x) // num_partitions < max_size:
+        raise ValueError("Invalid max_size")
+
+    sensitive_values, start_indices = np.unique(y, return_index=True)
+    start_indices = np.append(start_indices, len(y))
+
+    groups_indexes = [
+        y[start_indices[i] : start_indices[i + 1]] for i in range(len(sensitive_values))
+    ]
+
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+
+    for partition_id in range(num_partitions):
+        underrepresented_group = np.random.choice(list(set(y)))
+        # we want to sample unbalanced_ratio percentage from the underrepresented group
+        # and 1 - unbalanced_ratio from the other groups:
+        # unbalanced_ratio * num_samples = num_samples_underrepresented_group
+        num_samples_underrepresented_group = int(unbalanced_ratio * max_size)
+        num_samples_other_groups = max_size - num_samples_underrepresented_group
+
+        # now sample num_samples_underrepresented_group from the underrepresented group
+        # and num_samples_other_groups from the other groups
+        index_underrepresented_group = np.where(y == underrepresented_group)[0]
+        selected_samples_underrepresented = np.random.choice(
+            index_underrepresented_group,
+            num_samples_underrepresented_group,
+            replace=False,
+        )
+
+        index_other_groups = np.where(y != underrepresented_group)[0]
+        selected_samples_other_groups = np.random.choice(
+            index_other_groups, num_samples_other_groups, replace=False
+        )
+        # print(len(selected_samples_other_groups), print(len(selected_samples_underrepresented)))
+        partitions[partition_id] = (
+            x[
+                np.concatenate(
+                    (selected_samples_underrepresented, selected_samples_other_groups)
+                )
+            ],
+            y[
+                np.concatenate(
+                    (selected_samples_underrepresented, selected_samples_other_groups)
+                )
+            ],
+            z[
+                np.concatenate(
+                    (selected_samples_underrepresented, selected_samples_other_groups)
+                )
+            ],
+        )
+
+        # remove the selected samples from the dataset
+        x = np.delete(
+            x,
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            ),
+            axis=0,
+        )
+        y = np.delete(
+            y,
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            ),
+            axis=0,
+        )
+        z = np.delete(
+            z,
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            ),
+            axis=0,
+        )
+
+    return partitions
+
+
+def create_single_unbalanced_partition_max_size(
+    dataset, num_partitions, max_size, unbalanced_ratio
+):
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_sensitive_value(x, y, z)
+    if len(x) // num_partitions < max_size:
+        raise ValueError("Invalid max_size")
+    print(Counter(y))
+    sensitive_values, start_indices = np.unique(y, return_index=True)
+    start_indices = np.append(start_indices, len(y))
+
+    groups_indexes = [
+        y[start_indices[i] : start_indices[i + 1]] for i in range(len(sensitive_values))
+    ]
+
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+
+    # create the first partition [BALANCED]
+    num_samples_underrepresented_group = max_size // 2
+    num_samples_other_groups = max_size // 2
+    underrepresented_group = 1
+    # now sample num_samples_underrepresented_group from the underrepresented group
+    # and num_samples_other_groups from the other groups
+    index_underrepresented_group = np.where(y == underrepresented_group)[0]
+    selected_samples_underrepresented = np.random.choice(
+        index_underrepresented_group, num_samples_underrepresented_group, replace=False
+    )
+
+    index_other_groups = np.where(y != underrepresented_group)[0]
+    selected_samples_other_groups = np.random.choice(
+        index_other_groups, num_samples_other_groups, replace=False
+    )
+    # print(len(selected_samples_other_groups), print(len(selected_samples_underrepresented)))
+
+    partitions[0] = (
+        x[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+        y[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+        z[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+    )
+
+    # remove the selected samples from the dataset
+    x = np.delete(
+        x,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+    y = np.delete(
+        y,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+    z = np.delete(
+        z,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+
+    print(Counter(partitions[0][1]))
+
+    # The second partition instead is unbalanced
+    num_samples_underrepresented_group = int(unbalanced_ratio * max_size)
+    num_samples_other_groups = max_size - num_samples_underrepresented_group
+    print(num_samples_underrepresented_group, num_samples_other_groups)
+    # now sample num_samples_underrepresented_group from the underrepresented group
+    # and num_samples_other_groups from the other groups
+    index_underrepresented_group = np.where(y == underrepresented_group)[0]
+    selected_samples_underrepresented = np.random.choice(
+        index_underrepresented_group, num_samples_underrepresented_group, replace=False
+    )
+
+    index_other_groups = np.where(y != underrepresented_group)[0]
+    selected_samples_other_groups = np.random.choice(
+        index_other_groups, num_samples_other_groups, replace=False
+    )
+    # print(len(selected_samples_other_groups), print(len(selected_samples_underrepresented)))
+
+    partitions[1] = (
+        x[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+        y[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+        z[
+            np.concatenate(
+                (selected_samples_underrepresented, selected_samples_other_groups)
+            )
+        ],
+    )
+
+    # remove the selected samples from the dataset
+    x = np.delete(
+        x,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+    y = np.delete(
+        y,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+    z = np.delete(
+        z,
+        np.concatenate(
+            (selected_samples_underrepresented, selected_samples_other_groups)
+        ),
+        axis=0,
+    )
+
+    return partitions
+
+
+# def create_reduced_partitions_max_size(dataset, num_partitions, max_size):
+#     x, y, z = dataset
+#     x, y, z = shuffle(x, y, z)
+#     x, y, z = sort_by_sensitive_value(x, y, z)
+
+
+#     sensitive_values, start_indices = np.unique(y, return_index=True)
+
+#     partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+
+#     # just a stupid example
+#     print(f"Assigning {start_indices[1]} samples with Male = {y[0]} to user 0")
+#     partitions[0] = (
+#         x[: start_indices[1]],
+#         y[: start_indices[1]],
+#         z[: start_indices[1]],
+#     )
+#     print(f"Assigning {len(y) - start_indices[1]} samples with Male = {y[start_indices[1]]} to user 1")
+
+#     partitions[1] = (
+#         x[start_indices[1] :],
+#         y[start_indices[1] :],
+#         z[start_indices[1] :],
+#     )
+
+#     return partitions
+
+
+def partition_10_nodes(dataset, num_partitions, max_size, num_underrepresented_nodes=1):
+    x, y, z = dataset
+    x, y, z = shuffle(x, y, z)
+    x, y, z = sort_by_sensitive_value(x, y, z)
+
+    sensitive_values, start_indices = np.unique(y, return_index=True)
+
+    partitions: List[XYZ] = [(_, _, _) for _ in range(num_partitions)]
+
+    represented_nodes = num_partitions - num_underrepresented_nodes
+    print(len(x))
+    print(sensitive_values)
+    print(start_indices)
+    size_represented = start_indices[1] // 100
+    size_underrepresented = 2000 // 100
+    group_represented = [
+        [i * size_represented, i * size_represented + size_represented]
+        for i in range(num_partitions)
+    ]
+    group_represented[-1] = [
+        group_represented[-1][0],
+        group_represented[-1][0] + size_underrepresented,
+    ]
+
+    size_non_represented = size_underrepresented
+    group_non_represented = [
+        [
+            start_indices[1] + (i * size_non_represented),
+            start_indices[1] + (i * size_non_represented + size_non_represented),
+        ]
+        for i in range(num_partitions)
+    ]
+    group_non_represented[-1] = [
+        group_non_represented[-1][0],
+        group_non_represented[-1][0] + size_represented,
+    ]
+
+    print(type(x[group_represented[0][0] : group_represented[0][1]]))
+    for node_id in range(num_partitions):
+        partitions[node_id] = (
+            np.concatenate(
+                (
+                    x[group_represented[node_id][0] : group_represented[node_id][1]],
+                    x[
+                        group_non_represented[node_id][0] : group_non_represented[
+                            node_id
+                        ][1]
+                    ],
+                )
+            ),
+            np.concatenate(
+                (
+                    y[group_represented[node_id][0] : group_represented[node_id][1]],
+                    y[
+                        group_non_represented[node_id][0] : group_non_represented[
+                            node_id
+                        ][1]
+                    ],
+                )
+            ),
+            np.concatenate(
+                (
+                    z[group_represented[node_id][0] : group_represented[node_id][1]],
+                    z[
+                        group_non_represented[node_id][0] : group_non_represented[
+                            node_id
+                        ][1]
+                    ],
+                )
+            ),
+        )
+        print(Counter(partitions[node_id][1]))
     return partitions

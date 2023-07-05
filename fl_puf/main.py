@@ -1,16 +1,23 @@
 import argparse
+import logging
 import random
+import warnings
 from typing import Dict
 
 import flwr as fl
 import numpy as np
+import ray
+import torch
 import wandb
+from DPL.Utils.dataset_utils import DatasetUtils
+from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
+from torch import nn
 
 from fl_puf.Client.client import FlowerClient
-from fl_puf.Utils.dataset_utils import DatasetDownloader
-from fl_puf.Utils.model_utils import Learning
 from fl_puf.Utils.utils import Utils
+
+warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
 
@@ -26,12 +33,16 @@ parser.add_argument("--wandb", type=bool, default=False)
 parser.add_argument("--DPL", type=bool, default=False)
 parser.add_argument("--DPL_lambda", type=float, default=0.0)
 parser.add_argument("--private", type=bool, default=False)
-parser.add_argument("--epsilon", type=float, default=10)
-parser.add_argument("--clipping", type=float, default=10)
+parser.add_argument("--epsilon", type=float, default=None)
+parser.add_argument("--clipping", type=float, default=1000000000)
 parser.add_argument("--delta", type=float, default="0.1")
 parser.add_argument("--lr", type=float, default="0.1")
 parser.add_argument("--alpha", type=int, default=1000000)
-
+parser.add_argument("--train_csv", type=str, default="")
+parser.add_argument("--test_csv", type=str, default="")
+parser.add_argument("--seed", type=int, default=42)
+parser.add_argument("--debug", type=bool, default=False)
+parser.add_argument("--base_path", type=str, default="")
 
 # DPL:
 # 1) baseline without privacy and DPL -> compute maximum violation
@@ -52,6 +63,14 @@ def setup_wandb(args):
             "pool_size": args.pool_size,
             "sampled_clients": args.sampled_clients,
             "epochs": args.epochs,
+            "DPL_lambda": args.DPL_lambda,
+            "private": args.private,
+            "epsilon": args.epsilon,
+            "clipping": args.clipping,
+            "delta": args.delta,
+            "lr": args.lr,
+            "alpha": args.alpha,
+            "DPL": args.DPL,
         },
     )
     return wandb_run
@@ -71,6 +90,9 @@ if __name__ == "__main__":
     # parse input arguments
     args = parser.parse_args()
     dataset_name = args.dataset
+    torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
 
     pool_size = args.pool_size
     client_resources = {
@@ -78,64 +100,88 @@ if __name__ == "__main__":
         "num_gpus": args.num_client_gpus,
     }
 
-    if args.wandb:
-        wandb_run = setup_wandb(args)
-    else:
-        wandb_run = None
+    wandb_run = setup_wandb(args) if args.wandb else None
     # Download CIFAR-10 dataset
-    train_path, testset = DatasetDownloader.download_dataset(dataset_name)
+    train_set, test_set = DatasetUtils.download_dataset(
+        dataset_name,
+        train_csv=args.train_csv,
+        test_csv=args.test_csv,
+        debug=args.debug,
+    )
+    train_path = Utils.prepare_dataset_for_FL(
+        train_set=train_set,
+        dataset_name=dataset_name,
+        base_path=args.base_path,
+    )
+    train_parameters = TrainParameters(
+        epochs=args.epochs,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        criterion=nn.CrossEntropyLoss(),
+        wandb_run=wandb_run,
+        batch_size=args.batch_size,
+        seed=args.seed,
+        epsilon=args.epsilon if args.private else None,
+        DPL_lambda=args.DPL_lambda,
+        private=args.private,
+        DPL=args.DPL,
+    )
 
     # partition dataset (use a large `alpha` to make it IID;
     # a small value (e.g. 1) will make it non-IID)
     # This will create a new directory called "federated": in the directory where
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
-    fed_dir = DatasetDownloader.do_fl_partitioning(
+    fed_dir = Utils.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
         alpha=args.alpha,
         num_classes=2,
-        val_ratio=0.2,
+        val_ratio=0,
+        partition_type="iid",
     )
-    print(pool_size)
 
-    # configure the strategy
     strategy = fl.server.strategy.FedAvg(
         fraction_fit=args.sampled_clients,
-        fraction_evaluate=args.sampled_clients,
-        min_fit_clients=1,
-        min_evaluate_clients=1,
-        min_available_clients=args.sampled_clients,  # All clients should be available
+        fraction_evaluate=0,
+        min_fit_clients=args.sampled_clients,
+        min_evaluate_clients=0,
+        min_available_clients=args.sampled_clients,
         on_fit_config_fn=fit_config,
-        on_evaluate_config_fn=fit_config,
-        evaluate_fn=Learning.get_evaluate_fn(
-            testset, dataset_name, wandb_run, fit_config
+        evaluate_fn=Utils.get_evaluate_fn(
+            test_set=test_set,
+            dataset_name=dataset_name,
+            train_parameters=train_parameters,
+            wandb_run=wandb_run,
         ),  # centralised evaluation of global model
     )
 
     def client_fn(cid: str):
         # create a single client instance
+
         return FlowerClient(
-            cid,
-            fed_dir,
-            dataset_name,
-            DPL=args.DPL,
-            DPL_lambda=args.DPL_lambda,
-            private=args.private,
-            epsilon=args.epsilon,
+            train_parameters=train_parameters,
+            cid=cid,
+            fed_dir_data=fed_dir,
+            dataset_name=dataset_name,
             clipping=args.clipping,
-            epochs=args.epochs,
             delta=args.delta,
             lr=args.lr,
         )
 
-    ray_num_cpus = int(args.sampled_clients * args.pool_size) + 1
+    ray_num_cpus = 10
+    ray_num_gpus = 3
+    ram_memory = 16_000 * 1024 * 1024 * 2
 
-    print("ray_num_cpus: ", ray_num_cpus)
     # (optional) specify Ray config
     ray_init_args = {
         "include_dashboard": False,
         "num_cpus": ray_num_cpus,
+        "num_gpus": ray_num_gpus,
+        "_memory": ram_memory,
+        "_redis_max_memory": 100000000,
+        "object_store_memory": 100000000,
+        "logging_level": logging.ERROR,
+        "log_to_driver": True,
     }
 
     # start simulation
@@ -143,11 +189,10 @@ if __name__ == "__main__":
         client_fn=client_fn,
         num_clients=pool_size,
         client_resources=client_resources,
-        config=fl.server.ServerConfig(
-            num_rounds=args.num_rounds,
-        ),
+        config=fl.server.ServerConfig(num_rounds=args.num_rounds),
         strategy=strategy,
         ray_init_args=ray_init_args,
     )
+
     if wandb_run:
         wandb_run.finish()
