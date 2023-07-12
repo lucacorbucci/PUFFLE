@@ -14,7 +14,8 @@ from DPL.Utils.model_utils import ModelUtils
 from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from flwr.server.client_manager import SimpleClientManager
-from flwr.server.server import Server
+from Server.server import Server
+from Strategy.fed_avg import FedAvg
 from torch import nn
 
 from fl_puf.Client.client import FlowerClient
@@ -37,8 +38,9 @@ parser.add_argument("--DPL", type=bool, default=False)
 parser.add_argument("--DPL_lambda", type=float, default=0.0)
 parser.add_argument("--private", type=bool, default=False)
 parser.add_argument("--epsilon", type=float, default=None)
+parser.add_argument("--noise_multiplier", type=float, default=None)
 parser.add_argument("--clipping", type=float, default=1000000000)
-parser.add_argument("--delta", type=float, default="0.1")
+parser.add_argument("--delta", type=float, default=None)
 parser.add_argument("--lr", type=float, default="0.1")
 parser.add_argument("--alpha", type=int, default=1000000)
 parser.add_argument("--train_csv", type=str, default="")
@@ -75,6 +77,7 @@ def setup_wandb(args):
             "epsilon": args.epsilon if args.private else 0,
             "gradnorm": args.clipping,
             "delta": args.delta if args.private else 0,
+            "noise_multiplier": args.noise_multiplier if args.private else 0,
         },
     )
     return wandb_run
@@ -127,13 +130,14 @@ if __name__ == "__main__":
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
         criterion=nn.CrossEntropyLoss(),
-        wandb_run=wandb_run,
+        wandb_run=None,
         batch_size=args.batch_size,
         seed=args.seed,
         epsilon=args.epsilon if args.private else None,
         DPL_lambda=args.DPL_lambda,
         private=args.private,
         DPL=args.DPL,
+        noise_multiplier=args.noise_multiplier,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -172,7 +176,44 @@ if __name__ == "__main__":
     model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
-    strategy = fl.server.strategy.FedAvg(
+    def agg_metrics_train(metrics: list, server_round: int) -> dict:
+        # Collect all the FL Client metrics and weight them
+        losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
+        losses_with_regularization = [
+            n_examples * metric["train_loss_with_regularization"]
+            for n_examples, metric in metrics
+        ]
+        epsilon_list = [metric["epsilon"] for _, metric in metrics]
+
+        accuracies = [
+            n_examples * metric["train_accuracy"] for n_examples, metric in metrics
+        ]
+
+        total_examples = sum([n_examples for n_examples, _ in metrics])
+
+        # Compute weighted averages
+        agg_metrics = {
+            "train_loss": sum(losses) / total_examples,
+            "train_accuracy": sum(accuracies) / total_examples,
+            "train_loss_with_regularization": sum(losses_with_regularization)
+            / total_examples,
+        }
+
+        wandb_run.log(
+            {
+                "Train Loss": agg_metrics["train_loss"],
+                "Train Accuracy": agg_metrics["train_accuracy"],
+                "Train Loss with Regularization": agg_metrics[
+                    "train_loss_with_regularization"
+                ],
+                "Train Epsilon": max(epsilon_list),
+                "FL Round": server_round,
+            }
+        )
+
+        return agg_metrics
+
+    strategy = FedAvg(
         fraction_fit=args.sampled_clients,
         fraction_evaluate=0,
         min_fit_clients=args.sampled_clients,
@@ -187,9 +228,10 @@ if __name__ == "__main__":
             batch_size=args.batch_size,
         ),  # centralised evaluation of global model
         initial_parameters=initial_parameters,
+        fit_metrics_aggregation_fn=agg_metrics_train,
     )
 
-    ray_num_cpus = 10
+    ray_num_cpus = 2
     ray_num_gpus = 3
     ram_memory = 16_000 * 1024 * 1024 * 2
 
