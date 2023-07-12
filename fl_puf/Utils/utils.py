@@ -232,6 +232,7 @@ class Utils:
         MAX_GRAD_NORM: float,
         batch_size: int,
         noise_multiplier: float = 0,
+        accountant=None,
     ) -> Tuple[GradSampleModule, DPOptimizer, DataLoader]:
         """
 
@@ -251,6 +252,8 @@ class Utils:
                 the wrapped optimizer and the train dataloader
         """
         privacy_engine = PrivacyEngine(accountant="rdp")
+        if accountant:
+            privacy_engine.accountant = accountant
 
         # We can wrap the model with Privacy Engine using the
         # method .make_private(). This doesn't require you to
@@ -274,6 +277,7 @@ class Utils:
                 max_grad_norm=MAX_GRAD_NORM,
             )
         else:
+            print("Create private model with noise multiplier")
             private_model, optimizer, train_loader = privacy_engine.make_private(
                 module=model,
                 optimizer=original_optimizer,
@@ -282,7 +286,7 @@ class Utils:
                 max_grad_norm=MAX_GRAD_NORM,
             )
 
-        return private_model, optimizer, train_loader
+        return private_model, optimizer, train_loader, privacy_engine
 
     @staticmethod
     def get_evaluate_fn(
@@ -320,6 +324,17 @@ class Utils:
                 test_loader=testloader,
                 train_parameters=train_parameters,
                 current_epoch=server_round,
+            )
+            wandb_run.log(
+                {
+                    "Test Loss": test_loss,
+                    "Test Accuracy": accuracy,
+                    "Test F1 Score": f1score,
+                    "Test Precision": precision,
+                    "Test Recall": recall,
+                    "Test Max Disparity": max_disparity_test,
+                    "FL Round": server_round,
+                }
             )
 
             return test_loss, {"Test Accuracy": accuracy}

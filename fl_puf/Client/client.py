@@ -31,7 +31,7 @@ class FlowerClient(fl.client.NumPyClient):
         print(f"Node {cid} is initializing...")
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         self.train_parameters = copy.deepcopy(train_parameters)
-        # self.train_parameters.wandb_run = None
+        self.train_parameters.wandb_run = None
         self.cid = cid
         self.fed_dir = Path(fed_dir_data)
         self.properties: dict[str, Scalar] = {"tensor_type": "numpy.ndarray"}
@@ -96,8 +96,6 @@ class FlowerClient(fl.client.NumPyClient):
                 lr=self.lr,
             )
 
-        print(f"Epsilon: {self.train_parameters.epsilon}, Clipping: {clipping}")
-
     def get_parameters(self, config):
         return Utils.get_params(self.net)
 
@@ -119,10 +117,28 @@ class FlowerClient(fl.client.NumPyClient):
             dataset=self.dataset_name,
         )
 
+        loaded_privacy_engine = None
+        loaded_privacy_engine_regularization = None
+
+        # If we already used this client we need to load the state regarding
+        # the private model
+        if os.path.exists(
+            f"{self.fed_dir}/privacy_engine{self.cid}.pkl"
+        ) and os.path.exists(
+            f"{self.fed_dir}/privacy_engine_regularization{self.cid}.pkl"
+        ):
+            with open(f"{self.fed_dir}/privacy_engine{self.cid}.pkl", "rb") as file:
+                loaded_privacy_engine = dill.load(file)
+            with open(
+                f"{self.fed_dir}/privacy_engine_regularization{self.cid}.pkl", "rb"
+            ) as file:
+                loaded_privacy_engine_regularization = dill.load(file)
+
         (
             private_net,
             private_optimizer,
             train_loader,
+            privacy_engine,
         ) = Utils.create_private_model(
             model=self.net,
             epsilon=self.train_parameters.epsilon,
@@ -132,6 +148,8 @@ class FlowerClient(fl.client.NumPyClient):
             delta=self.delta,
             MAX_GRAD_NORM=self.clipping,
             batch_size=self.train_parameters.batch_size,
+            noise_multiplier=self.train_parameters.noise_multiplier,
+            accountant=loaded_privacy_engine,
         )
         private_net.to(self.train_parameters.device)
 
@@ -143,6 +161,7 @@ class FlowerClient(fl.client.NumPyClient):
                 private_model_regularization,
                 private_optimizer_regularization,
                 _,
+                privacy_engine_regularization,
             ) = Utils.create_private_model(
                 model=self.model_regularization,
                 epsilon=self.train_parameters.epsilon,
@@ -152,14 +171,17 @@ class FlowerClient(fl.client.NumPyClient):
                 delta=self.delta,
                 MAX_GRAD_NORM=self.clipping,
                 batch_size=self.train_parameters.batch_size,
+                noise_multiplier=self.train_parameters.noise_multiplier,
+                accountant=loaded_privacy_engine_regularization,
             )
             private_model_regularization.to(self.train_parameters.device)
             print(f"Created private model for regularization on node {self.cid}")
 
         gc.collect()
 
+        all_metrics = []
         for epoch in range(0, self.train_parameters.epochs):
-            Learning.train_private_model(
+            metrics = Learning.train_private_model(
                 train_parameters=self.train_parameters,
                 model=private_net,
                 model_regularization=private_model_regularization,
@@ -169,13 +191,9 @@ class FlowerClient(fl.client.NumPyClient):
                 test_loader=None,
                 current_epoch=epoch,
             )
+            all_metrics.append(metrics)
 
         Utils.set_params(self.net, Utils.get_params(private_net))
-
-        del private_net
-        if private_model_regularization:
-            del private_model_regularization
-        gc.collect()
 
         # store the random_state on disk
         with open(f"{self.fed_dir}/random_state_random_{self.cid}.pkl", "wb") as f:
@@ -187,8 +205,33 @@ class FlowerClient(fl.client.NumPyClient):
         with open(f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl", "wb") as f:
             dill.dump(torch.cuda.get_rng_state(device=self.train_parameters.device), f)
 
+        # We need to store the state of the privacy engine and all the
+        # details about the private training
+        with open(f"{self.fed_dir}/privacy_engine{self.cid}.pkl", "wb") as f:
+            dill.dump(privacy_engine.accountant, f)
+        with open(
+            f"{self.fed_dir}/privacy_engine_regularization{self.cid}.pkl", "wb"
+        ) as f:
+            dill.dump(privacy_engine_regularization.accountant, f)
+
+        del private_net
+        if private_model_regularization:
+            del private_model_regularization
+        gc.collect()
+
         # Return local model and statistics
-        return Utils.get_params(self.net), len(train_loader.dataset), {}
+        return (
+            Utils.get_params(self.net),
+            len(train_loader.dataset),
+            {
+                "train_loss": all_metrics[-1]["Train Loss"],
+                "train_loss_with_regularization": all_metrics[-1][
+                    "Train Loss + Regularizaion"
+                ],
+                "train_accuracy": all_metrics[-1]["Train Accuracy"],
+                "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
+            },
+        )
 
     def evaluate(self, parameters, config):
         Utils.set_params(self.net, parameters)
