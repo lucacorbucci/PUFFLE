@@ -86,7 +86,7 @@ class FlowerClient(fl.client.NumPyClient):
             lr=self.lr,
         )
 
-        if self.train_parameters.DPL:  # and self.train_parameters.private:
+        if self.train_parameters.DPL:
             self.model_regularization = ModelUtils.get_model(
                 self.dataset_name,
                 device=self.train_parameters.device,
@@ -104,7 +104,6 @@ class FlowerClient(fl.client.NumPyClient):
     def write_state(state, path):
         with open(path, "wb") as f:
             dill.dump(state, f)
-
 
     def fit(self, parameters, config):
         Utils.set_params(self.net, parameters)
@@ -139,7 +138,7 @@ class FlowerClient(fl.client.NumPyClient):
         private_model_regularization = None
         private_optimizer_regularization = None
 
-        if self.train_parameters.DPL:  # and self.train_parameters.private:
+        if self.train_parameters.DPL:
             (
                 private_model_regularization,
                 private_optimizer_regularization,
