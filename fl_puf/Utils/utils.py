@@ -100,7 +100,6 @@ class Utils:
     def do_fl_partitioning(
         path_to_dataset,
         pool_size,
-        alpha,
         num_classes,
         partition_type: str,
         val_ratio=0.0,
@@ -132,14 +131,14 @@ class Utils:
             partition_zero = partitions[p][2]
             hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
             print(
-                f"Class histogram for {p}-th partition (alpha={alpha}, {num_classes} classes): {hist}"
+                f"Class histogram for {p}-th partition, {num_classes} classes): {hist}"
             )
 
             partition_zero = partitions[p][1]
 
             hist_sv, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
             print(
-                f"Sensitive Value histogram for {p}-th partition (alpha={alpha}, {num_classes} classes): {hist_sv}"
+                f"Sensitive Value histogram for {p}-th partition, {num_classes} classes): {hist_sv}"
             )
             assert sum(hist) == sum(hist_sv)
 
@@ -291,6 +290,7 @@ class Utils:
         dataset_name: str,
         train_parameters: TrainParameters,
         wandb_run: wandb.sdk.wandb_run.Run,
+        batch_size: int,
     ) -> Callable[[fl.common.NDArrays], Optional[Tuple[float, float]]]:
         """Return an evaluation function for centralized evaluation."""
 
@@ -305,7 +305,7 @@ class Utils:
 
             testloader = torch.utils.data.DataLoader(
                 test_set,
-                batch_size=128,
+                batch_size=batch_size,
             )
 
             (
@@ -321,15 +321,6 @@ class Utils:
                 train_parameters=train_parameters,
                 current_epoch=server_round,
             )
-
-            # if wandb_run:
-            #     wandb_run.log(
-            #         {
-            #             "epoch": server_round,
-            #             "Test Accuracy": accuracy,
-            #             "Test Loss": test_loss,
-            #         },
-            #     )
 
             return test_loss, {"Test Accuracy": accuracy}
 

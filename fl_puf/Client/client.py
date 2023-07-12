@@ -1,9 +1,13 @@
 import copy
 import gc
+import os
+import random
 import warnings
 from pathlib import Path
 
+import dill
 import flwr as fl
+import numpy as np
 import ray
 import torch
 from DPL.learning import Learning
@@ -11,7 +15,6 @@ from DPL.Utils.model_utils import ModelUtils
 from DPL.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
-from torch import nn
 
 
 class FlowerClient(fl.client.NumPyClient):
@@ -25,6 +28,7 @@ class FlowerClient(fl.client.NumPyClient):
         lr: float,
         train_parameters: TrainParameters,
     ):
+        print(f"Node {cid} is initializing...")
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         self.train_parameters = copy.deepcopy(train_parameters)
         # self.train_parameters.wandb_run = None
@@ -34,8 +38,45 @@ class FlowerClient(fl.client.NumPyClient):
         self.dataset_name = dataset_name
         self.clipping = clipping
         self.delta = delta
-        self.wandb_run = train_parameters.wandb_run
         self.lr = lr
+
+        if (
+            os.path.exists(f"{self.fed_dir}/random_state_random_{self.cid}.pkl")
+            and os.path.exists(f"{self.fed_dir}/random_state_np_{self.cid}.pkl")
+            and os.path.exists(f"{self.fed_dir}/random_state_torch_{self.cid}.pkl")
+            and os.path.exists(f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl")
+        ):
+            print(f"Loading State from disk {self.cid}")
+            with open(
+                f"{self.fed_dir}/random_state_random_{self.cid}.pkl", "rb"
+            ) as file:
+                state = dill.load(file)
+                random.setstate(state)
+
+            with open(f"{self.fed_dir}/random_state_np_{self.cid}.pkl", "rb") as file:
+                state = dill.load(file)
+                np.random.set_state(state)
+
+            with open(
+                f"{self.fed_dir}/random_state_torch_{self.cid}.pkl", "rb"
+            ) as file:
+                state = dill.load(file)
+                torch.set_rng_state(state)
+
+            with open(
+                f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl", "rb"
+            ) as file:
+                state = dill.load(file)
+                torch.cuda.set_rng_state(state)
+        else:
+            print(f"Seeding Node {cid}")
+
+            torch.manual_seed(self.train_parameters.seed)
+            random.seed(self.train_parameters.seed)
+            np.random.seed(self.train_parameters.seed)
+            torch.cuda.manual_seed(self.train_parameters.seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
         self.net = ModelUtils.get_model(
             dataset_name, device=self.train_parameters.device
@@ -45,7 +86,7 @@ class FlowerClient(fl.client.NumPyClient):
             lr=self.lr,
         )
 
-        if self.train_parameters.DPL and self.train_parameters.private:
+        if self.train_parameters.DPL:  # and self.train_parameters.private:
             self.model_regularization = ModelUtils.get_model(
                 self.dataset_name,
                 device=self.train_parameters.device,
@@ -59,6 +100,11 @@ class FlowerClient(fl.client.NumPyClient):
 
     def get_parameters(self, config):
         return Utils.get_params(self.net)
+
+    def write_state(state, path):
+        with open(path, "wb") as f:
+            dill.dump(state, f)
+
 
     def fit(self, parameters, config):
         Utils.set_params(self.net, parameters)
@@ -93,7 +139,7 @@ class FlowerClient(fl.client.NumPyClient):
         private_model_regularization = None
         private_optimizer_regularization = None
 
-        if self.train_parameters.DPL and self.train_parameters.private:
+        if self.train_parameters.DPL:  # and self.train_parameters.private:
             (
                 private_model_regularization,
                 private_optimizer_regularization,
@@ -109,6 +155,7 @@ class FlowerClient(fl.client.NumPyClient):
                 batch_size=self.train_parameters.batch_size,
             )
             private_model_regularization.to(self.train_parameters.device)
+            print(f"Created private model for regularization on node {self.cid}")
 
         gc.collect()
 
@@ -124,9 +171,22 @@ class FlowerClient(fl.client.NumPyClient):
                 current_epoch=epoch,
             )
 
+        Utils.set_params(self.net, Utils.get_params(private_net))
+
+        del private_net
+        if private_model_regularization:
+            del private_model_regularization
         gc.collect()
 
-        Utils.set_params(self.net, Utils.get_params(private_net))
+        # store the random_state on disk
+        with open(f"{self.fed_dir}/random_state_random_{self.cid}.pkl", "wb") as f:
+            dill.dump(random.getstate(), f)
+        with open(f"{self.fed_dir}/random_state_np_{self.cid}.pkl", "wb") as f:
+            dill.dump(np.random.get_state(), f)
+        with open(f"{self.fed_dir}/random_state_torch_{self.cid}.pkl", "wb") as f:
+            dill.dump(torch.get_rng_state(), f)
+        with open(f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl", "wb") as f:
+            dill.dump(torch.cuda.get_rng_state(device=self.train_parameters.device), f)
 
         # Return local model and statistics
         return Utils.get_params(self.net), len(train_loader.dataset), {}
@@ -162,6 +222,9 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
+
+        self.net.to("cpu")
+        gc.collect()
 
         # Return statistics
         return float(test_loss), len(valloader.dataset), {"accuracy": float(accuracy)}

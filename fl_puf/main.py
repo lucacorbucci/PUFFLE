@@ -1,17 +1,20 @@
 import argparse
 import logging
+import os
 import random
 import warnings
 from typing import Dict
 
 import flwr as fl
 import numpy as np
-import ray
 import torch
 import wandb
 from DPL.Utils.dataset_utils import DatasetUtils
+from DPL.Utils.model_utils import ModelUtils
 from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
+from flwr.server.client_manager import SimpleClientManager
+from flwr.server.server import Server
 from torch import nn
 
 from fl_puf.Client.client import FlowerClient
@@ -55,22 +58,23 @@ def setup_wandb(args):
     wandb_run = wandb.init(
         # set the wandb project where this run will be logged
         project="FL_fairness",
+        name=f"FL - Lambda {args.DPL_lambda} - LR {args.lr} - Batch {args.batch_size}",
         # track hyperparameters and run metadata
         config={
-            "learning_rate": 0.02,
+            "learning_rate": args.lr,
+            "csv": args.train_csv,
+            "DPL_regularization": args.DPL,
+            "DPL_lambda": args.DPL_lambda,
+            "batch_size": args.batch_size,
             "dataset": args.dataset,
             "num_rounds": args.num_rounds,
             "pool_size": args.pool_size,
             "sampled_clients": args.sampled_clients,
             "epochs": args.epochs,
-            "DPL_lambda": args.DPL_lambda,
             "private": args.private,
-            "epsilon": args.epsilon,
-            "clipping": args.clipping,
-            "delta": args.delta,
-            "lr": args.lr,
-            "alpha": args.alpha,
-            "DPL": args.DPL,
+            "epsilon": args.epsilon if args.private else 0,
+            "gradnorm": args.clipping,
+            "delta": args.delta if args.private else 0,
         },
     )
     return wandb_run
@@ -90,9 +94,15 @@ if __name__ == "__main__":
     # parse input arguments
     args = parser.parse_args()
     dataset_name = args.dataset
+
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ["PYTHONHASHSEED"] = str(args.seed)
 
     pool_size = args.pool_size
     client_resources = {
@@ -134,26 +144,16 @@ if __name__ == "__main__":
     fed_dir = Utils.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
-        alpha=args.alpha,
         num_classes=2,
         val_ratio=0,
         partition_type="iid",
     )
 
-    strategy = fl.server.strategy.FedAvg(
-        fraction_fit=args.sampled_clients,
-        fraction_evaluate=0,
-        min_fit_clients=args.sampled_clients,
-        min_evaluate_clients=0,
-        min_available_clients=args.sampled_clients,
-        on_fit_config_fn=fit_config,
-        evaluate_fn=Utils.get_evaluate_fn(
-            test_set=test_set,
-            dataset_name=dataset_name,
-            train_parameters=train_parameters,
-            wandb_run=wandb_run,
-        ),  # centralised evaluation of global model
-    )
+    test = os.listdir(fed_dir)
+
+    for item in test:
+        if item.endswith(".pkl"):
+            os.remove(os.path.join(fed_dir, item))
 
     def client_fn(cid: str):
         # create a single client instance
@@ -167,6 +167,27 @@ if __name__ == "__main__":
             delta=args.delta,
             lr=args.lr,
         )
+
+    model = ModelUtils.get_model(dataset_name, "cuda")
+    model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
+    initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
+
+    strategy = fl.server.strategy.FedAvg(
+        fraction_fit=args.sampled_clients,
+        fraction_evaluate=0,
+        min_fit_clients=args.sampled_clients,
+        min_evaluate_clients=0,
+        min_available_clients=args.sampled_clients,
+        on_fit_config_fn=fit_config,
+        evaluate_fn=Utils.get_evaluate_fn(
+            test_set=test_set,
+            dataset_name=dataset_name,
+            train_parameters=train_parameters,
+            wandb_run=wandb_run,
+            batch_size=args.batch_size,
+        ),  # centralised evaluation of global model
+        initial_parameters=initial_parameters,
+    )
 
     ray_num_cpus = 10
     ray_num_gpus = 3
@@ -184,6 +205,9 @@ if __name__ == "__main__":
         "log_to_driver": True,
     }
 
+    client_manager = SimpleClientManager()
+    server = Server(client_manager=client_manager, strategy=strategy)
+
     # start simulation
     fl.simulation.start_simulation(
         client_fn=client_fn,
@@ -192,6 +216,8 @@ if __name__ == "__main__":
         config=fl.server.ServerConfig(num_rounds=args.num_rounds),
         strategy=strategy,
         ray_init_args=ray_init_args,
+        server=server,
+        client_manager=client_manager,
     )
 
     if wandb_run:
