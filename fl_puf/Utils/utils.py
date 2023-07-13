@@ -325,17 +325,18 @@ class Utils:
                 train_parameters=train_parameters,
                 current_epoch=server_round,
             )
-            wandb_run.log(
-                {
-                    "Test Loss": test_loss,
-                    "Test Accuracy": accuracy,
-                    "Test F1 Score": f1score,
-                    "Test Precision": precision,
-                    "Test Recall": recall,
-                    "Test Max Disparity": max_disparity_test,
-                    "FL Round": server_round,
-                }
-            )
+            if wandb_run:
+                wandb_run.log(
+                    {
+                        "Test Loss": test_loss,
+                        "Test Accuracy": accuracy,
+                        "Test F1 Score": f1score,
+                        "Test Precision": precision,
+                        "Test Recall": recall,
+                        "Test Max Disparity": max_disparity_test,
+                        "FL Round": server_round,
+                    }
+                )
 
             return test_loss, {"Test Accuracy": accuracy}
 
