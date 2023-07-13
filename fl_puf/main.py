@@ -9,11 +9,11 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
+from ClientManager.client_manager import SimpleClientManager
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
-from flwr.server.client_manager import SimpleClientManager
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from torch import nn
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         fit_metrics_aggregation_fn=agg_metrics_train,
     )
 
-    ray_num_cpus = 2
+    ray_num_cpus = 10
     ray_num_gpus = 3
     ram_memory = 16_000 * 1024 * 1024 * 2
 
