@@ -247,7 +247,7 @@ if __name__ == "__main__":
         "log_to_driver": True,
     }
 
-    client_manager = SimpleClientManager()
+    client_manager = SimpleClientManager(seed=args.seed, num_clients=pool_size)
     server = Server(client_manager=client_manager, strategy=strategy)
 
     # start simulation

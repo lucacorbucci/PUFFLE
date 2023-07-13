@@ -29,8 +29,11 @@ from flwr.server.criterion import Criterion
 class SimpleClientManager(ClientManager):
     """Provides a pool of available clients."""
 
-    def __init__(self) -> None:
+    def __init__(self, num_clients, seed) -> None:
+        random.seed(seed)
+        self.num_clients = num_clients
         self.clients: Dict[str, ClientProxy] = {}
+        self.clients_list: List[str] = []
         self._cv = threading.Condition()
         self.current_index = 0
 
@@ -86,6 +89,13 @@ class SimpleClientManager(ClientManager):
             return False
 
         self.clients[client.cid] = client
+        # Add the client to the list of available clients and then
+        # shuffle the list
+        self.clients_list.append(client.cid)
+        if self.num_clients == len(self.clients_list):
+            self.clients_list = sorted(self.clients_list)
+            random.shuffle(self.clients_list)
+
         with self._cv:
             self._cv.notify_all()
 
@@ -102,6 +112,7 @@ class SimpleClientManager(ClientManager):
         """
         if client.cid in self.clients:
             del self.clients[client.cid]
+            self.clients_list.remove(client.cid)
 
             with self._cv:
                 self._cv.notify_all()
@@ -122,7 +133,7 @@ class SimpleClientManager(ClientManager):
             min_num_clients = num_clients
         self.wait_for(min_num_clients)
         # Sample clients which meet the criterion
-        available_cids = list(self.clients)
+        available_cids = self.clients_list
         if criterion is not None:
             available_cids = [
                 cid for cid in available_cids if criterion.select(self.clients[cid])
