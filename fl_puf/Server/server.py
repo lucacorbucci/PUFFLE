@@ -229,7 +229,7 @@ class Server:
             max_workers=self.max_workers,
             timeout=timeout,
         )
-        # print("RESULTS: ", results)
+
         log(
             DEBUG,
             "fit_round %s received %s results and %s failures",
