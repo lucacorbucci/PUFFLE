@@ -1,6 +1,3 @@
 [submodule "DPL"]
 	path = DPL
 	url = https://github.com/lucacorbucci/DPL.git
-[submodule "FederatedDataset"]
-	path = FederatedDataset
-	url = https://github.com/Pistacchio-Federated-Learning/FederatedDataset.git

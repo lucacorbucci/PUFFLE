@@ -31,6 +31,7 @@ class SimpleClientManager(ClientManager):
 
     def __init__(self, num_clients, seed) -> None:
         random.seed(seed)
+        self.seed = seed
         self.num_clients = num_clients
         self.clients: Dict[str, ClientProxy] = {}
         self.clients_list: List[str] = []
@@ -93,8 +94,11 @@ class SimpleClientManager(ClientManager):
         # shuffle the list
         self.clients_list.append(client.cid)
         if self.num_clients == len(self.clients_list):
+            random.seed(self.seed)
             self.clients_list = sorted(self.clients_list)
+            print("After sorted: ", self.clients_list)
             random.shuffle(self.clients_list)
+            print("After Shuffle: ", self.clients_list)
 
         with self._cv:
             self._cv.notify_all()

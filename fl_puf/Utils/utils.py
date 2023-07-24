@@ -11,6 +11,9 @@ from DPL.learning import Learning
 from DPL.Utils.model_utils import ModelUtils
 from DPL.Utils.train_parameters import TrainParameters
 from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
+from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
+    NonIIDPartitionWithSensitiveFeature,
+)
 from FederatedDataset.Utils.utils import PartitionUtils
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
@@ -98,11 +101,12 @@ class Utils:
 
     @staticmethod
     def do_fl_partitioning(
-        path_to_dataset,
-        pool_size,
-        num_classes,
+        path_to_dataset: str,
+        pool_size: int,
+        num_classes: int,
         partition_type: str,
-        val_ratio=0.0,
+        val_ratio: float = 0.0,
+        alpha: float = 1,
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -124,6 +128,22 @@ class Utils:
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=splitted_indexes,
+                dataset=dataset,
+            )
+        elif partition_type == "non_iid":
+            (
+                splitted_indexes,
+                _,
+                partitions_index_list,
+            ) = NonIIDPartitionWithSensitiveFeature.do_partitioning_with_dataset_list(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                alpha=alpha,
+                total_num_classes=2,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
                 dataset=dataset,
             )
 

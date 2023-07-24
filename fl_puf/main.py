@@ -38,7 +38,7 @@ parser.add_argument("--DPL", type=bool, default=False)
 parser.add_argument("--DPL_lambda", type=float, default=0.0)
 parser.add_argument("--private", type=bool, default=False)
 parser.add_argument("--epsilon", type=float, default=None)
-parser.add_argument("--noise_multiplier", type=float, default=None)
+parser.add_argument("--noise_multiplier", type=float, default=0)
 parser.add_argument("--clipping", type=float, default=1000000000)
 parser.add_argument("--delta", type=float, default=None)
 parser.add_argument("--lr", type=float, default="0.1")
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
         criterion=nn.CrossEntropyLoss(),
-        wandb_run=None,
+        wandb_run=wandb_run,
         batch_size=args.batch_size,
         seed=args.seed,
         epsilon=args.epsilon if args.private else None,
@@ -150,8 +150,10 @@ if __name__ == "__main__":
         pool_size=pool_size,
         num_classes=2,
         val_ratio=0,
-        partition_type="iid",
+        partition_type="non_iid",
+        alpha=args.alpha,
     )
+    fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
     test = os.listdir(fed_dir)
 
@@ -177,14 +179,33 @@ if __name__ == "__main__":
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
     def agg_metrics_train(metrics: list, server_round: int) -> dict:
+        print("Metrics Dictionary:", metrics)
         # Collect all the FL Client metrics and weight them
+        all_losses = []
+        for n_examples, node_metrics in metrics:
+            losses_node = [
+                n_examples * metric for metric in node_metrics["train_losses"]
+            ]
+            all_losses.append(losses_node)
+
+        all_losses = np.array(all_losses)
+        sum_losses = np.sum(all_losses, axis=0)
+
+        if wandb_run:
+            for index, loss in enumerate(sum_losses):
+                wandb_run.log(
+                    {
+                        "Loss Epochs": loss,
+                        "Epoch": (server_round - 1) * len(sum_losses) + index,
+                    }
+                )
+
         losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
         losses_with_regularization = [
             n_examples * metric["train_loss_with_regularization"]
             for n_examples, metric in metrics
         ]
         epsilon_list = [metric["epsilon"] for _, metric in metrics]
-
         accuracies = [
             n_examples * metric["train_accuracy"] for n_examples, metric in metrics
         ]
@@ -198,18 +219,18 @@ if __name__ == "__main__":
             "train_loss_with_regularization": sum(losses_with_regularization)
             / total_examples,
         }
-
-        wandb_run.log(
-            {
-                "Train Loss": agg_metrics["train_loss"],
-                "Train Accuracy": agg_metrics["train_accuracy"],
-                "Train Loss with Regularization": agg_metrics[
-                    "train_loss_with_regularization"
-                ],
-                "Train Epsilon": max(epsilon_list),
-                "FL Round": server_round,
-            }
-        )
+        if wandb_run:
+            wandb_run.log(
+                {
+                    "Train Loss": agg_metrics["train_loss"],
+                    "Train Accuracy": agg_metrics["train_accuracy"],
+                    "Train Loss with Regularization": agg_metrics[
+                        "train_loss_with_regularization"
+                    ],
+                    "Train Epsilon": max(epsilon_list),
+                    "FL Round": server_round,
+                }
+            )
 
         return agg_metrics
 
