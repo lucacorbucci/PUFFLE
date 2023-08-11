@@ -23,11 +23,7 @@ class IIDPartition:
         splitted_indexes = np.array_split(idx, num_partitions)
         splitted_labels = [labels[index_list] for index_list in splitted_indexes]
 
-        # for partition in splitted_labels:
-        #     hist, _ = np.histogram(partition, bins=list(range(total_num_classes + 1)))
-        #     print(
-        #         f"Class histogram IID Distribution {total_num_classes} classes): {hist}"
-        #     )
+      
         splitted_indexes_dict = {
             f"cluster_{index}": item for index, item in enumerate(splitted_indexes)
         }

@@ -13,6 +13,7 @@ from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
 )
+from FederatedDataset.PartitionTypes.unbalanced_partition import UnbalancedPartition
 from FederatedDataset.Utils.utils import PartitionUtils
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
@@ -146,6 +147,23 @@ class Utils:
                 splitted_indexes=partitions_index_list,
                 dataset=dataset,
             )
+        elif partition_type == "unbalanced":
+            # This is the partition type where we assign to each node only 
+            # a subset of the classes. For instance, if we have 2 classes and 
+            # 2 sensitive attributes (male and female) like in Celeba, we would assign 
+            # only the female samples to a node and only the male samples to another node.
+            partitions_index_list = UnbalancedPartition.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        else:
+            raise ValueError(f"Unknown partition type: {partition_type}")
 
         for p in range(pool_size):
             partition_zero = partitions[p][2]
