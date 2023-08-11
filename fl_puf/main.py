@@ -165,150 +165,150 @@ if __name__ == "__main__":
     )
     fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
-    # test = os.listdir(fed_dir)
+    test = os.listdir(fed_dir)
 
-    # for item in test:
-    #     if item.endswith(".pkl"):
-    #         os.remove(os.path.join(fed_dir, item))
+    for item in test:
+        if item.endswith(".pkl"):
+            os.remove(os.path.join(fed_dir, item))
 
-    # def client_fn(cid: str):
-    #     # create a single client instance
+    def client_fn(cid: str):
+        # create a single client instance
 
-    #     return FlowerClient(
-    #         train_parameters=train_parameters,
-    #         cid=cid,
-    #         fed_dir_data=fed_dir,
-    #         dataset_name=dataset_name,
-    #         clipping=args.clipping,
-    #         delta=args.delta,
-    #         lr=args.lr,
-    #     )
+        return FlowerClient(
+            train_parameters=train_parameters,
+            cid=cid,
+            fed_dir_data=fed_dir,
+            dataset_name=dataset_name,
+            clipping=args.clipping,
+            delta=args.delta,
+            lr=args.lr,
+        )
 
-    # model = ModelUtils.get_model(dataset_name, "cuda")
-    # model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
-    # initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
+    model = ModelUtils.get_model(dataset_name, "cuda")
+    model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
+    initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
-    # def agg_metrics_train(metrics: list, server_round: int) -> dict:
-    #     # Collect all the FL Client metrics and weight them
-    #     all_losses = []
-    #     for n_examples, node_metrics in metrics:
-    #         losses_node = [
-    #             n_examples * metric for metric in node_metrics["train_losses"]
-    #         ]
-    #         all_losses.append(losses_node)
+    def agg_metrics_train(metrics: list, server_round: int) -> dict:
+        # Collect all the FL Client metrics and weight them
+        all_losses = []
+        for n_examples, node_metrics in metrics:
+            losses_node = [
+                n_examples * metric for metric in node_metrics["train_losses"]
+            ]
+            all_losses.append(losses_node)
 
-    #     all_losses = np.array(all_losses)
-    #     sum_losses = np.sum(all_losses, axis=0)
+        all_losses = np.array(all_losses)
+        sum_losses = np.sum(all_losses, axis=0)
 
-    #     if wandb_run:
-    #         for index, loss in enumerate(sum_losses):
-    #             wandb_run.log(
-    #                 {
-    #                     "Loss Epochs": loss,
-    #                     "Epoch": (server_round - 1) * len(sum_losses) + index,
-    #                 }
-    #             )
+        if wandb_run:
+            for index, loss in enumerate(sum_losses):
+                wandb_run.log(
+                    {
+                        "Loss Epochs": loss,
+                        "Epoch": (server_round - 1) * len(sum_losses) + index,
+                    }
+                )
 
-    #     losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
-    #     losses_with_regularization = [
-    #         n_examples * metric["train_loss_with_regularization"]
-    #         for n_examples, metric in metrics
-    #     ]
-    #     epsilon_list = [metric["epsilon"] for _, metric in metrics]
-    #     accuracies = [
-    #         n_examples * metric["train_accuracy"] for n_examples, metric in metrics
-    #     ]
+        losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
+        losses_with_regularization = [
+            n_examples * metric["train_loss_with_regularization"]
+            for n_examples, metric in metrics
+        ]
+        epsilon_list = [metric["epsilon"] for _, metric in metrics]
+        accuracies = [
+            n_examples * metric["train_accuracy"] for n_examples, metric in metrics
+        ]
 
-    #     total_examples = sum([n_examples for n_examples, _ in metrics])
+        total_examples = sum([n_examples for n_examples, _ in metrics])
 
-    #     average_probabilities = {}
+        average_probabilities = {}
 
-    #     probabilities_names = [
-    #         name for _, metric in metrics for name in metric["probabilities"]
-    #     ]
-    #     for probabilities_name in probabilities_names:
-    #         count_diff_than_0 = 0
-    #         for _, metric in metrics:
-    #             if probabilities_name in metric["probabilities"] and metric["probabilities"][probabilities_name] != 0:
-    #                 if probabilities_name not in average_probabilities:
-    #                     average_probabilities[probabilities_name] = 0
-    #                 count_diff_than_0 += 1
-    #                 average_probabilities[probabilities_name] += metric["probabilities"][probabilities_name]
+        probabilities_names = [
+            name for _, metric in metrics for name in metric["probabilities"]
+        ]
+        for probabilities_name in probabilities_names:
+            count_diff_than_0 = 0
+            for _, metric in metrics:
+                if probabilities_name in metric["probabilities"] and metric["probabilities"][probabilities_name] != 0:
+                    if probabilities_name not in average_probabilities:
+                        average_probabilities[probabilities_name] = 0
+                    count_diff_than_0 += 1
+                    average_probabilities[probabilities_name] += metric["probabilities"][probabilities_name]
                     
-    #         average_probabilities[probabilities_name] /= count_diff_than_0
+            average_probabilities[probabilities_name] /= count_diff_than_0
 
-    #     print(f"aggregated probabilities {average_probabilities}")
-    #     # Compute weighted averages
-    #     agg_metrics = {
-    #         "train_loss": sum(losses) / total_examples,
-    #         "train_accuracy": sum(accuracies) / total_examples,
-    #         "train_loss_with_regularization": sum(losses_with_regularization)/ total_examples,
-    #         "average_probabilities": average_probabilities,
-    #     }
-    #     print(f"Aggregated metrics {agg_metrics}")
-    #     if wandb_run:
-    #         wandb_run.log(
-    #             {
-    #                 "Train Loss": agg_metrics["train_loss"],
-    #                 "Train Accuracy": agg_metrics["train_accuracy"],
-    #                 "Train Loss with Regularization": agg_metrics[
-    #                     "train_loss_with_regularization"
-    #                 ],
-    #                 "Train Epsilon": max(epsilon_list),
-    #                 "FL Round": server_round,
-    #             }
-    #         )
+        print(f"aggregated probabilities {average_probabilities}")
+        # Compute weighted averages
+        agg_metrics = {
+            "train_loss": sum(losses) / total_examples,
+            "train_accuracy": sum(accuracies) / total_examples,
+            "train_loss_with_regularization": sum(losses_with_regularization)/ total_examples,
+            "average_probabilities": average_probabilities,
+        }
+        print(f"Aggregated metrics {agg_metrics}")
+        if wandb_run:
+            wandb_run.log(
+                {
+                    "Train Loss": agg_metrics["train_loss"],
+                    "Train Accuracy": agg_metrics["train_accuracy"],
+                    "Train Loss with Regularization": agg_metrics[
+                        "train_loss_with_regularization"
+                    ],
+                    "Train Epsilon": max(epsilon_list),
+                    "FL Round": server_round,
+                }
+            )
 
-    #     return agg_metrics
+        return agg_metrics
 
-    # strategy = FedAvg(
-    #     fraction_fit=args.sampled_clients,
-    #     fraction_evaluate=0,
-    #     min_fit_clients=args.sampled_clients,
-    #     min_evaluate_clients=0,
-    #     min_available_clients=args.sampled_clients,
-    #     on_fit_config_fn=fit_config,
-    #     evaluate_fn=Utils.get_evaluate_fn(
-    #         test_set=test_set,
-    #         dataset_name=dataset_name,
-    #         train_parameters=train_parameters,
-    #         wandb_run=wandb_run,
-    #         batch_size=args.batch_size,
-    #     ),  # centralised evaluation of global model
-    #     initial_parameters=initial_parameters,
-    #     fit_metrics_aggregation_fn=agg_metrics_train,
-    # )
+    strategy = FedAvg(
+        fraction_fit=args.sampled_clients,
+        fraction_evaluate=0,
+        min_fit_clients=args.sampled_clients,
+        min_evaluate_clients=0,
+        min_available_clients=args.sampled_clients,
+        on_fit_config_fn=fit_config,
+        evaluate_fn=Utils.get_evaluate_fn(
+            test_set=test_set,
+            dataset_name=dataset_name,
+            train_parameters=train_parameters,
+            wandb_run=wandb_run,
+            batch_size=args.batch_size,
+        ),  # centralised evaluation of global model
+        initial_parameters=initial_parameters,
+        fit_metrics_aggregation_fn=agg_metrics_train,
+    )
 
-    # ray_num_cpus = 10
-    # ray_num_gpus = 3
-    # ram_memory = 16_000 * 1024 * 1024 * 2
+    ray_num_cpus = 10
+    ray_num_gpus = 3
+    ram_memory = 16_000 * 1024 * 1024 * 2
 
-    # # (optional) specify Ray config
-    # ray_init_args = {
-    #     "include_dashboard": False,
-    #     "num_cpus": ray_num_cpus,
-    #     "num_gpus": ray_num_gpus,
-    #     "_memory": ram_memory,
-    #     "_redis_max_memory": 100000000,
-    #     "object_store_memory": 100000000,
-    #     "logging_level": logging.ERROR,
-    #     "log_to_driver": True,
-    # }
+    # (optional) specify Ray config
+    ray_init_args = {
+        "include_dashboard": False,
+        "num_cpus": ray_num_cpus,
+        "num_gpus": ray_num_gpus,
+        "_memory": ram_memory,
+        "_redis_max_memory": 100000000,
+        "object_store_memory": 100000000,
+        "logging_level": logging.ERROR,
+        "log_to_driver": True,
+    }
 
-    # client_manager = SimpleClientManager(seed=args.seed, num_clients=pool_size)
-    # server = Server(client_manager=client_manager, strategy=strategy)
+    client_manager = SimpleClientManager(seed=args.seed, num_clients=pool_size)
+    server = Server(client_manager=client_manager, strategy=strategy)
 
-    # # start simulation
-    # fl.simulation.start_simulation(
-    #     client_fn=client_fn,
-    #     num_clients=pool_size,
-    #     client_resources=client_resources,
-    #     config=fl.server.ServerConfig(num_rounds=args.num_rounds),
-    #     strategy=strategy,
-    #     ray_init_args=ray_init_args,
-    #     server=server,
-    #     client_manager=client_manager,
-    # )
+    # start simulation
+    fl.simulation.start_simulation(
+        client_fn=client_fn,
+        num_clients=pool_size,
+        client_resources=client_resources,
+        config=fl.server.ServerConfig(num_rounds=args.num_rounds),
+        strategy=strategy,
+        ray_init_args=ray_init_args,
+        server=server,
+        client_manager=client_manager,
+    )
 
-    # if wandb_run:
-    #     wandb_run.finish()
+    if wandb_run:
+        wandb_run.finish()
