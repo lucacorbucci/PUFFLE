@@ -12,11 +12,11 @@ import wandb
 from ClientManager.client_manager import SimpleClientManager
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
-from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from torch import nn
+from Utils.train_parameters import TrainParameters
 
 from fl_puf.Client.client import FlowerClient
 from fl_puf.Utils.utils import Utils
@@ -48,6 +48,9 @@ parser.add_argument("--test_csv", type=str, default="")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--debug", type=bool, default=False)
 parser.add_argument("--base_path", type=str, default="")
+parser.add_argument("--probability_estimation", type=bool, default=False)
+parser.add_argument("--perfect_probability_estimation", type=bool, default=False)
+
 
 # DPL:
 # 1) baseline without privacy and DPL -> compute maximum violation
@@ -78,6 +81,9 @@ def setup_wandb(args):
             "gradnorm": args.clipping,
             "delta": args.delta if args.private else 0,
             "noise_multiplier": args.noise_multiplier if args.private else 0,
+            "probability_estimation": args.probability_estimation,
+            "perfect_probability_estimation": args.perfect_probability_estimation,
+            "alpha": args.alpha,
         },
     )
     return wandb_run
@@ -138,6 +144,8 @@ if __name__ == "__main__":
         private=args.private,
         DPL=args.DPL,
         noise_multiplier=args.noise_multiplier,
+        probability_estimation=args.probability_estimation,
+        perfect_probability_estimation=args.perfect_probability_estimation,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -179,7 +187,6 @@ if __name__ == "__main__":
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
     def agg_metrics_train(metrics: list, server_round: int) -> dict:
-        print("Metrics Dictionary:", metrics)
         # Collect all the FL Client metrics and weight them
         all_losses = []
         for n_examples, node_metrics in metrics:
@@ -212,13 +219,31 @@ if __name__ == "__main__":
 
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
+        average_probabilities = {}
+
+        probabilities_names = [
+            name for _, metric in metrics for name in metric["probabilities"]
+        ]
+        for probabilities_name in probabilities_names:
+            count_diff_than_0 = 0
+            for _, metric in metrics:
+                if probabilities_name in metric["probabilities"] and metric["probabilities"][probabilities_name] != 0:
+                    if probabilities_name not in average_probabilities:
+                        average_probabilities[probabilities_name] = 0
+                    count_diff_than_0 += 1
+                    average_probabilities[probabilities_name] += metric["probabilities"][probabilities_name]
+                    
+            average_probabilities[probabilities_name] /= count_diff_than_0
+
+        print(f"aggregated probabilities {average_probabilities}")
         # Compute weighted averages
         agg_metrics = {
             "train_loss": sum(losses) / total_examples,
             "train_accuracy": sum(accuracies) / total_examples,
-            "train_loss_with_regularization": sum(losses_with_regularization)
-            / total_examples,
+            "train_loss_with_regularization": sum(losses_with_regularization)/ total_examples,
+            "average_probabilities": average_probabilities,
         }
+        print(f"Aggregated metrics {agg_metrics}")
         if wandb_run:
             wandb_run.log(
                 {

@@ -11,10 +11,11 @@ import numpy as np
 import ray
 import torch
 from DPL.learning import Learning
+from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
+from Utils.train_parameters import TrainParameters
 
 
 class FlowerClient(fl.client.NumPyClient):
@@ -39,45 +40,6 @@ class FlowerClient(fl.client.NumPyClient):
         self.clipping = clipping
         self.delta = delta
         self.lr = lr
-
-        # if (
-        #     os.path.exists(f"{self.fed_dir}/random_state_random_{self.cid}.pkl")
-        #     and os.path.exists(f"{self.fed_dir}/random_state_np_{self.cid}.pkl")
-        #     and os.path.exists(f"{self.fed_dir}/random_state_torch_{self.cid}.pkl")
-        #     and os.path.exists(f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl")
-        # ):
-        #     print(f"Loading State from disk {self.cid}")
-        #     with open(
-        #         f"{self.fed_dir}/random_state_random_{self.cid}.pkl", "rb"
-        #     ) as file:
-        #         state = dill.load(file)
-        #         random.setstate(state)
-
-        #     with open(f"{self.fed_dir}/random_state_np_{self.cid}.pkl", "rb") as file:
-        #         state = dill.load(file)
-        #         np.random.set_state(state)
-
-        #     with open(
-        #         f"{self.fed_dir}/random_state_torch_{self.cid}.pkl", "rb"
-        #     ) as file:
-        #         state = dill.load(file)
-        #         torch.set_rng_state(state)
-
-        #     with open(
-        #         f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl", "rb"
-        #     ) as file:
-        #         state = dill.load(file)
-        #         torch.cuda.set_rng_state(state)
-        # else:
-        #     print(f"Seeding Node {cid}")
-
-        #     torch.manual_seed(self.train_parameters.seed)
-        #     random.seed(self.train_parameters.seed)
-        #     np.random.seed(self.train_parameters.seed)
-        #     torch.cuda.manual_seed(self.train_parameters.seed)
-
-        # torch.backends.cudnn.deterministic = True
-        # torch.backends.cudnn.benchmark = False
 
         self.net = ModelUtils.get_model(
             dataset_name, device=self.train_parameters.device
@@ -104,7 +66,7 @@ class FlowerClient(fl.client.NumPyClient):
         with open(path, "wb") as f:
             dill.dump(state, f)
 
-    def fit(self, parameters, config):
+    def fit(self, parameters, config, average_probabilities):
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -194,21 +156,12 @@ class FlowerClient(fl.client.NumPyClient):
                 test_loader=None,
                 current_epoch=epoch,
                 node_id=self.cid,
+                average_probabilities=average_probabilities,
             )
             all_metrics.append(metrics)
             all_losses.append(metrics["Train Loss"])
 
         Utils.set_params(self.net, Utils.get_params(private_net))
-
-        # store the random_state on disk
-        # with open(f"{self.fed_dir}/random_state_random_{self.cid}.pkl", "wb") as f:
-        #     dill.dump(random.getstate(), f)
-        # with open(f"{self.fed_dir}/random_state_np_{self.cid}.pkl", "wb") as f:
-        #     dill.dump(np.random.get_state(), f)
-        # with open(f"{self.fed_dir}/random_state_torch_{self.cid}.pkl", "wb") as f:
-        #     dill.dump(torch.get_rng_state(), f)
-        # with open(f"{self.fed_dir}/random_state_torch_cuda_{self.cid}.pkl", "wb") as f:
-        #     dill.dump(torch.cuda.get_rng_state(device=self.train_parameters.device), f)
 
         # We need to store the state of the privacy engine and all the
         # details about the private training
@@ -218,6 +171,26 @@ class FlowerClient(fl.client.NumPyClient):
             f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "wb"
         ) as f:
             dill.dump(privacy_engine_regularization.accountant, f)
+
+        (
+            predictions,
+            sensitive_attributes,
+            possible_targets,
+            possible_sensitive_attributes,
+        ) = Learning.test_prediction(
+            model=private_net,
+            test_loader=train_loader,
+            train_parameters=self.train_parameters,
+            current_epoch=None,
+        )
+        probabilities = RegularizationLoss.compute_probabilities(
+            predictions=predictions,
+            sensitive_attribute_list=sensitive_attributes,
+            device=self.train_parameters.device,
+            possible_sensitive_attributes=possible_sensitive_attributes,
+            possible_targets=possible_targets,
+        )
+        
 
         del private_net
         if private_model_regularization:
@@ -236,6 +209,8 @@ class FlowerClient(fl.client.NumPyClient):
                 ],
                 "train_accuracy": all_metrics[-1]["Train Accuracy"],
                 "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
+                "probabilities": probabilities,
+                "cid": self.cid,
             },
         )
 

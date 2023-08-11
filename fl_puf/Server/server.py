@@ -17,6 +17,7 @@
 
 import concurrent.futures
 import timeit
+from dataclasses import dataclass
 from logging import DEBUG, INFO
 from typing import Dict, List, Optional, Tuple, Union
 
@@ -52,6 +53,13 @@ ReconnectResultsAndFailures = Tuple[
 ]
 
 
+@dataclass
+class FitIns:
+    """Fit instructions for a client."""
+
+    parameters: Parameters
+    config: Dict[str, Scalar]
+    average_probabilities: dict = None
 class Server:
     """Flower server."""
 
@@ -100,18 +108,19 @@ class Server:
         # Run federated learning for num_rounds
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
-
+        average_probabilities = None
         for current_round in range(1, num_rounds + 1):
             # Train model and replace previous global model
-            res_fit = self.fit_round(server_round=current_round, timeout=timeout)
+            res_fit = self.fit_round(server_round=current_round, timeout=timeout, average_probabilities=average_probabilities)
             if res_fit:
                 parameters_prime, fit_metrics, _ = res_fit  # fit_metrics_aggregated
                 if parameters_prime:
                     self.parameters = parameters_prime
                 history.add_metrics_distributed_fit(
-                    server_round=current_round, metrics=fit_metrics
+                    server_round=current_round, metrics=fit_metrics,
                 )
-
+                average_probabilities = fit_metrics.get("average_probabilities", None)
+                print(f"Average probabilities {average_probabilities}")
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
@@ -200,6 +209,7 @@ class Server:
         self,
         server_round: int,
         timeout: Optional[float],
+        average_probabilities: dict,
     ) -> Optional[
         Tuple[Optional[Parameters], Dict[str, Scalar], FitResultsAndFailures]
     ]:
@@ -228,6 +238,7 @@ class Server:
             client_instructions=client_instructions,
             max_workers=self.max_workers,
             timeout=timeout,
+            average_probabilities=average_probabilities,
         )
 
         log(
@@ -245,6 +256,7 @@ class Server:
         ] = self.strategy.aggregate_fit(server_round, results, failures)
 
         parameters_aggregated, metrics_aggregated = aggregated_result
+        
         return parameters_aggregated, metrics_aggregated, (results, failures)
 
     def disconnect_all_clients(self, timeout: Optional[float]) -> None:
@@ -326,11 +338,12 @@ def fit_clients(
     client_instructions: List[Tuple[ClientProxy, FitIns]],
     max_workers: Optional[int],
     timeout: Optional[float],
+    average_probabilities:dict,
 ) -> FitResultsAndFailures:
     """Refine parameters concurrently on all selected clients."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(fit_client, client_proxy, ins, timeout)
+            executor.submit(fit_client, client_proxy, ins, average_probabilities, timeout)
             for client_proxy, ins in client_instructions
         }
         finished_fs, _ = concurrent.futures.wait(
@@ -349,9 +362,10 @@ def fit_clients(
 
 
 def fit_client(
-    client: ClientProxy, ins: FitIns, timeout: Optional[float]
+    client: ClientProxy, ins: FitIns, average_probabilities: dict, timeout: Optional[float]
 ) -> Tuple[ClientProxy, FitRes]:
     """Refine parameters on a single client."""
+    ins.average_probabilities = average_probabilities
     fit_res = client.fit(ins, timeout=timeout)
     return client, fit_res
 

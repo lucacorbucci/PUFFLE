@@ -9,7 +9,6 @@ import torch
 import wandb
 from DPL.learning import Learning
 from DPL.Utils.model_utils import ModelUtils
-from DPL.Utils.train_parameters import TrainParameters
 from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
@@ -23,6 +22,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
+from Utils.train_parameters import TrainParameters
 
 
 class Utils:
