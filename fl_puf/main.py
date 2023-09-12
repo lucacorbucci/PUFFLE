@@ -12,11 +12,11 @@ import wandb
 from ClientManager.client_manager import SimpleClientManager
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
-from DPL.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from torch import nn
+from Utils.train_parameters import TrainParameters
 
 from fl_puf.Client.client import FlowerClient
 from fl_puf.Utils.utils import Utils
@@ -48,6 +48,13 @@ parser.add_argument("--test_csv", type=str, default="")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--debug", type=bool, default=False)
 parser.add_argument("--base_path", type=str, default="")
+parser.add_argument("--probability_estimation", type=bool, default=False)
+parser.add_argument("--perfect_probability_estimation", type=bool, default=False)
+parser.add_argument("--partition_type", type=str, default="non_iid")
+parser.add_argument("--partition_ratio", type=float, default=None)
+parser.add_argument("--sort_clients", type=bool, default=True)
+parser.add_argument('--no_sort_clients', dest='sort_clients', action='store_false')
+
 
 # DPL:
 # 1) baseline without privacy and DPL -> compute maximum violation
@@ -78,6 +85,10 @@ def setup_wandb(args):
             "gradnorm": args.clipping,
             "delta": args.delta if args.private else 0,
             "noise_multiplier": args.noise_multiplier if args.private else 0,
+            "probability_estimation": args.probability_estimation,
+            "perfect_probability_estimation": args.perfect_probability_estimation,
+            "alpha": args.alpha,
+            "partition_ratio": args.partition_ratio,
         },
     )
     return wandb_run
@@ -97,6 +108,7 @@ if __name__ == "__main__":
     # parse input arguments
     args = parser.parse_args()
     dataset_name = args.dataset
+    print(f"SORT CLIENTS {args.sort_clients}")
 
     torch.manual_seed(args.seed)
     random.seed(args.seed)
@@ -138,6 +150,9 @@ if __name__ == "__main__":
         private=args.private,
         DPL=args.DPL,
         noise_multiplier=args.noise_multiplier,
+        probability_estimation=args.probability_estimation,
+        perfect_probability_estimation=args.perfect_probability_estimation,
+        partition_ratio=args.partition_ratio,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -150,8 +165,9 @@ if __name__ == "__main__":
         pool_size=pool_size,
         num_classes=2,
         val_ratio=0,
-        partition_type="non_iid",
+        partition_type=args.partition_type,
         alpha=args.alpha,
+        train_parameters=train_parameters,
     )
     fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
@@ -179,7 +195,6 @@ if __name__ == "__main__":
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
     def agg_metrics_train(metrics: list, server_round: int) -> dict:
-        print("Metrics Dictionary:", metrics)
         # Collect all the FL Client metrics and weight them
         all_losses = []
         for n_examples, node_metrics in metrics:
@@ -210,15 +225,72 @@ if __name__ == "__main__":
             n_examples * metric["train_accuracy"] for n_examples, metric in metrics
         ]
 
+        max_disparity_train = [
+            metric["Disparity Train"] for n_examples, metric in metrics
+        ]
+
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
+        possible_targets = []
+        possible_sensitive_attributes = []
+
+        for _, metric in metrics:
+            possible_targets += metric["targets"]
+            possible_sensitive_attributes += metric["sensitive_attributes"]
+
+        possible_targets = list(set(possible_targets))
+        possible_sensitive_attributes = list(set(possible_sensitive_attributes))
+
+        sum_probabilities = {}
+        total_counter = {}
+
+        for _, metric in metrics:
+            for possible_target in possible_targets:
+                for possible_sensitive_attribute in possible_sensitive_attributes:
+                    current_proba = f"{possible_target}|{possible_sensitive_attribute}"
+
+                    if current_proba in metric["probabilities"]:
+                        if current_proba not in sum_probabilities:
+                            sum_probabilities[current_proba] = 0
+                        sum_probabilities[current_proba] += metric["probabilities"][
+                            current_proba
+                        ]
+
+            for possible_sensitive_attribute in possible_sensitive_attributes:
+                attr = f"{possible_sensitive_attribute}"
+                if attr in metric["probabilities"]:
+                    if attr not in total_counter:
+                        total_counter[attr] = 0
+                    total_counter[f"{possible_sensitive_attribute}"] += metric[
+                        "probabilities"
+                    ][attr]
+
+        average_probabilities = {}
+        for target in possible_targets:
+            for sens_attr in possible_sensitive_attributes:
+                current_prob = f"{target}|{sens_attr}"
+                if current_prob not in average_probabilities:
+                    average_probabilities[current_prob] = 0
+                print(
+                    f"SUM AND COUNTER {current_prob}",
+                    sum_probabilities[current_prob],
+                    total_counter[str(sens_attr)],
+                )
+                average_probabilities[current_prob] = sum_probabilities[
+                    current_prob
+                ] / (total_counter[str(sens_attr)])
+
+        
         # Compute weighted averages
         agg_metrics = {
             "train_loss": sum(losses) / total_examples,
             "train_accuracy": sum(accuracies) / total_examples,
             "train_loss_with_regularization": sum(losses_with_regularization)
             / total_examples,
+            "average_probabilities": average_probabilities,
+            "max_disparity_train": sum(max_disparity_train) / len(max_disparity_train),
         }
+        print(f"Aggregated metrics {agg_metrics}")
         if wandb_run:
             wandb_run.log(
                 {
@@ -229,6 +301,7 @@ if __name__ == "__main__":
                     ],
                     "Train Epsilon": max(epsilon_list),
                     "FL Round": server_round,
+                    "Disparity Training": agg_metrics["max_disparity_train"],
                 }
             )
 
@@ -268,7 +341,9 @@ if __name__ == "__main__":
         "log_to_driver": True,
     }
 
-    client_manager = SimpleClientManager(seed=args.seed, num_clients=pool_size)
+    client_manager = SimpleClientManager(
+        seed=args.seed, num_clients=pool_size, sort_clients=args.sort_clients
+    )
     server = Server(client_manager=client_manager, strategy=strategy)
 
     # start simulation

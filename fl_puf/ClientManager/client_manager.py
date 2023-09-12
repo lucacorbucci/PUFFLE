@@ -29,7 +29,7 @@ from flwr.server.criterion import Criterion
 class SimpleClientManager(ClientManager):
     """Provides a pool of available clients."""
 
-    def __init__(self, num_clients, seed) -> None:
+    def __init__(self, num_clients, seed, sort_clients) -> None:
         random.seed(seed)
         self.seed = seed
         self.num_clients = num_clients
@@ -37,6 +37,7 @@ class SimpleClientManager(ClientManager):
         self.clients_list: List[str] = []
         self._cv = threading.Condition()
         self.current_index = 0
+        self.sort_clients = sort_clients
 
     def __len__(self) -> int:
         return len(self.clients)
@@ -93,7 +94,7 @@ class SimpleClientManager(ClientManager):
         # Add the client to the list of available clients and then
         # shuffle the list
         self.clients_list.append(client.cid)
-        if self.num_clients == len(self.clients_list):
+        if self.num_clients == len(self.clients_list) and self.sort_clients:
             random.seed(self.seed)
             self.clients_list = sorted(self.clients_list)
             print("After sorted: ", self.clients_list)

@@ -105,6 +105,7 @@ class NonIIDPartitionWithSensitiveFeature:
         sensitive_features: list,
         alpha=1000000,
     ) -> dict:
+        dir_distributions = []
         if not alpha:
             raise ValueError("Alpha must be a positive number")
         idx = torch.tensor(list(range(len(labels))))
@@ -143,6 +144,7 @@ class NonIIDPartitionWithSensitiveFeature:
         for label, sensitive_feature in labels_and_sensitive_feature:
             # For each label we want a distribution over the num_partitions
             distribution = np.random.dirichlet(num_partitions * [alpha], size=1)
+            dir_distributions.append((label, sensitive_feature, distribution))
             # we have to sample from the group of samples that have label equal
             # to label and not from the entire labels list.
             filtered_labels = labels[
@@ -194,4 +196,4 @@ class NonIIDPartitionWithSensitiveFeature:
             labels_and_sensitive_feature = zip(node_labels, node_sensitive_features)
             print(f"Node {node_name} has: ", Counter(labels_and_sensitive_feature))
 
-        return partitions_index, partitions_labels, partitions_index_list
+        return partitions_index, partitions_labels, partitions_index_list, dir_distributions

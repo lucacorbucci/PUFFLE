@@ -9,10 +9,16 @@ import torch
 import wandb
 from DPL.learning import Learning
 from DPL.Utils.model_utils import ModelUtils
-from DPL.Utils.train_parameters import TrainParameters
 from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
+)
+from FederatedDataset.PartitionTypes.unbalanced_partition import UnbalancedPartition
+from FederatedDataset.PartitionTypes.unbalanced_partition_one_class import (
+    UnbalancedPartitionOneClass,
+)
+from FederatedDataset.PartitionTypes.underrepresented_partition import (
+    UnderrepresentedPartition,
 )
 from FederatedDataset.Utils.utils import PartitionUtils
 from flwr.common.typing import Scalar
@@ -23,6 +29,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
+from Utils.train_parameters import TrainParameters
 
 
 class Utils:
@@ -107,6 +114,7 @@ class Utils:
         partition_type: str,
         val_ratio: float = 0.0,
         alpha: float = 1,
+        train_parameters: TrainParameters = None,
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -146,6 +154,65 @@ class Utils:
                 splitted_indexes=partitions_index_list,
                 dataset=dataset,
             )
+        elif partition_type == "unbalanced":
+            # This is the partition type where we assign to each node only
+            # a subset of the classes. For instance, if we have 2 classes and
+            # 2 sensitive attributes (male and female) like in Celeba, we would assign
+            # only the female samples to a node and only the male samples to another node.
+            ratio = train_parameters.partition_ratio
+            ratio_list = [ratio, 1 - ratio]
+            partitions_index_list = UnbalancedPartition.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                alpha=alpha,
+                ratio_list=ratio_list,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        elif partition_type == "unbalanced_one_class":
+            # This partition type allows us to assign to some nodes
+            # only 3 out of 4 groups. For instances, if we have 2 classes
+            # and 2 sensitive attributes, we want that some nodes have
+            # all the possible combinations of classes and sensitive attributes
+            # except for some other nodes that will only have 3 out of 4.
+
+            # Ratio is the percentage of nodes that will not have all the possible
+            # combinations of classes and sensitive attributes.
+            ratio = train_parameters.partition_ratio
+
+            partitions_index_list = UnbalancedPartitionOneClass.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                alpha=alpha,
+                ratio=ratio,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        elif partition_type == "underrepresented":
+            ratio = train_parameters.partition_ratio
+
+            partitions_index_list = UnderrepresentedPartition.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                alpha=alpha,
+                ratio=ratio,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        else:
+            raise ValueError(f"Unknown partition type: {partition_type}")
 
         for p in range(pool_size):
             partition_zero = partitions[p][2]
@@ -161,6 +228,18 @@ class Utils:
                 f"Sensitive Value histogram for {p}-th partition, {num_classes} classes): {hist_sv}"
             )
             assert sum(hist) == sum(hist_sv)
+
+            labels_and_sensitive = zip(
+                [
+                    item.item() if isinstance(item, torch.Tensor) else item
+                    for item in partitions[p][2]
+                ],
+                [
+                    item.item() if isinstance(item, torch.Tensor) else item
+                    for item in partitions[p][1]
+                ],
+            )
+            print(Counter(labels_and_sensitive))
 
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it
