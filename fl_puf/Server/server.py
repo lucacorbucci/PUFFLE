@@ -120,7 +120,12 @@ class Server:
                     server_round=current_round, metrics=fit_metrics,
                 )
                 average_probabilities = fit_metrics.get("average_probabilities", None)
-                print(f"Average probabilities {average_probabilities}")
+                print(f"Average probabilities da inviare {average_probabilities}")
+                print("=====================================================================")
+                print("=====================================================================")
+                print("=====================================================================")
+                print("=====================================================================")
+
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:

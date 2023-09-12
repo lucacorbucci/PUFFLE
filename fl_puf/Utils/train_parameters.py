@@ -19,3 +19,4 @@ class TrainParameters:
     noise_multiplier: float = None
     probability_estimation: bool = False
     perfect_probability_estimation: bool = False
+    partition_ratio:int = None

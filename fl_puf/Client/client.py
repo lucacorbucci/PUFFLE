@@ -16,7 +16,7 @@ from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
 from Utils.train_parameters import TrainParameters
-
+from collections import Counter
 
 class FlowerClient(fl.client.NumPyClient):
     def __init__(
@@ -67,6 +67,7 @@ class FlowerClient(fl.client.NumPyClient):
             dill.dump(state, f)
 
     def fit(self, parameters, config, average_probabilities):
+        print(f"Node {self.cid} received {average_probabilities}")
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -79,6 +80,9 @@ class FlowerClient(fl.client.NumPyClient):
             workers=num_workers,
             dataset=self.dataset_name,
         )
+
+        sensitive_features = train_loader.dataset.sensitive_features
+        print(f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}")
 
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
@@ -190,12 +194,14 @@ class FlowerClient(fl.client.NumPyClient):
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
         )
-        
+        print(f"Client {self.cid} computed {probabilities}")
 
         del private_net
         if private_model_regularization:
             del private_model_regularization
         gc.collect()
+
+        print("ALL METRICS: ", all_metrics)
 
         # Return local model and statistics
         return (
@@ -211,6 +217,9 @@ class FlowerClient(fl.client.NumPyClient):
                 "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
                 "probabilities": probabilities,
                 "cid": self.cid,
+                "targets": possible_targets,
+                "sensitive_attributes": possible_sensitive_attributes,
+                "Disparity Train": all_metrics[-1]["Max Disparity Train"],
             },
         )
 
