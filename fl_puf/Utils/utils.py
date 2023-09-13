@@ -143,6 +143,7 @@ class Utils:
                 splitted_indexes,
                 _,
                 partitions_index_list,
+                _,
             ) = NonIIDPartitionWithSensitiveFeature.do_partitioning_with_dataset_list(
                 labels=labels,
                 sensitive_features=sensitive_attribute,
