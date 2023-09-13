@@ -53,7 +53,9 @@ parser.add_argument("--perfect_probability_estimation", type=bool, default=False
 parser.add_argument("--partition_type", type=str, default="non_iid")
 parser.add_argument("--partition_ratio", type=float, default=None)
 parser.add_argument("--sort_clients", type=bool, default=True)
-parser.add_argument('--no_sort_clients', dest='sort_clients', action='store_false')
+parser.add_argument("--no_sort_clients", dest="sort_clients", action="store_false")
+parser.add_argument("--alpha_target_lambda", type=float, default=None)
+parser.add_argument("--target", type=float, default=None)
 
 
 # DPL:
@@ -89,6 +91,8 @@ def setup_wandb(args):
             "perfect_probability_estimation": args.perfect_probability_estimation,
             "alpha": args.alpha,
             "partition_ratio": args.partition_ratio,
+            "alpha_target_lambda": args.alpha_target_lambda,
+            "target": args.target,
         },
     )
     return wandb_run
@@ -179,7 +183,13 @@ if __name__ == "__main__":
 
     def client_fn(cid: str):
         # create a single client instance
-
+        print(train_parameters)
+        print(cid)
+        print(fed_dir)
+        print(dataset_name)
+        print(args.clipping)
+        print(args.delta)
+        print(args.lr)
         return FlowerClient(
             train_parameters=train_parameters,
             cid=cid,
@@ -280,7 +290,6 @@ if __name__ == "__main__":
                     current_prob
                 ] / (total_counter[str(sens_attr)])
 
-        
         # Compute weighted averages
         agg_metrics = {
             "train_loss": sum(losses) / total_examples,
@@ -345,6 +354,8 @@ if __name__ == "__main__":
         seed=args.seed, num_clients=pool_size, sort_clients=args.sort_clients
     )
     server = Server(client_manager=client_manager, strategy=strategy)
+
+    print("SONO QUI")
 
     # start simulation
     fl.simulation.start_simulation(

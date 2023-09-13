@@ -1,8 +1,10 @@
 import copy
 import gc
+import logging
 import os
 import random
 import warnings
+from collections import Counter
 from pathlib import Path
 
 import dill
@@ -16,7 +18,7 @@ from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
 from Utils.train_parameters import TrainParameters
-from collections import Counter
+
 
 class FlowerClient(fl.client.NumPyClient):
     def __init__(
@@ -29,10 +31,9 @@ class FlowerClient(fl.client.NumPyClient):
         lr: float,
         train_parameters: TrainParameters,
     ):
-        print(f"Node {cid} is initializing...")
+        logging.info(f"Node {cid} is initializing...")
         warnings.filterwarnings("ignore", category=DeprecationWarning)
         self.train_parameters = copy.deepcopy(train_parameters)
-        # self.train_parameters.wandb_run = None
         self.cid = cid
         self.fed_dir = Path(fed_dir_data)
         self.properties: dict[str, Scalar] = {"tensor_type": "numpy.ndarray"}
@@ -66,7 +67,7 @@ class FlowerClient(fl.client.NumPyClient):
         with open(path, "wb") as f:
             dill.dump(state, f)
 
-    def fit(self, parameters, config, average_probabilities):
+    def fit(self, parameters, config, average_probabilities=None):
         print(f"Node {self.cid} received {average_probabilities}")
         Utils.set_params(self.net, parameters)
 
@@ -82,7 +83,9 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         sensitive_features = train_loader.dataset.sensitive_features
-        print(f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}")
+        print(
+            f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}"
+        )
 
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
