@@ -17,6 +17,8 @@ class TrainParameters:
     private: bool = False
     DPL: bool = False
     noise_multiplier: float = None
+    target: float = 0.2
+    alpha: float = 0.1
     probability_estimation: bool = False
     perfect_probability_estimation: bool = False
-    partition_ratio:int = None
+    partition_ratio: int = None
