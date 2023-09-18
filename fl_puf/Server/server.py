@@ -53,14 +53,6 @@ ReconnectResultsAndFailures = Tuple[
 ]
 
 
-@dataclass
-class FitIns:
-    """Fit instructions for a client."""
-
-    parameters: Parameters
-    config: Dict[str, Scalar]
-    average_probabilities: dict = None
-
 
 class Server:
     """Flower server."""

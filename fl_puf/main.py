@@ -5,6 +5,7 @@ import random
 import warnings
 from typing import Dict
 
+import dill
 import flwr as fl
 import numpy as np
 import torch
@@ -146,7 +147,7 @@ if __name__ == "__main__":
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
         criterion=nn.CrossEntropyLoss(),
-        wandb_run=wandb_run,
+        wandb_run=None,
         batch_size=args.batch_size,
         seed=args.seed,
         epsilon=args.epsilon if args.private else None,
@@ -157,6 +158,8 @@ if __name__ == "__main__":
         probability_estimation=args.probability_estimation,
         perfect_probability_estimation=args.perfect_probability_estimation,
         partition_ratio=args.partition_ratio,
+        target=args.target,
+        alpha=args.alpha_target_lambda,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -183,13 +186,6 @@ if __name__ == "__main__":
 
     def client_fn(cid: str):
         # create a single client instance
-        print(train_parameters)
-        print(cid)
-        print(fed_dir)
-        print(dataset_name)
-        print(args.clipping)
-        print(args.delta)
-        print(args.lr)
         return FlowerClient(
             train_parameters=train_parameters,
             cid=cid,
@@ -313,6 +309,33 @@ if __name__ == "__main__":
                     "Disparity Training": agg_metrics["max_disparity_train"],
                 }
             )
+        from pathlib import Path
+
+        fed_dir = "../data/celeba/celeba-10-batches-py/federated"
+        fed_dir = Path(fed_dir)
+        cid_list = [i for i in range(args.pool_size)]
+        for cid in cid_list:
+            if os.path.exists(f"{fed_dir}/privacy_engine_{cid}.pkl"):
+                with open(f"{fed_dir}/DPL_lambda_{cid}.pkl", "rb") as file:
+                    lambda_client = dill.load(file)
+                    if wandb_run:
+                        wandb_run.log(
+                            {
+                                "FL Round": server_round,
+                                f"Lambda Client {cid}": lambda_client,
+                            }
+                        )
+
+        for _, metric in metrics:
+            cid = metric["cid"]
+            disparity = metric["Disparity Train"]
+            if wandb_run:
+                wandb_run.log(
+                    {
+                        "FL Round": server_round,
+                        f"Training Disparity {cid}": disparity,
+                    }
+                )
 
         return agg_metrics
 

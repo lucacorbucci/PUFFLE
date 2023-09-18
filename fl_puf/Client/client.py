@@ -67,7 +67,7 @@ class FlowerClient(fl.client.NumPyClient):
         with open(path, "wb") as f:
             dill.dump(state, f)
 
-    def fit(self, parameters, config, average_probabilities=None):
+    def fit(self, parameters, config, average_probabilities):
         print(f"Node {self.cid} received {average_probabilities}")
         Utils.set_params(self.net, parameters)
 
