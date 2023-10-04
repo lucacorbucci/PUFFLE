@@ -67,8 +67,8 @@ class FlowerClient(fl.client.NumPyClient):
         with open(path, "wb") as f:
             dill.dump(state, f)
 
-    def fit(self, parameters, config, average_probabilities):
-        print(f"Node {self.cid} received {average_probabilities}")
+    def fit(self, parameters, config, average_probabilities=None):
+        # print(f"Node {self.cid} received {average_probabilities}")
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -83,9 +83,9 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         sensitive_features = train_loader.dataset.sensitive_features
-        print(
-            f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}"
-        )
+        # print(
+        #     f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}"
+        # )
 
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
@@ -97,13 +97,20 @@ class FlowerClient(fl.client.NumPyClient):
         ) and os.path.exists(
             f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
         ):
-            print("LOADING PRIVACY ENGINE")
+            # print("LOADING PRIVACY ENGINE")
             with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
                 loaded_privacy_engine = dill.load(file)
             with open(
                 f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
             ) as file:
                 loaded_privacy_engine_regularization = dill.load(file)
+
+        if (
+            os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl")
+            and self.train_parameters.cross_silo
+        ):
+            with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "rb") as file:
+                self.train_parameters.DPL_lambda = dill.load(file)
 
         (
             private_net,
@@ -146,7 +153,7 @@ class FlowerClient(fl.client.NumPyClient):
                 accountant=loaded_privacy_engine_regularization,
             )
             private_model_regularization.to(self.train_parameters.device)
-            print(f"Created private model for regularization on node {self.cid}")
+            # print(f"Created private model for regularization on node {self.cid}")
 
         gc.collect()
 
@@ -179,6 +186,9 @@ class FlowerClient(fl.client.NumPyClient):
         ) as f:
             dill.dump(privacy_engine_regularization.accountant, f)
 
+        with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
+            dill.dump(self.train_parameters.DPL_lambda, f)
+
         (
             predictions,
             sensitive_attributes,
@@ -190,21 +200,18 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        probabilities = RegularizationLoss.compute_probabilities(
+        probabilities, counters = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
             device=self.train_parameters.device,
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
         )
-        print(f"Client {self.cid} computed {probabilities}")
 
         del private_net
         if private_model_regularization:
             del private_model_regularization
         gc.collect()
-
-        print("ALL METRICS: ", all_metrics)
 
         # Return local model and statistics
         return (
@@ -223,6 +230,9 @@ class FlowerClient(fl.client.NumPyClient):
                 "targets": possible_targets,
                 "sensitive_attributes": possible_sensitive_attributes,
                 "Disparity Train": all_metrics[-1]["Max Disparity Train"],
+                "Lambda": self.train_parameters.DPL_lambda,
+                "counters": counters,
+                "Max Disparity Train Before Local Epoch": all_metrics[0]["Max Disparity Train Before Local Epoch"],
             },
         )
 

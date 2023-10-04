@@ -9,6 +9,9 @@ import torch
 import wandb
 from DPL.learning import Learning
 from DPL.Utils.model_utils import ModelUtils
+from FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
+    BalancedAndUnbalanced,
+)
 from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
@@ -207,6 +210,21 @@ class Utils:
                 total_num_classes=2,
                 alpha=alpha,
                 ratio=ratio,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        elif partition_type == "balanced_and_unbalanced":
+            ratio = train_parameters.partition_ratio
+
+            partitions_index_list = BalancedAndUnbalanced.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                alpha=alpha,
+                ratio_unbalanced=ratio,
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=partitions_index_list,

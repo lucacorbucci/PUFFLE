@@ -3,13 +3,12 @@ from typing import Tuple
 import numpy as np
 import torch
 import torchvision
-from torchvision import datasets, transforms
-
 from FederatedDataset.Utils.custom_dataset import (
     CelebaDataset,
     CelebaGenderDataset,
     MyDataset,
 )
+from torchvision import datasets, transforms
 
 
 class DatasetDownloader:

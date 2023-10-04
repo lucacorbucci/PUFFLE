@@ -57,6 +57,8 @@ parser.add_argument("--sort_clients", type=bool, default=True)
 parser.add_argument("--no_sort_clients", dest="sort_clients", action="store_false")
 parser.add_argument("--alpha_target_lambda", type=float, default=None)
 parser.add_argument("--target", type=float, default=None)
+parser.add_argument("--cross_silo", type=bool, default=False)
+parser.add_argument("--weight_decay_lambda", type=float, default=None)
 
 
 # DPL:
@@ -94,6 +96,7 @@ def setup_wandb(args):
             "partition_ratio": args.partition_ratio,
             "alpha_target_lambda": args.alpha_target_lambda,
             "target": args.target,
+            "weight_decay_lambda": args.weight_decay_lambda,
         },
     )
     return wandb_run
@@ -143,6 +146,7 @@ if __name__ == "__main__":
         dataset_name=dataset_name,
         base_path=args.base_path,
     )
+
     train_parameters = TrainParameters(
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -160,6 +164,8 @@ if __name__ == "__main__":
         partition_ratio=args.partition_ratio,
         target=args.target,
         alpha=args.alpha_target_lambda,
+        cross_silo=args.cross_silo,
+        weight_decay_lambda=args.weight_decay_lambda,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -230,10 +236,26 @@ if __name__ == "__main__":
         accuracies = [
             n_examples * metric["train_accuracy"] for n_examples, metric in metrics
         ]
+        lambda_list = [metric["Lambda"] for _, metric in metrics]
 
         max_disparity_train = [
             metric["Disparity Train"] for n_examples, metric in metrics
         ]
+
+        for n_examples, metric in metrics:
+            client_id = metric["cid"]
+            disparity_client = metric["Disparity Train"]
+            disparity_client_before_local_epoch = metric[
+                "Max Disparity Train Before Local Epoch"
+            ]
+            if wandb_run:
+                wandb_run.log(
+                    {
+                        f"Disparity Client {client_id}": disparity_client,
+                        f"Disparity Client {client_id} Before local train": disparity_client_before_local_epoch,
+                        "FL Round": server_round,
+                    }
+                )
 
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
@@ -271,6 +293,39 @@ if __name__ == "__main__":
                         "probabilities"
                     ][attr]
 
+        combinations = ["0|0", "0|1", "1|0", "1|1"]
+        targets = ["0", "1"]
+
+        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters"]
+            for combination in combinations:
+                sum_counters[combination] += metric[combination]
+            for target in targets:
+                sum_targets[target] += metric[target]
+        disparities = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+        print("LE DISPARITIES DA LOGGARE: ", disparities)
+        if wandb_run:
+            wandb_run.log(
+                {
+                    "Aggregated Disparity on the server": disparities,
+                    "FL Round": server_round,
+                }
+            )
+
         average_probabilities = {}
         for target in possible_targets:
             for sens_attr in possible_sensitive_attributes:
@@ -286,7 +341,9 @@ if __name__ == "__main__":
                     current_prob
                 ] / (total_counter[str(sens_attr)])
 
-        # Compute weighted averages
+        print(
+            f"MAX DISPARITY TRAIN: {max_disparity_train}, {type(max_disparity_train)}"
+        )
         agg_metrics = {
             "train_loss": sum(losses) / total_examples,
             "train_accuracy": sum(accuracies) / total_examples,
@@ -294,6 +351,10 @@ if __name__ == "__main__":
             / total_examples,
             "average_probabilities": average_probabilities,
             "max_disparity_train": sum(max_disparity_train) / len(max_disparity_train),
+            "std_max_disparity_train": np.std(
+                [item.item() for item in max_disparity_train]
+            ),
+            "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
         }
         print(f"Aggregated metrics {agg_metrics}")
         if wandb_run:
@@ -307,6 +368,7 @@ if __name__ == "__main__":
                     "Train Epsilon": max(epsilon_list),
                     "FL Round": server_round,
                     "Disparity Training": agg_metrics["max_disparity_train"],
+                    "Aggregated Lambda": agg_metrics["Aggregated Lambda"],
                 }
             )
         from pathlib import Path
@@ -377,8 +439,6 @@ if __name__ == "__main__":
         seed=args.seed, num_clients=pool_size, sort_clients=args.sort_clients
     )
     server = Server(client_manager=client_manager, strategy=strategy)
-
-    print("SONO QUI")
 
     # start simulation
     fl.simulation.start_simulation(

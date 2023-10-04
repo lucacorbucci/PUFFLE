@@ -22,3 +22,5 @@ class TrainParameters:
     probability_estimation: bool = False
     perfect_probability_estimation: bool = False
     partition_ratio: int = None
+    cross_silo: bool = False
+    weight_decay_lambda: float = 0.01
