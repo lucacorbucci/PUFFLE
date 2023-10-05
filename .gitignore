@@ -4,7 +4,7 @@
 
 .vector_cache
 data
-OLD
+old
 .env
 .python-version
 .mypy_cache
