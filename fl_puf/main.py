@@ -26,8 +26,8 @@ warnings.filterwarnings("ignore")
 
 parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
 
-parser.add_argument("--num_client_cpus", type=int, default=1)
-parser.add_argument("--num_client_gpus", type=int, default=1)
+parser.add_argument("--num_client_cpus", type=float, default=1)
+parser.add_argument("--num_client_gpus", type=float, default=1)
 parser.add_argument("--num_rounds", type=int, default=5)
 parser.add_argument("--dataset", type=str, default=None)
 parser.add_argument("--epochs", type=int, default=1)
@@ -414,12 +414,13 @@ if __name__ == "__main__":
             train_parameters=train_parameters,
             wandb_run=wandb_run,
             batch_size=args.batch_size,
+            train_set=train_set,
         ),  # centralised evaluation of global model
         initial_parameters=initial_parameters,
         fit_metrics_aggregation_fn=agg_metrics_train,
     )
 
-    ray_num_cpus = 10
+    ray_num_cpus = 15
     ray_num_gpus = 3
     ram_memory = 16_000 * 1024 * 1024 * 2
 
