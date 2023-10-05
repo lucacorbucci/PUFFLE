@@ -413,6 +413,7 @@ class Utils:
         train_parameters: TrainParameters,
         wandb_run: wandb.sdk.wandb_run.Run,
         batch_size: int,
+        train_set,
     ) -> Callable[[fl.common.NDArrays], Optional[Tuple[float, float]]]:
         """Return an evaluation function for centralized evaluation."""
 
@@ -455,6 +456,43 @@ class Utils:
                         "FL Round": server_round,
                     }
                 )
+
+            # DEBUG REMOVE ME!!!!
+            # print("START DEBUG")
+            # testloader = torch.utils.data.DataLoader(
+            #     train_set,
+            #     batch_size=batch_size,
+            # )
+
+            # (
+            #     train_loss,
+            #     train_accuracy,
+            #     f1score,
+            #     precision,
+            #     recall,
+            #     max_disparity_test,
+            # ) = Learning.test(
+            #     model=model,
+            #     test_loader=testloader,
+            #     train_parameters=train_parameters,
+            #     current_epoch=server_round,
+            # )
+            # print("END DEBUG")
+
+            # if wandb_run:
+            #     wandb_run.log(
+            #         {
+            #             "Test Loss FULL Train Set": train_loss,
+            #             "Test Accuracy FULL Train Set": train_accuracy,
+            #             "Test F1 Score FULL Train Set": f1score,
+            #             "Test Precision FULL Train Set": precision,
+            #             "Test Recall FULL Train Set": recall,
+            #             "Test Max Disparity FULL Train Set": max_disparity_test,
+            #             "FL Round": server_round,
+            #         }
+            #     )
+            # print("LOGGED DEBUG")
+            #### END DEBUG REMOVE !!!!
 
             return test_loss, {"Test Accuracy": accuracy}
 
