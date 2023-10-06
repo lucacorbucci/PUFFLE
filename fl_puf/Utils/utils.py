@@ -118,6 +118,7 @@ class Utils:
         val_ratio: float = 0.0,
         alpha: float = 1,
         train_parameters: TrainParameters = None,
+        partition: str = "train",
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -263,9 +264,9 @@ class Utils:
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it
         splits_dir = path_to_dataset.parent / "federated"
-        if splits_dir.exists():
+        if splits_dir.exists() and partition == "train":
             shutil.rmtree(splits_dir)
-        Path.mkdir(splits_dir, parents=True)
+            Path.mkdir(splits_dir, parents=True)
 
         for p in range(pool_size):
             labels = partitions[p][2]
@@ -275,7 +276,8 @@ class Utils:
             imgs = [images[image_id] for image_id in image_idx]
 
             # create dir
-            Path.mkdir(splits_dir / str(p))
+            if not (splits_dir / str(p)).exists():
+                Path.mkdir(splits_dir / str(p))
 
             if val_ratio > 0.0:
                 # split data according to val_ratio
@@ -293,26 +295,32 @@ class Utils:
                 labels = labels[train_idx]
                 sensitive_features = sensitive_features[train_idx]
 
-            with open(splits_dir / str(p) / "train.pt", "wb") as f:
+            with open(
+                splits_dir
+                / str(p)
+                / ("train.pt" if partition == "train" else "test.pt"),
+                "wb",
+            ) as f:
                 torch.save([imgs, sensitive_features, labels], f)
 
         return splits_dir
 
     @staticmethod
     def prepare_dataset_for_FL(
-        train_set,
+        dataset,
         base_path: str,
         dataset_name: str,
+        partition: str = "train",
     ):
         # fuse all data splits into a single "training.pt"
         data_loc = Path(base_path) / f"{dataset_name}/{dataset_name}-10-batches-py"
-        train_path = data_loc / "training.pt"
+        train_path = data_loc / ("training.pt" if partition == "train" else "test.pt")
         print("Generating unified dataset")
         torch.save(
             [
-                train_set.samples,
-                np.array(train_set.gender),
-                np.array(train_set.targets),
+                dataset.samples,
+                np.array(dataset.gender),
+                np.array(dataset.targets),
             ],
             train_path,
         )
@@ -332,7 +340,7 @@ class Utils:
     ):
         """Generates trainset/valset object and returns appropiate dataloader."""
 
-        partition = "train" if is_train else "val"
+        partition = "train" if is_train else "test"
         dataset = Utils.get_dataset(Path(path_to_data), cid, partition, dataset)
 
         # we use as number of workers all the cpu cores assigned to this actor
@@ -420,6 +428,7 @@ class Utils:
         def evaluate(
             server_round: int, parameters: fl.common.NDArrays, config: Dict[str, Scalar]
         ) -> Optional[Tuple[float, float]]:
+            print("EVALUATE FUNCTION IS CALLED")
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
             model = ModelUtils.get_model(dataset_name, device)
@@ -493,7 +502,7 @@ class Utils:
             #     )
             # print("LOGGED DEBUG")
             #### END DEBUG REMOVE !!!!
-
+            print("evaluated model")
             return test_loss, {"Test Accuracy": accuracy}
 
         return evaluate

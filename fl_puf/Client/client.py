@@ -83,9 +83,6 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         sensitive_features = train_loader.dataset.sensitive_features
-        # print(
-        #     f"-------> Node {self.cid}, {Counter([item.item() for item in sensitive_features])}"
-        # )
 
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
@@ -160,6 +157,7 @@ class FlowerClient(fl.client.NumPyClient):
         all_metrics = []
         all_losses = []
         for epoch in range(0, self.train_parameters.epochs):
+            print(f"Training Epoch: {epoch}")
             metrics = Learning.train_private_model(
                 train_parameters=self.train_parameters,
                 model=private_net,
@@ -200,6 +198,7 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
+        print(f"Computed metrics on train data on node {self.cid}")
         probabilities, counters = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
@@ -207,6 +206,7 @@ class FlowerClient(fl.client.NumPyClient):
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
         )
+        print(f"Computed probabilities on node {self.cid}")
 
         del private_net
         if private_model_regularization:
@@ -232,7 +232,9 @@ class FlowerClient(fl.client.NumPyClient):
                 "Disparity Train": all_metrics[-1]["Max Disparity Train"],
                 "Lambda": self.train_parameters.DPL_lambda,
                 "counters": counters,
-                "Max Disparity Train Before Local Epoch": all_metrics[0]["Max Disparity Train Before Local Epoch"],
+                "Max Disparity Train Before Local Epoch": all_metrics[0][
+                    "Max Disparity Train Before Local Epoch"
+                ],
             },
         )
 

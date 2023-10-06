@@ -112,6 +112,16 @@ def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
     return config
 
 
+def evaluate_config(server_round: int = 0) -> Dict[str, Scalar]:
+    """Return a configuration with static batch size and (local) epochs."""
+    config = {
+        "epochs": args.epochs,  # number of local epochs
+        "batch_size": args.batch_size,
+        "dataset": args.dataset,
+    }
+    return config
+
+
 if __name__ == "__main__":
     # parse input arguments
     args = parser.parse_args()
@@ -124,7 +134,9 @@ if __name__ == "__main__":
     torch.cuda.manual_seed_all(args.seed)
     torch.cuda.manual_seed(args.seed)
     torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.benchmark = True
+
     os.environ["PYTHONHASHSEED"] = str(args.seed)
 
     pool_size = args.pool_size
@@ -142,9 +154,15 @@ if __name__ == "__main__":
         debug=args.debug,
     )
     train_path = Utils.prepare_dataset_for_FL(
-        train_set=train_set,
+        dataset=train_set,
         dataset_name=dataset_name,
         base_path=args.base_path,
+    )
+    test_path = Utils.prepare_dataset_for_FL(
+        dataset=test_set,
+        dataset_name=dataset_name,
+        base_path=args.base_path,
+        partition="test",
     )
 
     train_parameters = TrainParameters(
@@ -173,6 +191,8 @@ if __name__ == "__main__":
     # This will create a new directory called "federated": in the directory where
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
+
+    # Partitioning the training dataset
     fed_dir = Utils.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
@@ -182,6 +202,23 @@ if __name__ == "__main__":
         alpha=args.alpha,
         train_parameters=train_parameters,
     )
+    print(fed_dir)
+
+    print("TRAIN PATH: ", train_path)
+    print("TEST PATH: ", test_path)
+
+    # Partitioning the test dataset
+    fed_dir = Utils.do_fl_partitioning(
+        test_path,
+        pool_size=pool_size,
+        num_classes=2,
+        val_ratio=0,
+        partition_type=args.partition_type,
+        alpha=args.alpha,
+        train_parameters=train_parameters,
+        partition="test",
+    )
+    print(fed_dir)
     fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
     test = os.listdir(fed_dir)
@@ -205,6 +242,9 @@ if __name__ == "__main__":
     model = ModelUtils.get_model(dataset_name, "cuda")
     model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
+
+    def agg_metrics_evaluation(metrics: list, server_round: int) -> dict:
+        pass
 
     def agg_metrics_train(metrics: list, server_round: int) -> dict:
         # Collect all the FL Client metrics and weight them
@@ -403,21 +443,23 @@ if __name__ == "__main__":
 
     strategy = FedAvg(
         fraction_fit=args.sampled_clients,
-        fraction_evaluate=0,
+        fraction_evaluate=args.sampled_clients,
         min_fit_clients=args.sampled_clients,
         min_evaluate_clients=0,
         min_available_clients=args.sampled_clients,
         on_fit_config_fn=fit_config,
-        evaluate_fn=Utils.get_evaluate_fn(
-            test_set=test_set,
-            dataset_name=dataset_name,
-            train_parameters=train_parameters,
-            wandb_run=wandb_run,
-            batch_size=args.batch_size,
-            train_set=train_set,
-        ),  # centralised evaluation of global model
+        # evaluate_fn=Utils.get_evaluate_fn(
+        #     test_set=test_set,
+        #     dataset_name=dataset_name,
+        #     train_parameters=train_parameters,
+        #     wandb_run=wandb_run,
+        #     batch_size=args.batch_size,
+        #     train_set=train_set,
+        # ),  # centralised evaluation of global model
+        on_evaluate_config_fn=evaluate_config,
         initial_parameters=initial_parameters,
         fit_metrics_aggregation_fn=agg_metrics_train,
+        evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
     )
 
     ray_num_cpus = 15

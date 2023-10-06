@@ -53,8 +53,6 @@ ReconnectResultsAndFailures = Tuple[
 ]
 
 
-
-
 class Server:
     """Flower server."""
 
@@ -111,6 +109,7 @@ class Server:
                 timeout=timeout,
                 average_probabilities=average_probabilities,
             )
+
             if res_fit:
                 parameters_prime, fit_metrics, _ = res_fit  # fit_metrics_aggregated
                 if parameters_prime:
@@ -133,6 +132,8 @@ class Server:
                 print(
                     "====================================================================="
                 )
+            else:
+                print("ERROR")
 
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
