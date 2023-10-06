@@ -131,6 +131,7 @@ class SimpleClientManager(ClientManager):
         num_clients: int,
         min_num_clients: Optional[int] = None,
         criterion: Optional[Criterion] = None,
+        evaluation: bool = False,
     ) -> List[ClientProxy]:
         """Sample a number of Flower ClientProxy instances."""
         # Block until at least num_clients are connected.
@@ -153,16 +154,33 @@ class SimpleClientManager(ClientManager):
                 num_clients,
             )
             return []
+        if evaluation:
+            # If we are evaluating the model on the validation dataset
+            # we want to be sure that the model is evaluated on a different
+            # set of nodes. So, we pick nodes that are outside of the range
+            # start-end
+            if self.end > self.start:
+                available_cids = (
+                    available_cids[0 : self.start] + available_cids[self.end :]
+                )
+            else:
+                available_cids = (
+                    available_cids[0 : self.end] + available_cids[self.start :]
+                )
 
-        # sampled_cids = random.sample(available_cids, num_clients)
-        start = self.current_index % len(available_cids)
-        end = (self.current_index + num_clients) % len(available_cids)
-        print("___ start and end", start, end)
-
-        if end > start:
-            sampled_cids = available_cids[start:end]
+            sampled_cids = random.sample(available_cids, num_clients)
+            return sampled_cids
         else:
-            sampled_cids = available_cids[start:] + available_cids[:end]
-        print("===>>>> Sampled: ", sampled_cids)
-        self.current_index += num_clients
-        return [self.clients[cid] for cid in sampled_cids]
+            # If we are training, we want that each time we sample a different
+            # set of nodes. But, we want to be sure that we are sampling
+            # the clients the same amount of times.
+            self.start = self.current_index % len(available_cids)
+            self.end = (self.current_index + num_clients) % len(available_cids)
+
+            if self.end > self.start:
+                sampled_cids = available_cids[self.start : self.end]
+            else:
+                sampled_cids = available_cids[self.start :] + available_cids[: self.end]
+            print("===>>>> Sampled: ", sampled_cids)
+            self.current_index += num_clients
+            return [self.clients[cid] for cid in sampled_cids]
