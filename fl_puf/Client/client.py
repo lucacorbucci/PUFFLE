@@ -116,19 +116,19 @@ class FlowerClient(fl.client.NumPyClient):
         else:
             self.train_parameters.DPL_lambda = 0
 
-            # compute the disparity of the training dataset
-            disparities = []
-            for target in range(0, 1):
-                for sv in range(0, 1):
-                    disparities.append(
-                        RegularizationLoss().compute_violation_with_argmax(
-                            predictions_argmax=train_loader.dataset.targets,
-                            sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                            current_target=target,
-                            current_sensitive_feature=sv,
-                        )
+        # compute the disparity of the training dataset
+        disparities = []
+        for target in range(0, 1):
+            for sv in range(0, 1):
+                disparities.append(
+                    RegularizationLoss().compute_violation_with_argmax(
+                        predictions_argmax=train_loader.dataset.targets,
+                        sensitive_attribute_list=train_loader.dataset.sensitive_features,
+                        current_target=target,
+                        current_sensitive_feature=sv,
                     )
-            max_disparity_train = np.mean(disparities)
+                )
+        max_disparity_dataset = np.mean(disparities)
 
         (
             private_net,
@@ -255,7 +255,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
                 ],
-                "Max Disparity Dataset": max_disparity_train,
+                "Max Disparity Dataset": max_disparity_dataset,
             },
         )
 
