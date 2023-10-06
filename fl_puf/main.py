@@ -61,6 +61,7 @@ parser.add_argument("--cross_silo", type=bool, default=False)
 parser.add_argument("--weight_decay_lambda", type=float, default=None)
 parser.add_argument("--sweep", type=bool, default=False)
 parser.add_argument("--validation_ratio", type=float, default=0)
+parser.add_argument("--optimizer", type=str, default=0)
 
 
 # DPL:
@@ -517,6 +518,17 @@ if __name__ == "__main__":
                                 f"Lambda Client {cid}": lambda_client,
                             }
                         )
+
+        for _, metric in metrics:
+            cid = metric["cid"]
+            disparity = metric["Max Disparity Dataset"]
+            if disparity and wandb_run:
+                wandb_run.log(
+                    {
+                        "FL Round": server_round,
+                        f"Disparity Training Set Client {cid}": disparity,
+                    }
+                )
 
         for _, metric in metrics:
             cid = metric["cid"]

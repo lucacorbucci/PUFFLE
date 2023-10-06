@@ -1,0 +1,51 @@
+program: main.py
+method: random
+metric:
+  name: Loss_validation
+  goal: minimize
+early_terminate:
+  type: hyperband
+  min_iter: 5
+parameters:
+  num_rounds:
+    type: int
+    min: 20
+    max: 100
+  epochs:
+    type: int
+    min: 1
+    max: 5
+  batch_size:
+    type: int
+    min: 128
+    max: 512
+  lr:
+    type: float
+    min: 0.0001
+    max: 0.1
+  noise_multiplier:
+    type: float
+    min: 0.5
+    max: 3.0
+  clipping:
+    type: float
+    min: 1
+    max: 50
+  weight_decay_lambda:
+    type: float
+    min: 0.0001
+    max: 0.1
+  alpha_target_lambda:
+    type: float
+    min: 0.1
+    max: 3.0
+  optimizer:
+    values: ["adam", "sgd", "adamw"]
+
+command:
+  - ${env}
+  - poetry 
+  - run 
+  - python
+  - ${program}
+  - ${args}

@@ -45,20 +45,33 @@ class FlowerClient(fl.client.NumPyClient):
         self.net = ModelUtils.get_model(
             dataset_name, device=self.train_parameters.device
         )
-        self.optimizer = torch.optim.SGD(
-            self.net.parameters(),
-            lr=self.lr,
-        )
+        self.optimizer = self.get_optimizer()
 
         if self.train_parameters.DPL:
             self.model_regularization = ModelUtils.get_model(
                 self.dataset_name,
                 device=self.train_parameters.device,
             )
-            self.optimizer_regularization = torch.optim.SGD(
-                self.model_regularization.parameters(),
+            self.optimizer_regularization = self.get_optimizer()
+
+    def get_optimizer(self):
+        if self.train_parameters.optimizer == "adam":
+            return torch.optim.Adam(
+                self.net.parameters(),
                 lr=self.lr,
             )
+        elif self.train_parameters.optimizer == "sgd":
+            return torch.optim.SGD(
+                self.net.parameters(),
+                lr=self.lr,
+            )
+        elif self.train_parameters.optimizer == "adamW":
+            return torch.optim.AdamW(
+                self.net.parameters(),
+                lr=self.lr,
+            )
+        else:
+            raise ValueError("Optimizer not recognized")
 
     def get_parameters(self, config):
         return Utils.get_params(self.net)
@@ -82,8 +95,6 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
-        sensitive_features = train_loader.dataset.sensitive_features
-
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
 
@@ -94,20 +105,34 @@ class FlowerClient(fl.client.NumPyClient):
         ) and os.path.exists(
             f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
         ):
-            # print("LOADING PRIVACY ENGINE")
             with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
                 loaded_privacy_engine = dill.load(file)
             with open(
                 f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
             ) as file:
                 loaded_privacy_engine_regularization = dill.load(file)
+        else:
+            self.train_parameters.DPL_lambda = 0
 
-        if (
-            os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl")
-            and self.train_parameters.cross_silo
-        ):
-            with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "rb") as file:
-                self.train_parameters.DPL_lambda = dill.load(file)
+            # compute the disparity of the training dataset
+            disparities = []
+            for target in range(0, 1):
+                for sv in range(0, 1):
+                    disparities.append(
+                        RegularizationLoss.compute_violation_with_argmax(
+                            predictions_argmax=train_loader.dataset.targets,
+                            sensitive_attribute_list=train_loader.dataset.sensitive_attributes,
+                            current_target=target,
+                            current_sensitive_feature=sv,
+                        )
+                    )
+            max_disparity_train = np.mean(disparities)
+        # if (
+        #     os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl")
+        #     and self.train_parameters.cross_silo
+        # ):
+        #     with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "rb") as file:
+        #         self.train_parameters.DPL_lambda = dill.load(file)
 
         (
             private_net,
@@ -150,7 +175,6 @@ class FlowerClient(fl.client.NumPyClient):
                 accountant=loaded_privacy_engine_regularization,
             )
             private_model_regularization.to(self.train_parameters.device)
-            # print(f"Created private model for regularization on node {self.cid}")
 
         gc.collect()
 
@@ -184,8 +208,8 @@ class FlowerClient(fl.client.NumPyClient):
         ) as f:
             dill.dump(privacy_engine_regularization.accountant, f)
 
-        with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
-            dill.dump(self.train_parameters.DPL_lambda, f)
+        # with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
+        #     dill.dump(self.train_parameters.DPL_lambda, f)
 
         (
             predictions,
@@ -235,6 +259,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
                 ],
+                "Max Disparity Dataset": max_disparity_train,
             },
         )
 
