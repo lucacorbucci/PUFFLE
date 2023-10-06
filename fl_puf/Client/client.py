@@ -270,8 +270,38 @@ class FlowerClient(fl.client.NumPyClient):
             current_epoch=None,
         )
 
+        (
+            predictions,
+            sensitive_attributes,
+            possible_targets,
+            possible_sensitive_attributes,
+        ) = Learning.test_prediction(
+            model=self.net,
+            test_loader=valloader,
+            train_parameters=self.train_parameters,
+            current_epoch=None,
+        )
+        probabilities, counters = RegularizationLoss.compute_probabilities(
+            predictions=predictions,
+            sensitive_attribute_list=sensitive_attributes,
+            device=self.train_parameters.device,
+            possible_sensitive_attributes=possible_sensitive_attributes,
+            possible_targets=possible_targets,
+        )
+
         self.net.to("cpu")
         gc.collect()
 
         # Return statistics
-        return float(test_loss), len(valloader.dataset), {"accuracy": float(accuracy)}
+        return (
+            float(test_loss),
+            len(valloader.dataset),
+            {
+                "accuracy": float(accuracy),
+                "max_disparity_test": float(max_disparity_test),
+                "test_loss": test_loss,
+                "probabilities": probabilities,
+                "cid": self.cid,
+                "counters": counters,
+            },
+        )
