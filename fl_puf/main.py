@@ -59,6 +59,7 @@ parser.add_argument("--alpha_target_lambda", type=float, default=None)
 parser.add_argument("--target", type=float, default=None)
 parser.add_argument("--cross_silo", type=bool, default=False)
 parser.add_argument("--weight_decay_lambda", type=float, default=None)
+parser.add_argument("--sweep", type=bool, default=False)
 
 
 # DPL:
@@ -184,6 +185,7 @@ if __name__ == "__main__":
         alpha=args.alpha_target_lambda,
         cross_silo=args.cross_silo,
         weight_decay_lambda=args.weight_decay_lambda,
+        sweep=args.sweep,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -244,7 +246,57 @@ if __name__ == "__main__":
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
     def agg_metrics_evaluation(metrics: list, server_round: int) -> dict:
-        pass
+        total_examples = sum([n_examples for n_examples, _ in metrics])
+
+        losses_evaluation = (
+            sum([n_examples * metric["test_loss"] for n_examples, metric in metrics])
+            / total_examples
+        )
+        accuracies = (
+            sum(
+                [n_examples * metric["test_accuracy"] for n_examples, metric in metrics]
+            )
+            / total_examples
+        )
+        max_disparity_average = np.mean(
+            [metric["max_disparity_test"] for n_examples, metric in metrics]
+        )
+
+        combinations = ["0|0", "0|1", "1|0", "1|1"]
+        targets = ["0", "1"]
+
+        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters"]
+            for combination in combinations:
+                sum_counters[combination] += metric[combination]
+            for target in targets:
+                sum_targets[target] += metric[target]
+        disparities = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+        agg_metrics = {
+            "Test Loss": losses_evaluation,
+            "Test Accuracy": accuracies,
+            "Average Test Disparity with values": max_disparity_average,
+            "Aggregated Test Disparity with statistics": disparities,
+            "FL Round": server_round,
+        }
+
+        if wandb_run:
+            wandb_run.log(agg_metrics)
+        return agg_metrics
 
     def agg_metrics_train(metrics: list, server_round: int) -> dict:
         # Collect all the FL Client metrics and weight them
@@ -448,14 +500,14 @@ if __name__ == "__main__":
         min_evaluate_clients=0,
         min_available_clients=args.sampled_clients,
         on_fit_config_fn=fit_config,
-        # evaluate_fn=Utils.get_evaluate_fn(
-        #     test_set=test_set,
-        #     dataset_name=dataset_name,
-        #     train_parameters=train_parameters,
-        #     wandb_run=wandb_run,
-        #     batch_size=args.batch_size,
-        #     train_set=train_set,
-        # ),  # centralised evaluation of global model
+        evaluate_fn=Utils.get_evaluate_fn(
+            test_set=test_set,
+            dataset_name=dataset_name,
+            train_parameters=train_parameters,
+            wandb_run=wandb_run,
+            batch_size=args.batch_size,
+            train_set=train_set,
+        ),  # centralised evaluation of global model
         on_evaluate_config_fn=evaluate_config,
         initial_parameters=initial_parameters,
         fit_metrics_aggregation_fn=agg_metrics_train,
