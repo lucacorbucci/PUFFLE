@@ -76,10 +76,10 @@ class FlowerClient(fl.client.NumPyClient):
         train_loader = Utils.get_dataloader(
             self.fed_dir,
             self.cid,
-            is_train=True,
             batch_size=config["batch_size"],
             workers=num_workers,
             dataset=self.dataset_name,
+            partition="train",
         )
 
         sensitive_features = train_loader.dataset.sensitive_features
@@ -239,18 +239,22 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
     def evaluate(self, parameters, config):
+        print(f"CALLING EVALUATE FUNCTION on node {self.cid}")
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
         num_workers = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
+
         valloader = Utils.get_dataloader(
             self.fed_dir,
             self.cid,
-            is_train=False,
             batch_size=self.train_parameters.batch_size,
             workers=num_workers,
             dataset=self.dataset_name,
+            partition="val" if self.train_parameters.sweep else "test",
         )
+
+        print(f"USING PARTITION {'val' if self.train_parameters.sweep else 'test'}")
 
         # Send model to device
         self.net.to(self.train_parameters.device)
@@ -262,7 +266,7 @@ class FlowerClient(fl.client.NumPyClient):
             f1score,
             precision,
             recall,
-            max_disparity_test,
+            max_disparity,
         ) = Learning.test(
             model=self.net,
             test_loader=valloader,
@@ -292,16 +296,28 @@ class FlowerClient(fl.client.NumPyClient):
         self.net.to("cpu")
         gc.collect()
 
-        # Return statistics
-        return (
-            float(test_loss),
-            len(valloader.dataset),
-            {
+        if self.train_parameters.sweep:
+            metrics = {
+                "validation_accuracy": float(accuracy),
+                "max_disparity_validation": float(max_disparity),
+                "validation_loss": test_loss,
+                "probabilities": probabilities,
+                "cid": self.cid,
+                "counters": counters,
+            }
+        else:
+            metrics = {
                 "test_accuracy": float(accuracy),
-                "max_disparity_test": float(max_disparity_test),
+                "max_disparity_test": float(max_disparity),
                 "test_loss": test_loss,
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
-            },
+            }
+
+        # Return statistics
+        return (
+            float(test_loss),
+            len(valloader.dataset),
+            metrics,
         )

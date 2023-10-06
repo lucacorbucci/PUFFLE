@@ -333,14 +333,21 @@ class Utils:
     def get_dataloader(
         path_to_data: str,
         cid: str,
-        is_train: bool,
+        # is_train: bool,
         batch_size: int,
         workers: int,
         dataset: str,
+        partition: str = "train",
     ):
         """Generates trainset/valset object and returns appropiate dataloader."""
 
-        partition = "train" if is_train else "test"
+        partition = (
+            "train"
+            if partition == "train"
+            else "test"
+            if partition == "test"
+            else "val"
+        )
         dataset = Utils.get_dataset(Path(path_to_data), cid, partition, dataset)
 
         # we use as number of workers all the cpu cores assigned to this actor

@@ -60,6 +60,7 @@ parser.add_argument("--target", type=float, default=None)
 parser.add_argument("--cross_silo", type=bool, default=False)
 parser.add_argument("--weight_decay_lambda", type=float, default=None)
 parser.add_argument("--sweep", type=bool, default=False)
+parser.add_argument("--validation_ratio", type=float, default=0)
 
 
 # DPL:
@@ -194,33 +195,38 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
 
+    if (
+        args.sweep
+        and not args.validation_ratio
+        or args.validation_ratio
+        and not args.sweep
+    ):
+        raise Exception("When doing validation, sweep must be True and viceversa")
+
     # Partitioning the training dataset
     fed_dir = Utils.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
         num_classes=2,
-        val_ratio=0,
+        val_ratio=args.validation_ratio,
         partition_type=args.partition_type,
         alpha=args.alpha,
         train_parameters=train_parameters,
     )
-    print(fed_dir)
 
-    print("TRAIN PATH: ", train_path)
-    print("TEST PATH: ", test_path)
-
-    # Partitioning the test dataset
-    fed_dir = Utils.do_fl_partitioning(
-        test_path,
-        pool_size=pool_size,
-        num_classes=2,
-        val_ratio=0,
-        partition_type=args.partition_type,
-        alpha=args.alpha,
-        train_parameters=train_parameters,
-        partition="test",
-    )
-    print(fed_dir)
+    if not args.validation_ratio:
+        # Partitioning the test dataset
+        fed_dir = Utils.do_fl_partitioning(
+            test_path,
+            pool_size=pool_size,
+            num_classes=2,
+            val_ratio=0,
+            partition_type=args.partition_type,
+            alpha=args.alpha,
+            train_parameters=train_parameters,
+            partition="test",
+        )
+        print(fed_dir)
     fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
     test = os.listdir(fed_dir)
@@ -249,17 +255,40 @@ if __name__ == "__main__":
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
         losses_evaluation = (
-            sum([n_examples * metric["test_loss"] for n_examples, metric in metrics])
+            sum(
+                [
+                    n_examples
+                    * metric[
+                        "test_loss" if not train_parameters.sweep else "validation_loss"
+                    ]
+                    for n_examples, metric in metrics
+                ]
+            )
             / total_examples
         )
         accuracies = (
             sum(
-                [n_examples * metric["test_accuracy"] for n_examples, metric in metrics]
+                [
+                    n_examples
+                    * metric[
+                        "test_accuracy"
+                        if not train_parameters.sweep
+                        else "validation_accuracy"
+                    ]
+                    for n_examples, metric in metrics
+                ]
             )
             / total_examples
         )
         max_disparity_average = np.mean(
-            [metric["max_disparity_test"] for n_examples, metric in metrics]
+            [
+                metric[
+                    "max_disparity_test"
+                    if not train_parameters.sweep
+                    else "max_disparity_validation"
+                ]
+                for n_examples, metric in metrics
+            ]
         )
 
         combinations = ["0|0", "0|1", "1|0", "1|1"]
@@ -286,13 +315,22 @@ if __name__ == "__main__":
                 - sum_counters["1|0"] / sum_targets["0"],
             ]
         )
-        agg_metrics = {
-            "Test Loss": losses_evaluation,
-            "Test Accuracy": accuracies,
-            "Average Test Disparity with values": max_disparity_average,
-            "Aggregated Test Disparity with statistics": disparities,
-            "FL Round": server_round,
-        }
+        if train_parameters.sweep:
+            agg_metrics = {
+                "Validation Loss": losses_evaluation,
+                "Validation Accuracy": accuracies,
+                "Average Validation Disparity with values": max_disparity_average,
+                "Aggregated Validation Disparity with statistics": disparities,
+                "FL Round": server_round,
+            }
+        else:
+            agg_metrics = {
+                "Test Loss": losses_evaluation,
+                "Test Accuracy": accuracies,
+                "Average Test Disparity with values": max_disparity_average,
+                "Aggregated Test Disparity with statistics": disparities,
+                "FL Round": server_round,
+            }
 
         if wandb_run:
             wandb_run.log(agg_metrics)

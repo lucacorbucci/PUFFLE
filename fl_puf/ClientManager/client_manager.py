@@ -169,7 +169,9 @@ class SimpleClientManager(ClientManager):
                 )
 
             sampled_cids = random.sample(available_cids, num_clients)
-            return sampled_cids
+            print("===>>>> Sampled for Validation/Test: ", sampled_cids)
+
+            return [self.clients[cid] for cid in sampled_cids]
         else:
             # If we are training, we want that each time we sample a different
             # set of nodes. But, we want to be sure that we are sampling
@@ -181,6 +183,6 @@ class SimpleClientManager(ClientManager):
                 sampled_cids = available_cids[self.start : self.end]
             else:
                 sampled_cids = available_cids[self.start :] + available_cids[: self.end]
-            print("===>>>> Sampled: ", sampled_cids)
+            print("===>>>> Sampled for training: ", sampled_cids)
             self.current_index += num_clients
             return [self.clients[cid] for cid in sampled_cids]
