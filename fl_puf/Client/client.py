@@ -45,29 +45,31 @@ class FlowerClient(fl.client.NumPyClient):
         self.net = ModelUtils.get_model(
             dataset_name, device=self.train_parameters.device
         )
-        self.optimizer = self.get_optimizer()
+        self.optimizer = self.get_optimizer(model=self.net)
 
         if self.train_parameters.DPL:
             self.model_regularization = ModelUtils.get_model(
                 self.dataset_name,
                 device=self.train_parameters.device,
             )
-            self.optimizer_regularization = self.get_optimizer()
+            self.optimizer_regularization = self.get_optimizer(
+                model=self.model_regularization
+            )
 
-    def get_optimizer(self):
+    def get_optimizer(self, model):
         if self.train_parameters.optimizer == "adam":
             return torch.optim.Adam(
-                self.net.parameters(),
+                model.parameters(),
                 lr=self.lr,
             )
         elif self.train_parameters.optimizer == "sgd":
             return torch.optim.SGD(
-                self.net.parameters(),
+                model.parameters(),
                 lr=self.lr,
             )
         elif self.train_parameters.optimizer == "adamW":
             return torch.optim.AdamW(
-                self.net.parameters(),
+                model.parameters(),
                 lr=self.lr,
             )
         else:
@@ -119,20 +121,14 @@ class FlowerClient(fl.client.NumPyClient):
             for target in range(0, 1):
                 for sv in range(0, 1):
                     disparities.append(
-                        RegularizationLoss.compute_violation_with_argmax(
+                        RegularizationLoss().compute_violation_with_argmax(
                             predictions_argmax=train_loader.dataset.targets,
-                            sensitive_attribute_list=train_loader.dataset.sensitive_attributes,
+                            sensitive_attribute_list=train_loader.dataset.sensitive_features,
                             current_target=target,
                             current_sensitive_feature=sv,
                         )
                     )
             max_disparity_train = np.mean(disparities)
-        # if (
-        #     os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl")
-        #     and self.train_parameters.cross_silo
-        # ):
-        #     with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "rb") as file:
-        #         self.train_parameters.DPL_lambda = dill.load(file)
 
         (
             private_net,
@@ -208,8 +204,8 @@ class FlowerClient(fl.client.NumPyClient):
         ) as f:
             dill.dump(privacy_engine_regularization.accountant, f)
 
-        # with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
-        #     dill.dump(self.train_parameters.DPL_lambda, f)
+        with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
+            dill.dump(self.train_parameters.DPL_lambda, f)
 
         (
             predictions,
