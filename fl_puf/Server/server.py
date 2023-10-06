@@ -110,6 +110,7 @@ class Server:
                 average_probabilities=average_probabilities,
             )
 
+            # Aggregate the metrics coming from the nodes that have been trained
             if res_fit:
                 parameters_prime, fit_metrics, _ = res_fit  # fit_metrics_aggregated
                 if parameters_prime:
@@ -123,19 +124,10 @@ class Server:
                 print(
                     "====================================================================="
                 )
-                print(
-                    "====================================================================="
-                )
-                print(
-                    "====================================================================="
-                )
-                print(
-                    "====================================================================="
-                )
             else:
                 print("ERROR")
 
-            # Evaluate model using strategy implementation
+            # Evaluate model on the server using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
             if res_cen is not None:
                 loss_cen, metrics_cen = res_cen
