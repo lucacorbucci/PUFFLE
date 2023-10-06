@@ -207,7 +207,9 @@ class FedAvg(Strategy):
             client_manager.num_available()
         )
         clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
+            num_clients=sample_size,
+            min_num_clients=min_num_clients,
+            evaluation=True,
         )
 
         # Return client/config pairs
