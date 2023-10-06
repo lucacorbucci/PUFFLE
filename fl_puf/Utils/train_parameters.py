@@ -24,3 +24,4 @@ class TrainParameters:
     partition_ratio: int = None
     cross_silo: bool = False
     weight_decay_lambda: float = 0.01
+    sweep: bool = False
