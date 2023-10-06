@@ -297,7 +297,7 @@ class FlowerClient(fl.client.NumPyClient):
             float(test_loss),
             len(valloader.dataset),
             {
-                "accuracy": float(accuracy),
+                "test_accuracy": float(accuracy),
                 "max_disparity_test": float(max_disparity_test),
                 "test_loss": test_loss,
                 "probabilities": probabilities,
