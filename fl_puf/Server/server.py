@@ -146,7 +146,6 @@ class Server:
 
             # Evaluate model on a sample of available clients
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
-            print(res_fed)
             if res_fed:
                 loss_fed, evaluate_metrics_fed, _ = res_fed
                 if loss_fed:
@@ -441,7 +440,6 @@ def evaluate_client(
     timeout: Optional[float],
 ) -> Tuple[ClientProxy, EvaluateRes]:
     """Evaluate parameters on a single client."""
-    print(type(client))
     evaluate_res = client.evaluate(ins, timeout=timeout)
     return client, evaluate_res
 
