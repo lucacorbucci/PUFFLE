@@ -463,12 +463,12 @@ class Utils:
             if wandb_run:
                 wandb_run.log(
                     {
-                        "Test Loss": test_loss,
-                        "Test Accuracy": accuracy,
-                        "Test F1 Score": f1score,
-                        "Test Precision": precision,
-                        "Test Recall": recall,
-                        "Test Max Disparity": max_disparity_test,
+                        "Centralised Test Loss": test_loss,
+                        "Centralised Test Accuracy": accuracy,
+                        "Centralised Test F1 Score": f1score,
+                        "Centralised Test Precision": precision,
+                        "Centralised Test Recall": recall,
+                        "Centralised Test Max Disparity": max_disparity_test,
                         "FL Round": server_round,
                     }
                 )
