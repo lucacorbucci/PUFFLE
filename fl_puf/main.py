@@ -163,7 +163,7 @@ if __name__ == "__main__":
         dataset=test_set,
         dataset_name=dataset_name,
         base_path=args.base_path,
-        partition="test",
+        partition="test"
     )
 
     train_parameters = TrainParameters(
@@ -213,19 +213,19 @@ if __name__ == "__main__":
         train_parameters=train_parameters,
     )
 
-    # if not args.validation_ratio:
-    #     # Partitioning the test dataset
-    #     fed_dir = Utils.do_fl_partitioning(
-    #         test_path,
-    #         pool_size=pool_size,
-    #         num_classes=2,
-    #         val_ratio=0,
-    #         partition_type=args.partition_type,
-    #         alpha=args.alpha,
-    #         train_parameters=train_parameters,
-    #         partition="test",
-    #     )
-    #     print(fed_dir)
+    if not args.validation_ratio:
+        # Partitioning the test dataset
+        fed_dir = Utils.do_fl_partitioning(
+            test_path,
+            pool_size=pool_size,
+            num_classes=2,
+            val_ratio=0,
+            partition_type=args.partition_type,
+            alpha=args.alpha,
+            train_parameters=train_parameters,
+            partition="test",
+        )
+        print(fed_dir)
     fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
     test = os.listdir(fed_dir)
@@ -478,12 +478,12 @@ if __name__ == "__main__":
             "train_accuracy": sum(accuracies) / total_examples,
             "train_loss_with_regularization": sum(losses_with_regularization)
             / total_examples,
-            "average_probabilities": average_probabilities,
+            # "average_probabilities": average_probabilities,
             "max_disparity_train": sum(max_disparity_train) / len(max_disparity_train),
             "std_max_disparity_train": np.std(
                 [item.item() for item in max_disparity_train]
             ),
-            "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
+            # "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
         }
         print(f"Aggregated metrics {agg_metrics}")
         if wandb_run:
@@ -497,7 +497,7 @@ if __name__ == "__main__":
                     "Train Epsilon": max(epsilon_list),
                     "FL Round": server_round,
                     "Disparity Training": agg_metrics["max_disparity_train"],
-                    "Aggregated Lambda": agg_metrics["Aggregated Lambda"],
+                    # "Aggregated Lambda": agg_metrics["Aggregated Lambda"],
                 }
             )
         from pathlib import Path
@@ -543,7 +543,7 @@ if __name__ == "__main__":
 
     strategy = FedAvg(
         fraction_fit=args.sampled_clients,
-        fraction_evaluate=0, #args.sampled_clients,
+        fraction_evaluate=args.sampled_clients,
         min_fit_clients=args.sampled_clients,
         min_evaluate_clients=0,
         min_available_clients=args.sampled_clients,
