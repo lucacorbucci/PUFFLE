@@ -25,4 +25,4 @@ class TrainParameters:
     cross_silo: bool = False
     weight_decay_lambda: float = 0.01
     sweep: bool = False
-    optimizer: str = "adam"
+    optimizer: str = "sgd"
