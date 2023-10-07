@@ -97,6 +97,8 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
+        sensitive_features = train_loader.dataset.sensitive_features
+
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
 
@@ -117,18 +119,17 @@ class FlowerClient(fl.client.NumPyClient):
             self.train_parameters.DPL_lambda = 0
 
         # compute the disparity of the training dataset
-        disparities = []
-        for target in range(0, 1):
-            for sv in range(0, 1):
-                disparities.append(
-                    RegularizationLoss().compute_violation_with_argmax(
-                        predictions_argmax=train_loader.dataset.targets,
-                        sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                        current_target=target,
-                        current_sensitive_feature=sv,
-                    )
-                )
-        max_disparity_dataset = np.mean(disparities)
+        disparities_training_dataset = [
+            RegularizationLoss().compute_violation_with_argmax(
+                predictions_argmax=train_loader.dataset.targets,
+                sensitive_attribute_list=train_loader.dataset.sensitive_features,
+                current_target=target,
+                current_sensitive_feature=sv,
+            )
+            for target in range(0, 1)
+            for sv in range(0, 1)
+        ]
+        max_disparity_dataset = np.mean(disparities_training_dataset)
 
         (
             private_net,
