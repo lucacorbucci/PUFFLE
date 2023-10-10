@@ -119,7 +119,7 @@ class Server:
                     server_round=current_round,
                     metrics=fit_metrics,
                 )
-                average_probabilities = fit_metrics.get("average_probabilities", None)
+                average_probabilities = fit_metrics.get("Average Probabilities", None)
                 print(f"Average probabilities da inviare {average_probabilities}")
                 print(
                     "====================================================================="

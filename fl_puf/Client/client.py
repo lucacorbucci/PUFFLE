@@ -97,10 +97,12 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
-        sensitive_features = train_loader.dataset.sensitive_features
+        # sensitive_features = train_loader.dataset.sensitive_features
 
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
+        first_round = False
+       
 
         # If we already used this client we need to load the state regarding
         # the private model
@@ -116,20 +118,22 @@ class FlowerClient(fl.client.NumPyClient):
             ) as file:
                 loaded_privacy_engine_regularization = dill.load(file)
         else:
+            # If it is the first time that we use this client we use a Lambda = 0
             self.train_parameters.DPL_lambda = 0
+            first_round = True
 
-        # compute the disparity of the training dataset
-        disparities_training_dataset = [
-            RegularizationLoss().compute_violation_with_argmax(
-                predictions_argmax=train_loader.dataset.targets,
-                sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                current_target=target,
-                current_sensitive_feature=sv,
-            )
-            for target in range(0, 1)
-            for sv in range(0, 1)
-        ]
-        max_disparity_dataset = np.mean(disparities_training_dataset)
+            # compute the disparity of the training dataset
+            disparities_training_dataset = [
+                RegularizationLoss().compute_violation_with_argmax(
+                    predictions_argmax=train_loader.dataset.targets,
+                    sensitive_attribute_list=train_loader.dataset.sensitive_features,
+                    current_target=target,
+                    current_sensitive_feature=sv,
+                )
+                for target in range(0, 1)
+                for sv in range(0, 1)
+            ]
+            max_disparity_dataset = np.mean(disparities_training_dataset)
 
         (
             private_net,
@@ -152,6 +156,21 @@ class FlowerClient(fl.client.NumPyClient):
 
         private_model_regularization = None
         private_optimizer_regularization = None
+
+        # Use the model sent by the server to compute the initial Lambda:
+        max_disparity_train_before_local_epoch = (
+            RegularizationLoss().violation_with_dataset(
+                private_net, train_loader, self.train_parameters.device,
+            )
+        )
+
+        # In the first round we want to use Lambda=0, then in the following ones 
+        # we want to compute the actual disparity of the model sent by the server
+        # on the training dataset and then use it to compute the Lambda.
+        # In particular we subtract the disparity of the model sent by the server
+        # from the target disparity.
+        if not first_round:
+            self.train_parameters.DPL_lambda = self.train_parameters.target - max_disparity_train_before_local_epoch
 
         if self.train_parameters.DPL:
             (
@@ -178,7 +197,6 @@ class FlowerClient(fl.client.NumPyClient):
         all_metrics = []
         all_losses = []
         for epoch in range(0, self.train_parameters.epochs):
-            print(f"Training Epoch: {epoch}")
             metrics = Learning.train_private_model(
                 train_parameters=self.train_parameters,
                 model=private_net,
@@ -191,6 +209,8 @@ class FlowerClient(fl.client.NumPyClient):
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
             )
+            metrics["Max Disparity Train Before Local Epoch"] = max_disparity_train_before_local_epoch
+
             all_metrics.append(metrics)
             all_losses.append(metrics["Train Loss"])
 
@@ -219,7 +239,6 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        print(f"Computed metrics on train data on node {self.cid}")
         probabilities, counters = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
@@ -227,7 +246,6 @@ class FlowerClient(fl.client.NumPyClient):
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
         )
-        print(f"Computed probabilities on node {self.cid}")
 
         del private_net
         if private_model_regularization:
@@ -261,7 +279,6 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
     def evaluate(self, parameters, config):
-        print(f"CALLING EVALUATE FUNCTION on node {self.cid}")
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -276,7 +293,6 @@ class FlowerClient(fl.client.NumPyClient):
             partition="val" if self.train_parameters.sweep else "test",
         )
 
-        print(f"USING PARTITION {'val' if self.train_parameters.sweep else 'test'}")
 
         # Send model to device
         self.net.to(self.train_parameters.device)

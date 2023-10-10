@@ -72,6 +72,8 @@ class FedAvg(Strategy):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        current_max_epsilon: float = 0.0,
+        fed_dir: str = None,
     ) -> None:
         """Federated Averaging strategy.
 
@@ -116,6 +118,8 @@ class FedAvg(Strategy):
         ):
             log(WARNING, WARNING_MIN_AVAILABLE_CLIENTS_TOO_LOW)
 
+        self.fed_dir = fed_dir
+        self.current_max_expsilon = current_max_epsilon
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
         self.min_fit_clients = min_fit_clients
@@ -240,7 +244,7 @@ class FedAvg(Strategy):
         if self.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(
-                fit_metrics, server_round
+                fit_metrics, server_round, self.current_max_expsilon, self.fed_dir
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")

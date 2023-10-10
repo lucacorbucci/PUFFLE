@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import warnings
+from pathlib import Path
 from typing import Dict
 
 import dill
@@ -139,7 +140,7 @@ if __name__ == "__main__":
     torch.backends.cudnn.deterministic = True
 
     os.environ["PYTHONHASHSEED"] = str(args.seed)
-
+    current_max_epsilon = 0
     pool_size = args.pool_size
     client_resources = {
         "num_cpus": args.num_client_cpus,
@@ -226,7 +227,7 @@ if __name__ == "__main__":
             partition="test",
         )
         print(fed_dir)
-    fed_dir = "../data/celeba/celeba-10-batches-py/federated"
+    # fed_dir = "../data/celeba/celeba-10-batches-py/federated"
 
     test = os.listdir(fed_dir)
 
@@ -253,7 +254,7 @@ if __name__ == "__main__":
     def agg_metrics_evaluation(metrics: list, server_round: int) -> dict:
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        losses_evaluation = (
+        loss_evaluation = (
             sum(
                 [
                     n_examples
@@ -265,7 +266,7 @@ if __name__ == "__main__":
             )
             / total_examples
         )
-        accuracies = (
+        accuracy_evaluation = (
             sum(
                 [
                     n_examples
@@ -316,18 +317,18 @@ if __name__ == "__main__":
         )
         if train_parameters.sweep:
             agg_metrics = {
-                "Validation Loss": losses_evaluation,
-                "Validation Accuracy": accuracies,
-                "Average Validation Disparity with values": max_disparity_average,
-                "Aggregated Validation Disparity with statistics": disparities,
+                "Validation Loss": loss_evaluation,
+                "Validation Accuracy": accuracy_evaluation,
+                "Validation Disparity with average": max_disparity_average,
+                "Validation Disparity with statistics": disparities,
                 "FL Round": server_round,
             }
         else:
             agg_metrics = {
-                "Test Loss": losses_evaluation,
-                "Test Accuracy": accuracies,
-                "Average Test Disparity with values": max_disparity_average,
-                "Aggregated Test Disparity with statistics": disparities,
+                "Test Loss": loss_evaluation,
+                "Test Accuracy": accuracy_evaluation,
+                "Test Disparity with average": max_disparity_average,
+                "Test Disparity with statistics": disparities,
                 "FL Round": server_round,
             }
 
@@ -335,106 +336,70 @@ if __name__ == "__main__":
             wandb_run.log(agg_metrics)
         return agg_metrics
 
-    def agg_metrics_train(metrics: list, server_round: int) -> dict:
-        # Collect all the FL Client metrics and weight them
-        all_losses = []
-        for n_examples, node_metrics in metrics:
-            losses_node = [
-                n_examples * metric for metric in node_metrics["train_losses"]
-            ]
-            all_losses.append(losses_node)
-
-        all_losses = np.array(all_losses)
-        sum_losses = np.sum(all_losses, axis=0)
-
-        if wandb_run:
-            for index, loss in enumerate(sum_losses):
-                wandb_run.log(
-                    {
-                        "Loss Epochs": loss,
-                        "Epoch": (server_round - 1) * len(sum_losses) + index,
-                    }
-                )
-
-        losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
-        losses_with_regularization = [
-            n_examples * metric["train_loss_with_regularization"]
-            for n_examples, metric in metrics
-        ]
-        epsilon_list = [metric["epsilon"] for _, metric in metrics]
-        accuracies = [
-            n_examples * metric["train_accuracy"] for n_examples, metric in metrics
-        ]
-        lambda_list = [metric["Lambda"] for _, metric in metrics]
-
-        max_disparity_train = [
-            metric["Disparity Train"] for n_examples, metric in metrics
-        ]
-
-        for n_examples, metric in metrics:
-            client_id = metric["cid"]
-            disparity_client = metric["Disparity Train"]
-            disparity_client_before_local_epoch = metric[
-                "Max Disparity Train Before Local Epoch"
-            ]
-            if wandb_run:
-                wandb_run.log(
-                    {
-                        f"Disparity Client {client_id}": disparity_client,
-                        f"Disparity Client {client_id} Before local train": disparity_client_before_local_epoch,
-                        "FL Round": server_round,
-                    }
-                )
-
+    def agg_metrics_train(metrics: list, server_round: int, current_max_epsilon: float, fed_dir) -> dict:
+        # Collect the losses logged during each epoch in each client
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        possible_targets = []
-        possible_sensitive_attributes = []
-
-        for _, metric in metrics:
-            possible_targets += metric["targets"]
-            possible_sensitive_attributes += metric["sensitive_attributes"]
-
-        possible_targets = list(set(possible_targets))
-        possible_sensitive_attributes = list(set(possible_sensitive_attributes))
-
-        sum_probabilities = {}
-        total_counter = {}
-
-        for _, metric in metrics:
-            for possible_target in possible_targets:
-                for possible_sensitive_attribute in possible_sensitive_attributes:
-                    current_proba = f"{possible_target}|{possible_sensitive_attribute}"
-
-                    if current_proba in metric["probabilities"]:
-                        if current_proba not in sum_probabilities:
-                            sum_probabilities[current_proba] = 0
-                        sum_probabilities[current_proba] += metric["probabilities"][
-                            current_proba
-                        ]
-
-            for possible_sensitive_attribute in possible_sensitive_attributes:
-                attr = f"{possible_sensitive_attribute}"
-                if attr in metric["probabilities"]:
-                    if attr not in total_counter:
-                        total_counter[attr] = 0
-                    total_counter[f"{possible_sensitive_attribute}"] += metric[
-                        "probabilities"
-                    ][attr]
-
+        losses = []
+        losses_with_regularization = []
+        epsilon_list = []
+        accuracies = []
+        lambda_list = []
+        max_disparity_train = []
         combinations = ["0|0", "0|1", "1|0", "1|1"]
         targets = ["0", "1"]
 
         sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
         sum_targets = {"0": 0, "1": 0}
 
-        for _, metric in metrics:
-            metric = metric["counters"]
+        for n_examples, node_metrics in metrics:
+            losses.append(n_examples * node_metrics["train_loss"])
+            losses_with_regularization.append(
+                n_examples * node_metrics["train_loss_with_regularization"]
+            )
+            epsilon_list.append(node_metrics["epsilon"])
+            accuracies.append(n_examples * node_metrics["train_accuracy"])
+            lambda_list.append(node_metrics["Lambda"])
+            disparity = node_metrics["Max Disparity Dataset"]
+            client_id = node_metrics["cid"]
+            disparity_client_after_local_epoch = node_metrics["Disparity Train"]
+            max_disparity_train.append(disparity_client_after_local_epoch)
+            disparity_client_before_local_epoch = node_metrics[
+                "Max Disparity Train Before Local Epoch"
+            ]
+
+            # Load the lambda for the client
+            fed_dir = Path(fed_dir)
+            if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
+                with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
+                    lambda_client = dill.load(file)
+
+
+            # load the statistics 
+            current_counter = node_metrics["counters"]
             for combination in combinations:
-                sum_counters[combination] += metric[combination]
+                sum_counters[combination] += current_counter[combination]
             for target in targets:
-                sum_targets[target] += metric[target]
-        disparities = max(
+                sum_targets[target] += current_counter[target]
+
+            # Create the dictionary we want to log. For some metrics we want to log
+            # we have to check if they are present or not.
+            to_be_logged = {
+                        f"Disparity Client {client_id} After Local train": disparity_client_after_local_epoch,
+                        f"Disparity Client {client_id} Before local train": disparity_client_before_local_epoch,
+                        "FL Round": server_round,
+                    }
+            if disparity:
+                to_be_logged[f"Disparity Dataset Client {client_id}"] = disparity
+            if lambda_client:
+                to_be_logged[f"Lambda Client {client_id}"] = lambda_client
+
+            if wandb_run:
+                wandb_run.log(
+                    to_be_logged,
+                )
+
+        disparity_from_statistics = max(
             [
                 sum_counters["0|0"] / sum_targets["0"]
                 - sum_counters["0|1"] / sum_targets["1"],
@@ -446,100 +411,122 @@ if __name__ == "__main__":
                 - sum_counters["1|0"] / sum_targets["0"],
             ]
         )
-        print("LE DISPARITIES DA LOGGARE: ", disparities)
-        if wandb_run:
-            wandb_run.log(
-                {
-                    "Aggregated Disparity on the server": disparities,
-                    "FL Round": server_round,
-                }
-            )
-
         average_probabilities = {}
-        for target in possible_targets:
-            for sens_attr in possible_sensitive_attributes:
-                current_prob = f"{target}|{sens_attr}"
-                if current_prob not in average_probabilities:
-                    average_probabilities[current_prob] = 0
-                print(
-                    f"SUM AND COUNTER {current_prob}",
-                    sum_probabilities[current_prob],
-                    total_counter[str(sens_attr)],
-                )
-                average_probabilities[current_prob] = sum_probabilities[
-                    current_prob
-                ] / (total_counter[str(sens_attr)])
+        for combination in combinations:
+            average_probabilities[combination] = sum_counters[combination] / sum_targets[combination[2]]
 
-        print(
-            f"MAX DISPARITY TRAIN: {max_disparity_train}, {type(max_disparity_train)}"
-        )
-        agg_metrics = {
-            "train_loss": sum(losses) / total_examples,
-            "train_accuracy": sum(accuracies) / total_examples,
-            "train_loss_with_regularization": sum(losses_with_regularization)
-            / total_examples,
-            # "average_probabilities": average_probabilities,
-            "max_disparity_train": sum(max_disparity_train) / len(max_disparity_train),
-            "std_max_disparity_train": np.std(
-                [item.item() for item in max_disparity_train]
-            ),
-            # "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
-        }
-        print(f"Aggregated metrics {agg_metrics}")
         if wandb_run:
             wandb_run.log(
                 {
-                    "Train Loss": agg_metrics["train_loss"],
-                    "Train Accuracy": agg_metrics["train_accuracy"],
-                    "Train Loss with Regularization": agg_metrics[
-                        "train_loss_with_regularization"
-                    ],
-                    "Train Epsilon": max(epsilon_list),
+                    "Training Disparity with statistics": disparity_from_statistics,
                     "FL Round": server_round,
-                    "Disparity Training": agg_metrics["max_disparity_train"],
-                    # "Aggregated Lambda": agg_metrics["Aggregated Lambda"],
                 }
             )
-        from pathlib import Path
+        current_max_epsilon = max(current_max_epsilon, *epsilon_list)
+        agg_metrics = {
+            "Train Loss": sum(losses) / total_examples,
+            "Train Accuracy": sum(accuracies) / total_examples,
+            "Train Loss with Regularization": sum(losses_with_regularization)
+            / total_examples,
+            "Average Probabilities": average_probabilities,
+            "Training Disparity with average": sum(max_disparity_train) / len(max_disparity_train),
+            "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
+            "Train Epsilon": current_max_epsilon,
+            "FL Round": server_round,
+        }
 
-        fed_dir = "../data/celeba/celeba-10-batches-py/federated"
-        fed_dir = Path(fed_dir)
-        cid_list = [i for i in range(args.pool_size)]
-        for cid in cid_list:
-            if os.path.exists(f"{fed_dir}/privacy_engine_{cid}.pkl"):
-                with open(f"{fed_dir}/DPL_lambda_{cid}.pkl", "rb") as file:
-                    lambda_client = dill.load(file)
-                    if wandb_run:
-                        wandb_run.log(
-                            {
-                                "FL Round": server_round,
-                                f"Lambda Client {cid}": lambda_client,
-                            }
-                        )
-
-        for _, metric in metrics:
-            cid = metric["cid"]
-            disparity = metric["Max Disparity Dataset"]
-            if disparity and wandb_run:
-                wandb_run.log(
-                    {
-                        "FL Round": server_round,
-                        f"Disparity Training Set Client {cid}": disparity,
-                    }
-                )
-
-        for _, metric in metrics:
-            cid = metric["cid"]
-            disparity = metric["Disparity Train"]
-            if wandb_run:
-                wandb_run.log(
-                    {
-                        "FL Round": server_round,
-                        f"Training Disparity {cid}": disparity,
-                    }
-                )
+        if wandb_run:
+            wandb_run.log(
+                agg_metrics,
+            )
 
         return agg_metrics
+
+            # losses_node = [
+            #     n_examples * metric for metric in node_metrics["train_losses"]
+            # ]
+            # all_losses.append(losses_node)
+
+        # all_losses = np.array(all_losses)
+        # sum_losses = np.sum(all_losses, axis=0)
+
+        # if wandb_run:
+        #     for index, loss in enumerate(sum_losses):
+        #         wandb_run.log(
+        #             {
+        #                 "Loss Epochs": loss,
+        #                 "Epoch": (server_round - 1) * len(sum_losses) + index,
+        #             }
+        #         )
+        
+        # Collect all the metrics that can be directly extracted from the metric
+        # dictionary 
+        # losses = [n_examples * metric["train_loss"] for n_examples, metric in metrics]
+        # losses_with_regularization = [
+        #     n_examples * metric["train_loss_with_regularization"]
+        #     for n_examples, metric in metrics
+        # ]
+        # epsilon_list = [metric["epsilon"] for _, metric in metrics]
+        # accuracies = [
+        #     n_examples * metric["train_accuracy"] for n_examples, metric in metrics
+        # ]
+        # lambda_list = [metric["Lambda"] for _, metric in metrics]
+
+        # max_disparity_train = [
+        #     metric["Disparity Train"] for n_examples, metric in metrics
+        # ]
+
+        # # Log information regarding the single nodes
+        # for n_examples, metric in metrics:
+            
+
+        # fed_dir = "../data/celeba/celeba-10-batches-py/federated"
+        # Now we can log the values of the lambda for each client
+        # fed_dir = Path(fed_dir)
+        # cid_list = [i for i in range(args.pool_size)]
+        # for cid in cid_list:
+            
+
+        # total_examples = sum([n_examples for n_examples, _ in metrics])
+
+        # possible_targets = []
+        # possible_sensitive_attributes = []
+
+        # for _, metric in metrics:
+        #     possible_targets += metric["targets"]
+        #     possible_sensitive_attributes += metric["sensitive_attributes"]
+
+        # possible_targets = list(set(possible_targets))
+        # possible_sensitive_attributes = list(set(possible_sensitive_attributes))
+
+        # sum_probabilities = {}
+        # total_counter = {}
+
+        # for _, metric in metrics:
+        #     for possible_target in possible_targets:
+        #         for possible_sensitive_attribute in possible_sensitive_attributes:
+        #             current_proba = f"{possible_target}|{possible_sensitive_attribute}"
+
+        #             if current_proba in metric["probabilities"]:
+        #                 if current_proba not in sum_probabilities:
+        #                     sum_probabilities[current_proba] = 0
+        #                 sum_probabilities[current_proba] += metric["probabilities"][
+        #                     current_proba
+        #                 ]
+
+        #     for possible_sensitive_attribute in possible_sensitive_attributes:
+        #         attr = f"{possible_sensitive_attribute}"
+        #         if attr in metric["probabilities"]:
+        #             if attr not in total_counter:
+        #                 total_counter[attr] = 0
+        #             total_counter[f"{possible_sensitive_attribute}"] += metric[
+        #                 "probabilities"
+        #             ][attr]
+
+
+        # We consider the statistics about the predictions shared by the clients
+        # we want to count the predictions for each possible combination 
+        # and we want to count the number of targets for each possible target
 
     strategy = FedAvg(
         fraction_fit=args.sampled_clients,
@@ -560,6 +547,8 @@ if __name__ == "__main__":
         initial_parameters=initial_parameters,
         fit_metrics_aggregation_fn=agg_metrics_train,
         evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+        current_max_epsilon=current_max_epsilon,
+        fed_dir=fed_dir,
     )
 
     ray_num_cpus = 15
