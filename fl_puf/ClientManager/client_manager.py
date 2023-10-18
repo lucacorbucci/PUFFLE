@@ -14,12 +14,13 @@
 # ==============================================================================
 """Flower ClientManager."""
 
-
+import os
 import random
 import threading
 from logging import INFO
 from typing import Dict, List, Optional
 
+import dill
 from flwr.common.logger import log
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
@@ -38,6 +39,7 @@ class SimpleClientManager(ClientManager):
         num_training_nodes: int,
         num_validation_nodes: int,
         num_test_nodes: int,
+        fed_dir: str,
     ) -> None:
         """Creates a SimpleClientManager.
 
@@ -76,6 +78,7 @@ class SimpleClientManager(ClientManager):
         self.num_validation_nodes = num_validation_nodes
         self.num_test_nodes = num_test_nodes
         self.node_shuffle_seed = node_shuffle_seed
+        self.fed_dir = fed_dir
 
     def __len__(self) -> int:
         return len(self.clients)
@@ -223,6 +226,12 @@ class SimpleClientManager(ClientManager):
                 criterion=criterion,
             )
             self.current_index_training += num_clients
+
+            os.remove(f"{self.fed_dir}/clients_last_round.pkl")
+
+            with open(f"{self.fed_dir}/clients_last_round.pkl", "wb") as f:
+                dill.dump([client.cid for client in sampled_clients], f)
+
             print(
                 "===>>>> Sampled for training: ",
                 [client.cid for client in sampled_clients],
