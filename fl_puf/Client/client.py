@@ -13,11 +13,10 @@ import torch
 from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
+from fl_puf.Utils.enums import StartingLambdaMode
+from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
-from Utils.enums import StartingLambdaMode
-from Utils.train_parameters import TrainParameters
-from Utils.Utils import rescale_lambda
 
 
 class FlowerClient(fl.client.NumPyClient):
