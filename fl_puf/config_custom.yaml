@@ -1,7 +1,7 @@
 program: main.py
 method: random
 metric:
-  name: Validation_Accuracy
+  name: Custom_metric
   goal: maximize
 early_terminate:
   type: hyperband
@@ -48,7 +48,7 @@ command:
   - --sampled_clients 
   - 0.1
   - --train_csv
-  - unfair_train 
+  - unfair_train
   - --test_csv 
   - unfair_test
   - --debug

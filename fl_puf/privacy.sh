@@ -171,8 +171,19 @@
 # wait;
 
 # Baseline with DPL partendo da 0
-poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --noise_multiplier 0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 2.0 --target 0.1 --weight_decay_lambda 0.001 &
-wait;
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --noise_multiplier 0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.00001 &
+# wait;
+
+
+# test finali
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --noise_multiplier 0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 2.0 --target 0.1 --weight_decay_lambda 0.00001 &
+# wait;
+
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --noise_multiplier 0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 &
+# wait;
+
+
+
 
 # Baseline without DPL
 # poetry run python main.py --num_rounds 100 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 5.0 --noise_multiplier 1.0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd  &
@@ -183,8 +194,39 @@ wait;
 # wait;
 
 # DPL with target 0.1 partendo da 0
-poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 5.0 --noise_multiplier 1.0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 2.0 --target 0.1 --weight_decay_lambda 0.001 --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.001 &
-wait;
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 5.0 --noise_multiplier 1.0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 2.0 --target 0.1 --weight_decay_lambda 0.001 --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.001 &
+# wait;
 # poetry run python main.py --num_rounds 100 --optimizer sgd --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 5.0 --noise_multiplier 2.0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.001 &
 
 ## Still need to compute the noise based on the epsilon that we want to use.
+
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.5 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --noise_multiplier 0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --wandb True --optimizer sgd --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.00001 
+
+
+
+# poetry run python main.py --num_rounds 100 --dataset celeba --epochs 5 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10
+# wait;
+
+# poetry run python main.py --num_rounds 40 --dataset celeba --epochs 4 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 128 --pool_size 10 --sampled_clients 0.1 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0 --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10  &
+# wait;
+
+
+# Train, test, validation
+poetry run python main.py --num_rounds 4 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.25 --sampled_clients_test 0.35 --sampled_clients_validation 0.35 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.4 --validation_nodes 0.3 --test_nodes 0.3 --node_shuffle_seed 99 --wandb True &
+wait;
+
+poetry run python main.py --num_rounds 4 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.25 --sampled_clients_test 0.35 --sampled_clients_validation 0.35 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.4 --validation_nodes 0.3 --test_nodes 0.3 --node_shuffle_seed 99 --wandb True &
+wait;
+
+# Train, test, validation
+poetry run python main.py --num_rounds 4 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.25 --sampled_clients_test 0.35 --sampled_clients_validation 0.35 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.4 --validation_nodes 0.3 --test_nodes 0.3 --node_shuffle_seed 10 --wandb True &
+wait;
+
+
+# # Train and Test
+# poetry run python main.py --num_rounds 10 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.15 --sampled_clients_test 0.35 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.7 --test_nodes 0.3 --node_shuffle_seed 99 --wandb True &
+# wait;
+
+# # Train and Test
+# poetry run python main.py --num_rounds 10 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.15 --sampled_clients_test 0.35 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.7 --test_nodes 0.3 --node_shuffle_seed 10 --wandb True &
+# wait;
