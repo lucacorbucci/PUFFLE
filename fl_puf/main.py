@@ -15,11 +15,9 @@ from ClientManager.client_manager import SimpleClientManager
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from torch import nn
-from Utils.enums import StartingLambdaMode
 from Utils.train_parameters import TrainParameters
 
 from fl_puf.Client.client import FlowerClient
@@ -202,16 +200,17 @@ if __name__ == "__main__":
         partition="test",
     )
 
-    try:
-        starting_lambda_mode = StartingLambdaMode[args.starting_lambda_mode]
-    except KeyError:
-        raise Exception("Starting lambda mode not recognized")
-    if (
-        starting_lambda_mode == StartingLambdaMode.fixed
-        and not args.starting_lambda_value
-    ):
+    if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
         raise Exception("Starting lambda value must be specified when using fixed mode")
 
+    if (
+        args.starting_lambda_mode != "fixed"
+        and args.starting_lambda_mode != "avg"
+        and args.starting_lambda_mode != "disparity"
+    ):
+        raise Exception(
+            f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
+        )
     train_parameters = TrainParameters(
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -232,7 +231,7 @@ if __name__ == "__main__":
         cross_silo=args.cross_silo,
         weight_decay_lambda=args.weight_decay_lambda,
         sweep=args.sweep,
-        starting_lambda_mode=starting_lambda_mode,
+        starting_lambda_mode=args.starting_lambda_mode,
         starting_lambda_value=args.starting_lambda_value,
         momentum=args.momentum,
     )
