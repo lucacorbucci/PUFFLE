@@ -207,7 +207,7 @@ if __name__ == "__main__":
     except KeyError:
         raise Exception("Starting lambda mode not recognized")
     if (
-        starting_lambda_mode == StartingLambdaMode.FIXED
+        starting_lambda_mode == StartingLambdaMode.fixed
         and not args.starting_lambda_value
     ):
         raise Exception("Starting lambda value must be specified when using fixed mode")
