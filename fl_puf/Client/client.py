@@ -13,7 +13,6 @@ import torch
 from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from fl_puf.Utils.enums import StartingLambdaMode
 from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
@@ -77,10 +76,6 @@ class FlowerClient(fl.client.NumPyClient):
     def get_parameters(self, config):
         return Utils.get_params(self.net)
 
-    def write_state(state, path):
-        with open(path, "wb") as f:
-            dill.dump(state, f)
-
     def fit(self, parameters, config, average_probabilities=None):
         Utils.set_params(self.net, parameters)
 
@@ -133,7 +128,7 @@ class FlowerClient(fl.client.NumPyClient):
                 )
                 for target in range(0, 1)
                 for sv in range(0, 1)
-            ],
+            ]
         )
 
         (
@@ -174,23 +169,24 @@ class FlowerClient(fl.client.NumPyClient):
         # and on the disparity of the training dataset or we can use the average of the
         # disparities of the previous FL round
         if not first_round:
-            if self.train_parameters.starting_lambda_mode == StartingLambdaMode.fixed:
+            if self.train_parameters.starting_lambda_mode == "fixed":
                 self.train_parameters.DPL_lambda = (
                     self.train_parameters.starting_lambda_value
                 )
-            elif self.train_parameters.starting_lambda_mode == StartingLambdaMode.avg:
+            elif self.train_parameters.starting_lambda_mode == "avg":
                 self.train_parameters.DPL_lambda = (
                     self.compute_starting_lambda_with_avg()
                 )
-            elif (
-                self.train_parameters.starting_lambda_mode
-                == StartingLambdaMode.disparity
-            ):
+            elif self.train_parameters.starting_lambda_mode == "disparity":
                 self.train_parameters.DPL_lambda = (
-                    self.compute_starting_lambda_with_disparity()
+                    self.compute_starting_lambda_with_disparity(
+                        disparity_training=max_disparity_dataset,
+                    )
                 )
             else:
-                raise ValueError("Starting Lambda Mode not recognized")
+                raise ValueError(
+                    f"Starting Lambda Mode not recognized, your value is: {self.train_parameters.starting_lambda_mode}"
+                )
 
         if self.train_parameters.DPL:
             (
@@ -249,7 +245,6 @@ class FlowerClient(fl.client.NumPyClient):
 
         with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
             dill.dump(self.train_parameters.DPL_lambda, f)
-
         (
             predictions,
             sensitive_attributes,
@@ -388,7 +383,7 @@ class FlowerClient(fl.client.NumPyClient):
         """
         loaded_clients_list = []
         if os.path.exists(f"{self.fed_dir}/clients_last_round.pkl"):
-            with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
+            with open(f"{self.fed_dir}/clients_last_round.pkl", "rb") as file:
                 loaded_clients_list = dill.load(file)
         lambda_list = []
         if loaded_clients_list:
@@ -403,7 +398,7 @@ class FlowerClient(fl.client.NumPyClient):
             return np.mean(lambda_list)
         return 0
 
-    def compute_starting_lambda_with_disparity(self, disparity_training):
+    def compute_starting_lambda_with_disparity(self, disparity_training: float):
         """
         This function computes the starting Lambda based on
         the disparity of the training dataset and the target disparity.
