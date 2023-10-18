@@ -227,7 +227,8 @@ class SimpleClientManager(ClientManager):
             )
             self.current_index_training += num_clients
 
-            os.remove(f"{self.fed_dir}/clients_last_round.pkl")
+            if os.path.exists(f"{self.fed_dir}/clients_last_round.pkl"):
+                os.remove(f"{self.fed_dir}/clients_last_round.pkl")
 
             with open(f"{self.fed_dir}/clients_last_round.pkl", "wb") as f:
                 dill.dump([client.cid for client in sampled_clients], f)
