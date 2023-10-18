@@ -29,20 +29,58 @@ from flwr.server.criterion import Criterion
 class SimpleClientManager(ClientManager):
     """Provides a pool of available clients."""
 
-    def __init__(self, num_clients, seed, sort_clients) -> None:
-        random.seed(seed)
+    def __init__(
+        self,
+        num_clients,
+        node_shuffle_seed: int,
+        seed: int,
+        sort_clients,
+        num_training_nodes: int,
+        num_validation_nodes: int,
+        num_test_nodes: int,
+    ) -> None:
+        """Creates a SimpleClientManager.
+
+        Parameters:
+        -----------
+        num_clients : int
+            The pool size.
+        sort_clients : bool
+            If True, the clients will be sorted by their id.
+        num_training_nodes : int
+            The number of nodes to use for training.
+        num_validation_nodes : int
+            The number of nodes to use for validation.
+        num_test_nodes : int
+            The number of nodes to use for testing.
+        node_shuffle_seed: int
+            The seed to use for shuffling the nodes.
+        seed: int
+            The seed that we used to split the dataset
+            and to assign nodes to the different sets.
+        """
         self.seed = seed
+        random.seed(self.seed)
         self.num_clients = num_clients
         self.clients: Dict[str, ClientProxy] = {}
         self.clients_list: List[str] = []
+        self.training_clients_list: List[str] = []
+        self.validation_clients_list: List[str] = []
+        self.test_clients_list: List[str] = []
         self._cv = threading.Condition()
-        self.current_index = 0
+        self.current_index_training = 0
+        self.current_index_validation = 0
+        self.current_index_test = 0
         self.sort_clients = sort_clients
+        self.num_training_nodes = num_training_nodes
+        self.num_validation_nodes = num_validation_nodes
+        self.num_test_nodes = num_test_nodes
+        self.node_shuffle_seed = node_shuffle_seed
 
     def __len__(self) -> int:
         return len(self.clients)
 
-    def num_available(self) -> int:
+    def num_available(self, phase) -> int:
         """Return the number of available clients.
 
         Returns
@@ -50,7 +88,13 @@ class SimpleClientManager(ClientManager):
         num_available : int
             The number of currently available clients.
         """
-        return len(self)
+        if phase == "training":
+            return len(self.training_clients_list)
+        elif phase == "validation":
+            return len(self.validation_clients_list)
+        else:
+            return len(self.test_clients_list)
+        # return len(self)
 
     def wait_for(self, num_clients: int, timeout: int = 86400) -> bool:
         """Wait until at least `num_clients` are available.
@@ -94,16 +138,47 @@ class SimpleClientManager(ClientManager):
         # Add the client to the list of available clients and then
         # shuffle the list
         self.clients_list.append(client.cid)
+
         if self.num_clients == len(self.clients_list) and self.sort_clients:
             random.seed(self.seed)
             self.clients_list = sorted(self.clients_list)
-            print("After sorted: ", self.clients_list)
             random.shuffle(self.clients_list)
-            print("After Shuffle: ", self.clients_list)
+
+            # We want to be sure that the nodes in the test set are always the same
+            # so we shuffle the list of nodes and then we split the list into two parts
+            # one part is the one of the nodes that will be used for training and
+            # validation and the other one is the one of the nodes that
+            #  will be used for testing.
+            for node in self.clients_list[: self.num_test_nodes]:
+                self.test_clients_list.append(node)
+            self.remaining_nodes = self.clients_list[self.num_test_nodes :]
+            print("Nodes in the test set: ", self.test_clients_list)
+
+            # Since we want to split the clients into training, validation and test
+            # set and we want to be sure that the nodes are selected the same
+            # amount of times during the training, we split the list of nodes
+            # into three parts. Then when we have to select the nodes, we make sure
+            # that the nodes from the different sets are selected in a round robin
+            # fashion. It is not the most elegant approach but given our requirements
+            # it is probably the best one (and maybe the simplest and fastest way).
+
+            # We shuffle the list of nodes and then we split the list into two parts
+            random.seed(self.node_shuffle_seed)
+            random.shuffle(self.remaining_nodes)
+
+            for node in self.remaining_nodes[: self.num_training_nodes]:
+                self.training_clients_list.append(node)
+            print("Nodes in the training set: ", self.training_clients_list)
+            for node in self.remaining_nodes[self.num_training_nodes :]:
+                self.validation_clients_list.append(node)
+            print("Nodes in the validation set: ", self.validation_clients_list)
+            random.seed(self.seed)
 
         with self._cv:
             self._cv.notify_all()
+        # import sys
 
+        # sys.exit()
         return True
 
     def unregister(self, client: ClientProxy) -> None:
@@ -129,9 +204,9 @@ class SimpleClientManager(ClientManager):
     def sample(
         self,
         num_clients: int,
+        phase: str,
         min_num_clients: Optional[int] = None,
         criterion: Optional[Criterion] = None,
-        evaluation: bool = False,
     ) -> List[ClientProxy]:
         """Sample a number of Flower ClientProxy instances."""
         # Block until at least num_clients are connected.
@@ -139,7 +214,71 @@ class SimpleClientManager(ClientManager):
             min_num_clients = num_clients
         self.wait_for(min_num_clients)
         # Sample clients which meet the criterion
-        available_cids = self.clients_list
+
+        if phase == "training":
+            sampled_clients = self.sample_clients(
+                sampling_list=self.training_clients_list,
+                current_index=self.current_index_training,
+                num_clients=num_clients,
+                criterion=criterion,
+            )
+            self.current_index_training += num_clients
+            print(
+                "===>>>> Sampled for training: ",
+                [client.cid for client in sampled_clients],
+            )
+        elif phase == "validation":
+            sampled_clients = self.sample_clients(
+                sampling_list=self.validation_clients_list,
+                current_index=self.current_index_validation,
+                num_clients=num_clients,
+                criterion=criterion,
+            )
+            self.current_index_validation += num_clients
+            print(
+                "===>>>> Sampled for validation: ",
+                [client.cid for client in sampled_clients],
+            )
+        else:
+            sampled_clients = self.sample_clients(
+                sampling_list=self.test_clients_list,
+                current_index=self.current_index_test,
+                num_clients=num_clients,
+                criterion=criterion,
+            )
+            self.current_index_test += num_clients
+            print(
+                "===>>>> Sampled for test: ", [client.cid for client in sampled_clients]
+            )
+        return sampled_clients
+
+    def sample_clients(
+        self,
+        sampling_list: List[str],
+        current_index: int,
+        num_clients: int,
+        criterion: Optional[Criterion] = None,
+    ) -> List[ClientProxy]:
+        """Sample a number of Flower ClientProxy instances considering the
+        group of nodes to sample from.
+
+        Parameters
+        ----------
+        sampling_list : list[str]
+            The list of nodes to sample from.
+        current_index : int
+            The current index of the node to sample.
+        num_clients : int
+            The number of nodes to sample.
+        criterion : Criterion
+            The criterion to use for sampling.
+
+        Returns
+        -------
+        sampled_clients : list[ClientProxy]
+            The list of sampled nodes.
+        """
+        available_cids = sampling_list
         if criterion is not None:
             available_cids = [
                 cid for cid in available_cids if criterion.select(self.clients[cid])
@@ -154,35 +293,17 @@ class SimpleClientManager(ClientManager):
                 num_clients,
             )
             return []
-        if evaluation:
-            # If we are evaluating the model on the validation dataset
-            # we want to be sure that the model is evaluated on a different
-            # set of nodes. So, we pick nodes that are outside of the range
-            # start-end
-            if self.end > self.start:
-                available_cids = (
-                    available_cids[0 : self.start] + available_cids[self.end :]
-                )
-            else:
-                available_cids = (
-                    available_cids[0 : self.end] + available_cids[self.start :]
-                )
 
-            sampled_cids = random.sample(available_cids, num_clients)
-            print("===>>>> Sampled for Validation/Test: ", sampled_cids)
+        # If we are training, we want to sample the nodes
+        # from the training set of nodes.
+        # We also want to be sure that we sample the clients
+        # the same amount of times during the training.
+        start = current_index % len(available_cids)
+        end = (current_index + num_clients) % len(available_cids)
 
-            return [self.clients[cid] for cid in sampled_cids]
+        if end > start:
+            sampled_cids = available_cids[start:end]
         else:
-            # If we are training, we want that each time we sample a different
-            # set of nodes. But, we want to be sure that we are sampling
-            # the clients the same amount of times.
-            self.start = self.current_index % len(available_cids)
-            self.end = (self.current_index + num_clients) % len(available_cids)
+            sampled_cids = available_cids[start:] + available_cids[:end]
 
-            if self.end > self.start:
-                sampled_cids = available_cids[self.start : self.end]
-            else:
-                sampled_cids = available_cids[self.start :] + available_cids[: self.end]
-            print("===>>>> Sampled for training: ", sampled_cids)
-            self.current_index += num_clients
-            return [self.clients[cid] for cid in sampled_cids]
+        return [self.clients[cid] for cid in sampled_cids]

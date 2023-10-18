@@ -57,6 +57,7 @@ class FedAvg(Strategy):
         *,
         fraction_fit: float = 1.0,
         fraction_evaluate: float = 1.0,
+        fraction_test: float = 1.0,
         min_fit_clients: int = 2,
         min_evaluate_clients: int = 2,
         min_available_clients: int = 2,
@@ -72,6 +73,7 @@ class FedAvg(Strategy):
         initial_parameters: Optional[Parameters] = None,
         fit_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         evaluate_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
+        test_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         current_max_epsilon: float = 0.0,
         fed_dir: str = None,
     ) -> None:
@@ -109,6 +111,8 @@ class FedAvg(Strategy):
             Metrics aggregation function, optional.
         evaluate_metrics_aggregation_fn : Optional[MetricsAggregationFn]
             Metrics aggregation function, optional.
+        test_metrics_aggregation_fn : Optional[MetricsAggregationFn]
+            Metrics aggregation function, optional.
         """
         super().__init__()
 
@@ -132,6 +136,7 @@ class FedAvg(Strategy):
         self.initial_parameters = initial_parameters
         self.fit_metrics_aggregation_fn = fit_metrics_aggregation_fn
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn
+        self.test_metrics_aggregation_fn = test_metrics_aggregation_fn
 
     def __repr__(self) -> str:
         rep = f"FedAvg(accept_failures={self.accept_failures})"
@@ -182,17 +187,23 @@ class FedAvg(Strategy):
 
         # Sample clients
         sample_size, min_num_clients = self.num_fit_clients(
-            client_manager.num_available()
+            client_manager.num_available("training")
         )
         clients = client_manager.sample(
-            num_clients=sample_size, min_num_clients=min_num_clients
+            num_clients=sample_size,
+            min_num_clients=min_num_clients,
+            phase="training",
         )
 
         # Return client/config pairs
         return [(client, fit_ins) for client in clients]
 
     def configure_evaluate(
-        self, server_round: int, parameters: Parameters, client_manager: ClientManager
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: ClientManager,
+        phase: str,
     ) -> List[Tuple[ClientProxy, EvaluateIns]]:
         """Configure the next round of evaluation."""
         # Do not configure federated evaluation if fraction eval is 0.
@@ -208,12 +219,12 @@ class FedAvg(Strategy):
 
         # Sample clients
         sample_size, min_num_clients = self.num_evaluation_clients(
-            client_manager.num_available()
+            client_manager.num_available(phase)
         )
         clients = client_manager.sample(
             num_clients=sample_size,
             min_num_clients=min_num_clients,
-            evaluation=True,
+            phase=phase,
         )
 
         # Return client/config pairs
@@ -257,7 +268,7 @@ class FedAvg(Strategy):
         results: List[Tuple[ClientProxy, EvaluateRes]],
         failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
     ) -> Tuple[Optional[float], Dict[str, Scalar]]:
-        """Aggregate evaluation losses using weighted average."""
+        """Aggregate  losses using weighted average."""
         if not results:
             return None, {}
         # Do not aggregate if there are failures and failures are not accepted
@@ -282,5 +293,39 @@ class FedAvg(Strategy):
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No evaluate_metrics_aggregation_fn provided")
+
+        return loss_aggregated, metrics_aggregated
+
+    def aggregate_test(
+        self,
+        server_round: int,
+        results: List[Tuple[ClientProxy, EvaluateRes]],
+        failures: List[Union[Tuple[ClientProxy, EvaluateRes], BaseException]],
+    ) -> Tuple[Optional[float], Dict[str, Scalar]]:
+        """Aggregate  losses using weighted average."""
+        if not results:
+            return None, {}
+        # Do not aggregate if there are failures and failures are not accepted
+        if not self.accept_failures and failures:
+            return None, {}
+
+        # Aggregate loss
+        loss_aggregated = weighted_loss_avg(
+            [
+                (evaluate_res.num_examples, evaluate_res.loss)
+                for _, evaluate_res in results
+            ],
+        )
+
+        # Aggregate custom metrics if aggregation fn was provided
+        metrics_aggregated = {}
+        if self.test_metrics_aggregation_fn:
+            eval_metrics = [(res.num_examples, res.metrics) for _, res in results]
+            metrics_aggregated = self.test_metrics_aggregation_fn(
+                eval_metrics,
+                server_round,
+            )
+        elif server_round == 1:  # Only log this warning once
+            log(WARNING, "No test_metrics_aggregation_fn provided")
 
         return loss_aggregated, metrics_aggregated

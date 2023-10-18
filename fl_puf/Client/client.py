@@ -102,7 +102,6 @@ class FlowerClient(fl.client.NumPyClient):
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
         first_round = False
-       
 
         # If we already used this client we need to load the state regarding
         # the private model
@@ -119,21 +118,23 @@ class FlowerClient(fl.client.NumPyClient):
                 loaded_privacy_engine_regularization = dill.load(file)
         else:
             # If it is the first time that we use this client we use a Lambda = 0
+            # because in the first round the model will be random and so the predictions
+            # so the disparity will be 0 and therefore we can have Lambda = 0.
             self.train_parameters.DPL_lambda = 0
             first_round = True
 
-            # compute the disparity of the training dataset
-            disparities_training_dataset = [
-                RegularizationLoss().compute_violation_with_argmax(
-                    predictions_argmax=train_loader.dataset.targets,
-                    sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                    current_target=target,
-                    current_sensitive_feature=sv,
-                )
-                for target in range(0, 1)
-                for sv in range(0, 1)
-            ]
-            max_disparity_dataset = np.mean(disparities_training_dataset)
+        # compute the disparity of the training dataset
+        disparities_training_dataset = [
+            RegularizationLoss().compute_violation_with_argmax(
+                predictions_argmax=train_loader.dataset.targets,
+                sensitive_attribute_list=train_loader.dataset.sensitive_features,
+                current_target=target,
+                current_sensitive_feature=sv,
+            )
+            for target in range(0, 1)
+            for sv in range(0, 1)
+        ]
+        max_disparity_dataset = np.mean(disparities_training_dataset)
 
         (
             private_net,
@@ -157,20 +158,33 @@ class FlowerClient(fl.client.NumPyClient):
         private_model_regularization = None
         private_optimizer_regularization = None
 
-        # Use the model sent by the server to compute the initial Lambda:
+        # Use the model sent by the server to compute the disparity
+        # before the local training
         max_disparity_train_before_local_epoch = (
             RegularizationLoss().violation_with_dataset(
-                private_net, train_loader, self.train_parameters.device,
+                private_net,
+                train_loader,
+                self.train_parameters.device,
             )
         )
 
-        # In the first round we want to use Lambda=0, then in the following ones 
-        # we want to compute the actual disparity of the model sent by the server
-        # on the training dataset and then use it to compute the Lambda.
-        # In particular we subtract the disparity of the model sent by the server
-        # from the target disparity.
+        # In the first round we want to start from Lambda = 0
         if not first_round:
-            self.train_parameters.DPL_lambda = self.train_parameters.target - max_disparity_train_before_local_epoch
+            new_lambda = (
+                self.train_parameters.target - max_disparity_train_before_local_epoch
+            )
+            if new_lambda > 0:
+                new_lambda = 0
+            else:
+                new_lambda = (
+                    self.train_parameters.alpha * max_disparity_train_before_local_epoch
+                )
+            if new_lambda > 1:
+                new_lambda = 1
+            self.train_parameters.DPL_lambda = new_lambda
+            print(
+                f"New Lambda {self.train_parameters.DPL_lambda} - delta: {abs(self.train_parameters.target - max_disparity_train_before_local_epoch)}"
+            )
 
         if self.train_parameters.DPL:
             (
@@ -209,7 +223,9 @@ class FlowerClient(fl.client.NumPyClient):
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
             )
-            metrics["Max Disparity Train Before Local Epoch"] = max_disparity_train_before_local_epoch
+            metrics[
+                "Max Disparity Train Before Local Epoch"
+            ] = max_disparity_train_before_local_epoch
 
             all_metrics.append(metrics)
             all_losses.append(metrics["Train Loss"])
@@ -292,7 +308,6 @@ class FlowerClient(fl.client.NumPyClient):
             dataset=self.dataset_name,
             partition="val" if self.train_parameters.sweep else "test",
         )
-
 
         # Send model to device
         self.net.to(self.train_parameters.device)

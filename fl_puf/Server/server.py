@@ -144,8 +144,22 @@ class Server:
                     server_round=current_round, metrics=metrics_cen
                 )
 
-            # Evaluate model on a sample of available clients
+            # Validate the model on a sample of available clients
+            # This is done during the hyperparameter tuning phase
             res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
+            if res_fed:
+                loss_fed, evaluate_metrics_fed, _ = res_fed
+                if loss_fed:
+                    history.add_loss_distributed(
+                        server_round=current_round, loss=loss_fed
+                    )
+                    history.add_metrics_distributed(
+                        server_round=current_round, metrics=evaluate_metrics_fed
+                    )
+
+            # Evaluate model on a sample of available clients
+            # This is done to test the model on a subset of nodes
+            res_fed = self.test_round(server_round=current_round, timeout=timeout)
             if res_fed:
                 loss_fed, evaluate_metrics_fed, _ = res_fed
                 if loss_fed:
@@ -162,6 +176,57 @@ class Server:
         log(INFO, "FL finished in %s", elapsed)
         return history
 
+    def test_round(
+        self,
+        server_round: int,
+        timeout: Optional[float],
+    ) -> Optional[
+        Tuple[Optional[float], Dict[str, Scalar], EvaluateResultsAndFailures]
+    ]:
+        """Validate current global model on a number of clients."""
+
+        # Get clients and their respective instructions from strategy
+        client_instructions = self.strategy.configure_evaluate(
+            server_round=server_round,
+            parameters=self.parameters,
+            client_manager=self._client_manager,
+            phase="test",
+        )
+
+        if not client_instructions:
+            log(INFO, "evaluate_round %s: no clients selected, cancel", server_round)
+            return None
+        log(
+            DEBUG,
+            "evaluate_round %s: strategy sampled %s clients (out of %s)",
+            server_round,
+            len(client_instructions),
+            self._client_manager.num_available(phase="test"),
+        )
+
+        # Collect `evaluate` results from all clients participating in this round
+        results, failures = evaluate_clients(
+            client_instructions,
+            max_workers=self.max_workers,
+            timeout=timeout,
+        )
+        log(
+            DEBUG,
+            "evaluate_round %s received %s results and %s failures",
+            server_round,
+            len(results),
+            len(failures),
+        )
+
+        # Aggregate the evaluation results
+        aggregated_result: Tuple[
+            Optional[float],
+            Dict[str, Scalar],
+        ] = self.strategy.aggregate_test(server_round, results, failures)
+
+        loss_aggregated, metrics_aggregated = aggregated_result
+        return loss_aggregated, metrics_aggregated, (results, failures)
+
     def evaluate_round(
         self,
         server_round: int,
@@ -176,6 +241,7 @@ class Server:
             server_round=server_round,
             parameters=self.parameters,
             client_manager=self._client_manager,
+            phase="validation",
         )
 
         if not client_instructions:
@@ -186,7 +252,7 @@ class Server:
             "evaluate_round %s: strategy sampled %s clients (out of %s)",
             server_round,
             len(client_instructions),
-            self._client_manager.num_available(),
+            self._client_manager.num_available(phase="validation"),
         )
 
         # Collect `evaluate` results from all clients participating in this round
@@ -237,7 +303,7 @@ class Server:
             "fit_round %s: strategy sampled %s clients (out of %s)",
             server_round,
             len(client_instructions),
-            self._client_manager.num_available(),
+            self._client_manager.num_available(phase="training"),
         )
 
         # Collect `fit` results from all clients participating in this round
