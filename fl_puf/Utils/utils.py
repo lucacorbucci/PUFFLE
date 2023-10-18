@@ -443,7 +443,6 @@ class Utils:
         def evaluate(
             server_round: int, parameters: fl.common.NDArrays, config: Dict[str, Scalar]
         ) -> Optional[Tuple[float, float]]:
-            print("EVALUATE FUNCTION IS CALLED")
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
             model = ModelUtils.get_model(dataset_name, device)
@@ -481,43 +480,7 @@ class Utils:
                     }
                 )
 
-            # DEBUG REMOVE ME!!!!
-            # print("START DEBUG")
-            # testloader = torch.utils.data.DataLoader(
-            #     train_set,
-            #     batch_size=batch_size,
-            # )
-
-            # (
-            #     train_loss,
-            #     train_accuracy,
-            #     f1score,
-            #     precision,
-            #     recall,
-            #     max_disparity_test,
-            # ) = Learning.test(
-            #     model=model,
-            #     test_loader=testloader,
-            #     train_parameters=train_parameters,
-            #     current_epoch=server_round,
-            # )
-            # print("END DEBUG")
-
-            # if wandb_run:
-            #     wandb_run.log(
-            #         {
-            #             "Test Loss FULL Train Set": train_loss,
-            #             "Test Accuracy FULL Train Set": train_accuracy,
-            #             "Test F1 Score FULL Train Set": f1score,
-            #             "Test Precision FULL Train Set": precision,
-            #             "Test Recall FULL Train Set": recall,
-            #             "Test Max Disparity FULL Train Set": max_disparity_test,
-            #             "FL Round": server_round,
-            #         }
-            #     )
-            # print("LOGGED DEBUG")
-            #### END DEBUG REMOVE !!!!
-            print("evaluated model")
+   
             return test_loss, {"Test Accuracy": accuracy}
 
         return evaluate

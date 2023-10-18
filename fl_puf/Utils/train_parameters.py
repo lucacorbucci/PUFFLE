@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
-from fl_puf.Utils.enums import StartingLambdaMode
 
 
 @dataclass
@@ -14,7 +13,7 @@ class TrainParameters:
     batch_size: int
     seed: int
     epsilon: float
-    starting_lambda_mode: StartingLambdaMode
+    starting_lambda_mode: str
     momentum: float
     DPL_lambda: float = 0
     private: bool = False
