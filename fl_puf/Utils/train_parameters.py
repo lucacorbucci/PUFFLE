@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
-from Utils.enums import StartingLambdaMode
+from fl_puf.Utils.enums import StartingLambdaMode
 
 
 @dataclass

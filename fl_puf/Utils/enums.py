@@ -2,6 +2,6 @@ from enum import Enum
 
 
 class StartingLambdaMode(Enum):
-    FIXED = 1
-    AVG = 2
-    TARGET = 3
+    fixed = 1
+    avg = 2
+    disparity = 3

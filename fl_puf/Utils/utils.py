@@ -9,21 +9,24 @@ import torch
 import wandb
 from DPL.learning import Learning
 from DPL.Utils.model_utils import ModelUtils
-from FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
+from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
-from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
-from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
+from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
 )
-from FederatedDataset.PartitionTypes.unbalanced_partition import UnbalancedPartition
-from FederatedDataset.PartitionTypes.unbalanced_partition_one_class import (
+from fl_puf.FederatedDataset.PartitionTypes.unbalanced_partition import (
+    UnbalancedPartition,
+)
+from fl_puf.FederatedDataset.PartitionTypes.unbalanced_partition_one_class import (
     UnbalancedPartitionOneClass,
 )
-from FederatedDataset.PartitionTypes.underrepresented_partition import (
+from fl_puf.FederatedDataset.PartitionTypes.underrepresented_partition import (
     UnderrepresentedPartition,
 )
-from FederatedDataset.Utils.utils import PartitionUtils
+from fl_puf.FederatedDataset.Utils.utils import PartitionUtils
+from fl_puf.Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
@@ -32,10 +35,15 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
-from Utils.train_parameters import TrainParameters
 
 
 class Utils:
+    @staticmethod
+    def rescale_lambda(value, old_min, old_max, new_min, new_max):
+        old_range = old_max - old_min
+        new_range = new_max - new_min
+        return (((value - old_min) * new_range) / old_range) + new_min
+
     @staticmethod
     def get_params(model: torch.nn.ModuleList) -> List[np.ndarray]:
         """Get model weights as a list of NumPy ndarrays."""
