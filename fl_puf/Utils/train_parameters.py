@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
+from Utils.enums import StartingLambdaMode
 
 
 @dataclass
@@ -13,6 +14,7 @@ class TrainParameters:
     batch_size: int
     seed: int
     epsilon: float
+    starting_lambda_mode: StartingLambdaMode
     DPL_lambda: float = 0
     private: bool = False
     DPL: bool = False
@@ -26,3 +28,4 @@ class TrainParameters:
     weight_decay_lambda: float = 0.01
     sweep: bool = False
     optimizer: str = "sgd"
+    starting_lambda_value: float = None
