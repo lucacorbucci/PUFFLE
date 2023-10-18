@@ -4,8 +4,8 @@ from collections import Counter
 
 import numpy as np
 import torch
-from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
-from FederatedDataset.PartitionTypes.non_iid_partition import NonIIDPartition
+from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition import NonIIDPartition
 
 
 class UnderrepresentedPartition:

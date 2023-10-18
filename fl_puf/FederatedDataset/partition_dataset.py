@@ -5,21 +5,23 @@ from collections import Counter
 import numpy as np
 import torch
 
-from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
-from FederatedDataset.PartitionTypes.majority_minority_partition import (
+from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
+from fl_puf.FederatedDataset.PartitionTypes.majority_minority_partition import (
     MajorityMinorityPartition,
 )
-from FederatedDataset.PartitionTypes.non_iid_partition import NonIIDPartition
-from FederatedDataset.PartitionTypes.non_iid_partition_nodes import NonIIDPartitionNodes
-from FederatedDataset.PartitionTypes.non_iid_partition_nodes_with_sensitive_feature import (
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition import NonIIDPartition
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_nodes import (
+    NonIIDPartitionNodes,
+)
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_nodes_with_sensitive_feature import (
     NonIIDPartitionNodesWithSensitiveFeature,
 )
-from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
+from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
 )
-from FederatedDataset.Utils.custom_dataset import MyDataset, MyDatasetWithCSV
-from FederatedDataset.Utils.dataset_downloader import DatasetDownloader
-from FederatedDataset.Utils.preferences import Preferences
+from fl_puf.FederatedDataset.Utils.custom_dataset import MyDataset, MyDatasetWithCSV
+from fl_puf.FederatedDataset.Utils.dataset_downloader import DatasetDownloader
+from fl_puf.FederatedDataset.Utils.preferences import Preferences
 
 
 class FederatedDataset:

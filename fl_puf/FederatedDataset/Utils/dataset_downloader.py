@@ -3,7 +3,7 @@ from typing import Tuple
 import numpy as np
 import torch
 import torchvision
-from FederatedDataset.Utils.custom_dataset import (
+from fl_puf.FederatedDataset.Utils.custom_dataset import (
     CelebaDataset,
     CelebaGenderDataset,
     MyDataset,

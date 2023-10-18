@@ -2,7 +2,7 @@ from collections import Counter
 
 import numpy as np
 import torch
-from FederatedDataset.Utils.lda import create_lda_partitions
+from fl_puf.FederatedDataset.Utils.lda import create_lda_partitions
 
 
 class NonIIDPartitionWithSensitiveFeature:
