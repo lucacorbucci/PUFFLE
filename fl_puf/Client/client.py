@@ -2,9 +2,7 @@ import copy
 import gc
 import logging
 import os
-import random
 import warnings
-from collections import Counter
 from pathlib import Path
 
 import dill
@@ -17,7 +15,9 @@ from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Utils.utils import Utils
 from flwr.common.typing import Scalar
+from Utils.enums import StartingLambdaMode
 from Utils.train_parameters import TrainParameters
+from Utils.Utils import rescale_lambda
 
 
 class FlowerClient(fl.client.NumPyClient):
@@ -83,7 +83,6 @@ class FlowerClient(fl.client.NumPyClient):
             dill.dump(state, f)
 
     def fit(self, parameters, config, average_probabilities=None):
-        # print(f"Node {self.cid} received {average_probabilities}")
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -97,14 +96,13 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
-        # sensitive_features = train_loader.dataset.sensitive_features
-
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
         first_round = False
 
         # If we already used this client we need to load the state regarding
-        # the private model
+        # the privacy engine both for the classic model and for the model
+        # used for the regularization
         if os.path.exists(
             f"{self.fed_dir}/privacy_engine_{self.cid}.pkl"
         ) and os.path.exists(
@@ -120,21 +118,24 @@ class FlowerClient(fl.client.NumPyClient):
             # If it is the first time that we use this client we use a Lambda = 0
             # because in the first round the model will be random and so the predictions
             # so the disparity will be 0 and therefore we can have Lambda = 0.
+            # This is just the Lambda that we will use in the first batch. Then we
+            # will update it based on our classic algorithm.
             self.train_parameters.DPL_lambda = 0
             first_round = True
 
-        # compute the disparity of the training dataset
-        disparities_training_dataset = [
-            RegularizationLoss().compute_violation_with_argmax(
-                predictions_argmax=train_loader.dataset.targets,
-                sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                current_target=target,
-                current_sensitive_feature=sv,
-            )
-            for target in range(0, 1)
-            for sv in range(0, 1)
-        ]
-        max_disparity_dataset = np.mean(disparities_training_dataset)
+        # compute the maximum disparity of the training dataset
+        max_disparity_dataset = np.max(
+            [
+                RegularizationLoss().compute_violation_with_argmax(
+                    predictions_argmax=train_loader.dataset.targets,
+                    sensitive_attribute_list=train_loader.dataset.sensitive_features,
+                    current_target=target,
+                    current_sensitive_feature=sv,
+                )
+                for target in range(0, 1)
+                for sv in range(0, 1)
+            ],
+        )
 
         (
             private_net,
@@ -168,23 +169,29 @@ class FlowerClient(fl.client.NumPyClient):
             )
         )
 
-        # In the first round we want to start from Lambda = 0
+        # In the first round we want to start from Lambda = 0, if it is not the first
+        # round we have several options to update Lambda: we can start from a fixed
+        # value, we can start from a value that depends on the target disparity
+        # and on the disparity of the training dataset or we can use the average of the
+        # disparities of the previous FL round
         if not first_round:
-            new_lambda = (
-                self.train_parameters.target - max_disparity_train_before_local_epoch
-            )
-            if new_lambda > 0:
-                new_lambda = 0
-            else:
-                new_lambda = (
-                    self.train_parameters.alpha * max_disparity_train_before_local_epoch
+            if self.train_parameters.starting_lambda_mode == StartingLambdaMode.fixed:
+                self.train_parameters.DPL_lambda = (
+                    self.train_parameters.starting_lambda_value
                 )
-            if new_lambda > 1:
-                new_lambda = 1
-            self.train_parameters.DPL_lambda = new_lambda
-            print(
-                f"New Lambda {self.train_parameters.DPL_lambda} - delta: {abs(self.train_parameters.target - max_disparity_train_before_local_epoch)}"
-            )
+            elif self.train_parameters.starting_lambda_mode == StartingLambdaMode.avg:
+                self.train_parameters.DPL_lambda = (
+                    self.compute_starting_lambda_with_avg()
+                )
+            elif (
+                self.train_parameters.starting_lambda_mode
+                == StartingLambdaMode.disparity
+            ):
+                self.train_parameters.DPL_lambda = (
+                    self.compute_starting_lambda_with_disparity()
+                )
+            else:
+                raise ValueError("Starting Lambda Mode not recognized")
 
         if self.train_parameters.DPL:
             (
@@ -374,3 +381,47 @@ class FlowerClient(fl.client.NumPyClient):
             len(valloader.dataset),
             metrics,
         )
+
+    def compute_starting_lambda_with_avg(self):
+        """
+        This function computes the starting Lambda based on
+        the average of the disparities of the previous FL round.
+        """
+        loaded_clients_list = []
+        if os.path.exists(f"{self.fed_dir}/clients_last_round.pkl"):
+            with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
+                loaded_clients_list = dill.load(file)
+        lambda_list = []
+        if loaded_clients_list:
+            for client_cid in loaded_clients_list:
+                if os.path.exists(f"{self.fed_dir}/DPL_lambda_{client_cid}.pkl"):
+                    with open(
+                        f"{self.fed_dir}/DPL_lambda_{client_cid}.pkl", "rb"
+                    ) as file:
+                        loaded_lambda = dill.load(file)
+                        lambda_list.append(loaded_lambda)
+        if lambda_list:
+            return np.mean(lambda_list)
+        return 0
+
+    def compute_starting_lambda_with_disparity(self, disparity_training):
+        """
+        This function computes the starting Lambda based on
+        the disparity of the training dataset and the target disparity.
+        Given a certain target disparity and the actual disparity of the training
+        dataset, what we do is to compute the difference between the two values.
+        If the difference is positive, it means that we want to use a Lambda = 0.
+        If the difference is negative then we can use the difference as a Lambda but
+        instead of using it directly we have to rescale it in the range [0, 1].
+        """
+        delta = self.train_parameters.target - disparity_training
+        if delta > 0:
+            return 0
+        else:
+            return Utils.rescale_lambda(
+                value=abs(delta),
+                old_min=0,
+                old_max=disparity_training,
+                new_min=0,
+                new_max=1,
+            )

@@ -135,6 +135,8 @@ def setup_wandb(args, train_parameters):
             "alpha_target_lambda": args.alpha_target_lambda,
             "target": args.target,
             "weight_decay_lambda": args.weight_decay_lambda,
+            "starting_lambda_mode": args.starting_lambda_mode,
+            "starting_lambda_value": args.starting_lambda_value,
         },
     )
     return wandb_run
@@ -665,6 +667,7 @@ if __name__ == "__main__":
         num_validation_nodes=num_validation_nodes,
         num_test_nodes=num_test_nodes,
         node_shuffle_seed=args.node_shuffle_seed,
+        fed_dir=fed_dir,
     )
     server = Server(client_manager=client_manager, strategy=strategy)
 
