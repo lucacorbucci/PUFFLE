@@ -73,6 +73,7 @@ parser.add_argument("--test_nodes", type=float, default=0)
 parser.add_argument("--node_shuffle_seed", type=int, default=30)
 parser.add_argument("--starting_lambda_mode", type=str, default=None)
 parser.add_argument("--starting_lambda_value", type=float, default=None)
+parser.add_argument("--momentum", type=float, default=None)
 
 
 # DPL:
@@ -137,6 +138,7 @@ def setup_wandb(args, train_parameters):
             "weight_decay_lambda": args.weight_decay_lambda,
             "starting_lambda_mode": args.starting_lambda_mode,
             "starting_lambda_value": args.starting_lambda_value,
+            "momentum": args.momentum,
         },
     )
     return wandb_run
@@ -232,6 +234,7 @@ if __name__ == "__main__":
         sweep=args.sweep,
         starting_lambda_mode=starting_lambda_mode,
         starting_lambda_value=args.starting_lambda_value,
+        momentum=args.momentum,
     )
 
     # partition dataset (use a large `alpha` to make it IID;

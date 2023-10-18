@@ -15,6 +15,7 @@ class TrainParameters:
     seed: int
     epsilon: float
     starting_lambda_mode: StartingLambdaMode
+    momentum: float
     DPL_lambda: float = 0
     private: bool = False
     DPL: bool = False
