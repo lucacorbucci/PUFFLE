@@ -23,7 +23,6 @@ class IIDPartition:
         splitted_indexes = np.array_split(idx, num_partitions)
         splitted_labels = [labels[index_list] for index_list in splitted_indexes]
 
-      
         splitted_indexes_dict = {
             f"cluster_{index}": item for index, item in enumerate(splitted_indexes)
         }

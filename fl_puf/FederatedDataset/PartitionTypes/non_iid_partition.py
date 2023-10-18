@@ -81,8 +81,8 @@ class NonIIDPartition:
         if not alpha:
             raise ValueError("Alpha must be a positive number")
         # idx = torch.tensor(list(range(len(labels))))
-        idx = indexes 
-        
+        idx = indexes
+
         index_per_label = {}
         for index, label in zip(idx, labels):
             if label.item() not in index_per_label:
@@ -121,4 +121,3 @@ class NonIIDPartition:
                 index_per_label[class_index] = index_per_label[class_index][samples:]
 
         return partitions_index.values()
-       

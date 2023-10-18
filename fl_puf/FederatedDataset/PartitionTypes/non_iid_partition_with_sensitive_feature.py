@@ -196,4 +196,9 @@ class NonIIDPartitionWithSensitiveFeature:
             labels_and_sensitive_feature = zip(node_labels, node_sensitive_features)
             print(f"Node {node_name} has: ", Counter(labels_and_sensitive_feature))
 
-        return partitions_index, partitions_labels, partitions_index_list, dir_distributions
+        return (
+            partitions_index,
+            partitions_labels,
+            partitions_index_list,
+            dir_distributions,
+        )

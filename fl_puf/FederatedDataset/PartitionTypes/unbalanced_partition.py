@@ -14,13 +14,12 @@ class UnbalancedPartition:
         sensitive_features: np.ndarray,
         num_partitions: int,
         total_num_classes: int,
-        alpha:int,
-        ratio_list:list
+        alpha: int,
+        ratio_list: list,
     ) -> list:
-        
         """This function splits a list of labels in num_partitions parts
         considering the sensitive features. If we have N possible sensitive features
-        we will create N groups of indexes so that each group will only have 
+        we will create N groups of indexes so that each group will only have
         instances with that sensitive feature.
 
         Returns:
@@ -45,6 +44,11 @@ class UnbalancedPartition:
             indexes = torch.tensor(indexes)
             current_labels = labels[indexes]
             # call the do_iid_partitioning_with_indexes function from the iid_partition.py file
-            splitted_indexes += NonIIDPartition.do_partitioning_with_indexes(indexes=indexes, labels=current_labels, num_partitions=int(num_partitions*ratio), alpha=alpha)
+            splitted_indexes += NonIIDPartition.do_partitioning_with_indexes(
+                indexes=indexes,
+                labels=current_labels,
+                num_partitions=int(num_partitions * ratio),
+                alpha=alpha,
+            )
         splitted_indexes = list(itertools.chain.from_iterable(zip(*splitted_indexes)))
         return splitted_indexes
