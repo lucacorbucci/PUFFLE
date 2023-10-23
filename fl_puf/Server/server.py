@@ -186,7 +186,7 @@ class Server:
         """Validate current global model on a number of clients."""
 
         # Get clients and their respective instructions from strategy
-        client_instructions = self.strategy.configure_evaluate(
+        client_instructions = self.strategy.configure_test(
             server_round=server_round,
             parameters=self.parameters,
             client_manager=self._client_manager,

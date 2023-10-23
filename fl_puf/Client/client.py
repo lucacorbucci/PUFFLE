@@ -116,6 +116,8 @@ class FlowerClient(fl.client.NumPyClient):
             # will update it based on our classic algorithm.
             self.train_parameters.DPL_lambda = 0
             first_round = True
+        if self.train_parameters.starting_lambda_mode == "no_tuning":
+            self.train_parameters.DPL_lambda = self.train_parameters.starting_lambda_value
 
         # compute the maximum disparity of the training dataset
         max_disparity_dataset = np.max(
@@ -168,7 +170,7 @@ class FlowerClient(fl.client.NumPyClient):
         # value, we can start from a value that depends on the target disparity
         # and on the disparity of the training dataset or we can use the average of the
         # disparities of the previous FL round
-        if not first_round:
+        if not first_round and self.train_parameters.target:
             if self.train_parameters.starting_lambda_mode == "fixed":
                 self.train_parameters.DPL_lambda = (
                     self.train_parameters.starting_lambda_value
@@ -180,7 +182,7 @@ class FlowerClient(fl.client.NumPyClient):
             elif self.train_parameters.starting_lambda_mode == "disparity":
                 self.train_parameters.DPL_lambda = (
                     self.compute_starting_lambda_with_disparity(
-                        disparity_training=max_disparity_dataset,
+                        disparity_training=max_disparity_train_before_local_epoch, #max_disparity_dataset,
                     )
                 )
             else:
@@ -213,6 +215,9 @@ class FlowerClient(fl.client.NumPyClient):
         all_metrics = []
         all_losses = []
         for epoch in range(0, self.train_parameters.epochs):
+            print("BEFORE: ", self.train_parameters.DPL_lambda)
+            print("BEFORE: ", self.train_parameters.alpha)
+
             metrics = Learning.train_private_model(
                 train_parameters=self.train_parameters,
                 model=private_net,
@@ -225,6 +230,10 @@ class FlowerClient(fl.client.NumPyClient):
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
             )
+
+            print("AFTER: ", self.train_parameters.DPL_lambda)
+            print("AFTER: ", self.train_parameters.alpha)
+
             metrics[
                 "Max Disparity Train Before Local Epoch"
             ] = max_disparity_train_before_local_epoch
@@ -238,13 +247,15 @@ class FlowerClient(fl.client.NumPyClient):
         # details about the private training
         with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "wb") as f:
             dill.dump(privacy_engine.accountant, f)
-        with open(
-            f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "wb"
-        ) as f:
-            dill.dump(privacy_engine_regularization.accountant, f)
+        if self.train_parameters.DPL:
+            with open(
+                f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "wb"
+            ) as f:
+                dill.dump(privacy_engine_regularization.accountant, f)
 
-        with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
-            dill.dump(self.train_parameters.DPL_lambda, f)
+            with open(f"{self.fed_dir}/DPL_lambda_{self.cid}.pkl", "wb") as f:
+                dill.dump(self.train_parameters.DPL_lambda, f)
+
         (
             predictions,
             sensitive_attributes,
@@ -292,6 +303,7 @@ class FlowerClient(fl.client.NumPyClient):
                     "Max Disparity Train Before Local Epoch"
                 ],
                 "Max Disparity Dataset": max_disparity_dataset,
+                "DPL_lambda": self.train_parameters.DPL_lambda,
             },
         )
 
@@ -301,13 +313,13 @@ class FlowerClient(fl.client.NumPyClient):
         # Load data for this client and get trainloader
         num_workers = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
 
-        valloader = Utils.get_dataloader(
+        dataset = Utils.get_dataloader(
             self.fed_dir,
             self.cid,
             batch_size=self.train_parameters.batch_size,
             workers=num_workers,
             dataset=self.dataset_name,
-            partition="val" if self.train_parameters.sweep else "test",
+            partition="train",
         )
 
         # Send model to device
@@ -323,7 +335,7 @@ class FlowerClient(fl.client.NumPyClient):
             max_disparity,
         ) = Learning.test(
             model=self.net,
-            test_loader=valloader,
+            test_loader=dataset,
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
@@ -335,7 +347,7 @@ class FlowerClient(fl.client.NumPyClient):
             possible_sensitive_attributes,
         ) = Learning.test_prediction(
             model=self.net,
-            test_loader=valloader,
+            test_loader=dataset,
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
@@ -372,13 +384,13 @@ class FlowerClient(fl.client.NumPyClient):
         # Return statistics
         return (
             float(test_loss),
-            len(valloader.dataset),
+            len(dataset.dataset),
             metrics,
         )
 
     def compute_starting_lambda_with_avg(self):
         """
-        This function computes the starting Lambda based on
+        This function computes the staƒrting Lambda based on
         the average of the disparities of the previous FL round.
         """
         loaded_clients_list = []

@@ -3,10 +3,8 @@ import logging
 import os
 import random
 import warnings
-from pathlib import Path
 from typing import Dict
 
-import dill
 import flwr as fl
 import numpy as np
 import torch
@@ -15,6 +13,7 @@ from ClientManager.client_manager import SimpleClientManager
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from flwr.common.typing import Scalar
+from opacus import PrivacyEngine
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from torch import nn
@@ -36,10 +35,9 @@ parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--pool_size", type=int, default=100)
 parser.add_argument("--sampled_clients", type=float, default=0.1)
 parser.add_argument("--sampled_clients_test", type=float, default=0.1)
-parser.add_argument("--sampled_clients_validation", type=float, default=0.1)
+parser.add_argument("--sampled_clients_validation", type=float, default=0)
 parser.add_argument("--wandb", type=bool, default=False)
 parser.add_argument("--DPL", type=bool, default=False)
-parser.add_argument("--DPL_lambda", type=float, default=0.0)
 parser.add_argument("--private", type=bool, default=False)
 parser.add_argument("--epsilon", type=float, default=None)
 parser.add_argument("--noise_multiplier", type=float, default=0)
@@ -48,7 +46,6 @@ parser.add_argument("--delta", type=float, default=None)
 parser.add_argument("--lr", type=float, default="0.1")
 parser.add_argument("--alpha", type=int, default=1000000)
 parser.add_argument("--train_csv", type=str, default="")
-parser.add_argument("--test_csv", type=str, default="")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--debug", type=bool, default=False)
 parser.add_argument("--base_path", type=str, default="")
@@ -63,7 +60,6 @@ parser.add_argument("--target", type=float, default=None)
 parser.add_argument("--cross_silo", type=bool, default=False)
 parser.add_argument("--weight_decay_lambda", type=float, default=None)
 parser.add_argument("--sweep", type=bool, default=False)
-parser.add_argument("--validation_ratio", type=float, default=0)
 parser.add_argument("--optimizer", type=str, default=0)
 parser.add_argument("--training_nodes", type=float, default=0)
 parser.add_argument("--validation_nodes", type=float, default=0)
@@ -109,13 +105,13 @@ def setup_wandb(args, train_parameters):
     wandb_run = wandb.init(
         # set the wandb project where this run will be logged
         project="FL_fairness",
-        name=f"FL - Lambda {args.DPL_lambda} - LR {args.lr} - Batch {args.batch_size}",
+        # name=f"FL - Lambda {args.DPL_lambda} - LR {args.lr} - Batch {args.batch_size}",
         # track hyperparameters and run metadata
         config={
             "learning_rate": args.lr,
             "csv": args.train_csv,
             "DPL_regularization": args.DPL,
-            "DPL_lambda": args.DPL_lambda,
+            # "DPL_lambda": args.DPL_lambda,
             "batch_size": args.batch_size,
             "dataset": args.dataset,
             "num_rounds": args.num_rounds,
@@ -137,6 +133,7 @@ def setup_wandb(args, train_parameters):
             "starting_lambda_mode": args.starting_lambda_mode,
             "starting_lambda_value": args.starting_lambda_value,
             "momentum": args.momentum,
+            "node_shuffle_seed": args.node_shuffle_seed,
         },
     )
     return wandb_run
@@ -185,7 +182,6 @@ if __name__ == "__main__":
     train_set, test_set = DatasetUtils.download_dataset(
         dataset_name,
         train_csv=args.train_csv,
-        test_csv=args.test_csv,
         debug=args.debug,
     )
     train_path = Utils.prepare_dataset_for_FL(
@@ -193,20 +189,18 @@ if __name__ == "__main__":
         dataset_name=dataset_name,
         base_path=args.base_path,
     )
-    test_path = Utils.prepare_dataset_for_FL(
-        dataset=test_set,
-        dataset_name=dataset_name,
-        base_path=args.base_path,
-        partition="test",
-    )
 
+    DPL_value = None
     if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
         raise Exception("Starting lambda value must be specified when using fixed mode")
+    elif args.starting_lambda_mode == "fixed" and args.starting_lambda_value:
+        DPL_value = args.starting_lambda_value
 
     if (
         args.starting_lambda_mode != "fixed"
         and args.starting_lambda_mode != "avg"
         and args.starting_lambda_mode != "disparity"
+        and args.starting_lambda_mode != "no_tuning"
     ):
         raise Exception(
             f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
@@ -219,7 +213,7 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         seed=args.seed,
         epsilon=args.epsilon if args.private else None,
-        DPL_lambda=args.DPL_lambda,
+        DPL_lambda=DPL_value,
         private=args.private,
         DPL=args.DPL,
         noise_multiplier=args.noise_multiplier,
@@ -242,38 +236,17 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
 
-    if (
-        args.sweep
-        and not args.validation_ratio
-        or args.validation_ratio
-        and not args.sweep
-    ):
-        raise Exception("When doing validation, sweep must be True and viceversa")
-
     # Partitioning the training dataset
     fed_dir = Utils.do_fl_partitioning(
         train_path,
         pool_size=pool_size,
         num_classes=2,
-        val_ratio=args.validation_ratio,
+        val_ratio=0,
         partition_type=args.partition_type,
         alpha=args.alpha,
         train_parameters=train_parameters,
     )
 
-    if not args.validation_ratio:
-        # Partitioning the test dataset
-        fed_dir = Utils.do_fl_partitioning(
-            test_path,
-            pool_size=pool_size,
-            num_classes=2,
-            val_ratio=0,
-            partition_type=args.partition_type,
-            alpha=args.alpha,
-            train_parameters=train_parameters,
-            partition="test",
-        )
-    # fed_dir = "../data/celeba/celeba-10-batches-py/federated"
     print(fed_dir)
     test = os.listdir(fed_dir)
 
@@ -281,48 +254,48 @@ if __name__ == "__main__":
         if item.endswith(".pkl"):
             os.remove(os.path.join(fed_dir, item))
 
-    # if args.epsilon:
-    #     # We need to understand the noise that we need to add based
-    #     # on the epsilon that we want to guarantee
-    #     max_noise = 0
-    #     for i in range(args.pool_size):
-    #         model_noise = ModelUtils.get_model(
-    #             dataset_name, device=train_parameters.device
-    #         )
-    #         # get the training dataset of one of the clients
-    #         train_loader_client_0 = Utils.get_dataloader(
-    #             fed_dir,
-    #             str(i),
-    #             batch_size=train_parameters.batch_size,
-    #             workers=0,
-    #             dataset=dataset_name,
-    #             partition="train",
-    #         )
-    #         privacy_engine = PrivacyEngine(accountant="rdp")
-    #         optimizer_noise = get_optimizer(model_noise, train_parameters, args.lr)
-    #         (
-    #             _,
-    #             private_optimizer,
-    #             _,
-    #         ) = privacy_engine.make_private_with_epsilon(
-    #             module=model_noise,
-    #             optimizer=optimizer_noise,
-    #             data_loader=train_loader_client_0,
-    #             epochs=(args.num_rounds // 10) * args.epochs,
-    #             target_epsilon=train_parameters.epsilon,
-    #             target_delta=args.delta,
-    #             max_grad_norm=args.clipping,
-    #         )
-    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
-    #         print(
-    #             f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
-    #         )
+    if args.epsilon:
+        # We need to understand the noise that we need to add based
+        # on the epsilon that we want to guarantee
+        max_noise = 0
+        for i in range(args.pool_size):
+            model_noise = ModelUtils.get_model(
+                dataset_name, device=train_parameters.device
+            )
+            # get the training dataset of one of the clients
+            train_loader_client_0 = Utils.get_dataloader(
+                fed_dir,
+                str(i),
+                batch_size=train_parameters.batch_size,
+                workers=0,
+                dataset=dataset_name,
+                partition="train",
+            )
+            privacy_engine = PrivacyEngine(accountant="rdp")
+            optimizer_noise = get_optimizer(model_noise, train_parameters, args.lr)
+            (
+                _,
+                private_optimizer,
+                _,
+            ) = privacy_engine.make_private_with_epsilon(
+                module=model_noise,
+                optimizer=optimizer_noise,
+                data_loader=train_loader_client_0,
+                epochs=(args.num_rounds // 10) * args.epochs,
+                target_epsilon=train_parameters.epsilon,
+                target_delta=args.delta,
+                max_grad_norm=args.clipping,
+            )
+            max_noise = max(max_noise, private_optimizer.noise_multiplier)
+            print(
+                f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
+            )
 
-    #     train_parameters.noise_multiplier = max_noise
-    #     train_parameters.epsilon = None
-    #     print(
-    #         f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
-    #     )
+        train_parameters.noise_multiplier = max_noise
+        train_parameters.epsilon = None
+        print(
+            f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+        )
 
     wandb_run = setup_wandb(args, train_parameters) if args.wandb else None
 
@@ -484,9 +457,19 @@ if __name__ == "__main__":
             ]
         )
 
-        custom_metric = accuracy_evaluation - abs(
-            args.target - max_disparity_statistics
-        )
+        custom_metric = accuracy_evaluation
+        if args.target:
+            distance = args.target - max_disparity_statistics
+            if distance < 0:
+                # If the disparity is below the target then we use the distance
+                # If the disparity is above the target, we want to penalize it
+                # assigning a distance equal to infinite
+                distance = float("inf")
+
+            # custom_metric will be -inf when the disparity is above the target
+            # otherwise we will have a positive value that depends on the distance
+            # and on the accuracy on the validation set
+            custom_metric = accuracy_evaluation - distance
 
         agg_metrics = {
             "Validation Loss": loss_evaluation,
@@ -536,10 +519,12 @@ if __name__ == "__main__":
             ]
 
             # Load the lambda for the client
-            fed_dir = Path(fed_dir)
-            if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
-                with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
-                    lambda_client = dill.load(file)
+            # fed_dir = Path(fed_dir)
+            # if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
+            #     with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
+            #         lambda_client = dill.load(file)
+
+            DPL_lambda = node_metrics["DPL_lambda"]
 
             # load the statistics
             current_counter = node_metrics["counters"]
@@ -557,8 +542,8 @@ if __name__ == "__main__":
             }
             if disparity:
                 to_be_logged[f"Disparity Dataset Client {client_id}"] = disparity
-            if lambda_client:
-                to_be_logged[f"Lambda Client {client_id}"] = lambda_client
+            if DPL_lambda:
+                to_be_logged[f"Lambda Client {client_id}"] = DPL_lambda
 
             if wandb_run:
                 wandb_run.log(
@@ -611,6 +596,9 @@ if __name__ == "__main__":
 
         return agg_metrics
 
+    print(
+        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
+    )
     strategy = FedAvg(
         fraction_fit=args.sampled_clients,
         fraction_evaluate=args.sampled_clients_validation,
@@ -655,6 +643,9 @@ if __name__ == "__main__":
     num_training_nodes = int(args.pool_size * args.training_nodes)
     num_validation_nodes = int(args.pool_size * args.validation_nodes)
     num_test_nodes = int(args.pool_size * args.test_nodes)
+
+    print(args.training_nodes, args.validation_nodes, args.test_nodes)
+    print(num_training_nodes, num_validation_nodes, num_test_nodes)
 
     if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
         raise Exception(

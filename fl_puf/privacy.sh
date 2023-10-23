@@ -230,3 +230,11 @@ wait;
 # # Train and Test
 # poetry run python main.py --num_rounds 10 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 100 --sampled_clients 0.15 --sampled_clients_test 0.35 --lr 0.1 --train_csv unfair_train --test_csv unfair_test --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.7 --test_nodes 0.3 --node_shuffle_seed 10 --wandb True &
 # wait;
+
+
+
+poetry run python main.py --num_rounds 4 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 0.5 --batch_size 512 --pool_size 10 --sampled_clients 0.25 --sampled_clients_test 0.35 --sampled_clients_validation 0.35 --lr 0.1 --train_csv unfair_train_reduced --test_csv unfair_test_reduced --debug True --base_path ../data --DPL True --DPL_lambda 0 --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.2 --weight_decay_lambda 0.00001 --epsilon 10 --training_nodes 0.41 --validation_nodes 0.26 --test_nodes 0.33 --node_shuffle_seed 99 
+
+
+
+poetry run python main.py --num_rounds 50 --dataset celeba --epochs 1 --num_client_cpus 1 --num_client_gpus 1.0 --batch_size 512 --pool_size 150 --sampled_clients 0.15 --sampled_clients_test 0.20 --sampled_clients_validation 0.34 --lr 0.1 --train_csv unfair_train  --debug True --base_path ../data --DPL True  --private True --clipping 100000.0  --delta 1e-4 --partition_type non_iid --alpha 5 --seed 41 --optimizer sgd --alpha_target_lambda 1.0 --target 0.1 --weight_decay_lambda 0.0001 --noise_multiplier 0 --training_nodes 0.47 --validation_nodes 0.20 --test_nodes 0.335 --node_shuffle_seed 99 --starting_lambda_mode disparity --momentum 0

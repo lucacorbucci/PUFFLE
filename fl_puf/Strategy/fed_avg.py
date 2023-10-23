@@ -126,6 +126,7 @@ class FedAvg(Strategy):
         self.current_max_expsilon = current_max_epsilon
         self.fraction_fit = fraction_fit
         self.fraction_evaluate = fraction_evaluate
+        self.fraction_test = fraction_test
         self.min_fit_clients = min_fit_clients
         self.min_evaluate_clients = min_evaluate_clients
         self.min_available_clients = min_available_clients
@@ -151,6 +152,11 @@ class FedAvg(Strategy):
     def num_evaluation_clients(self, num_available_clients: int) -> Tuple[int, int]:
         """Use a fraction of available clients for evaluation."""
         num_clients = int(num_available_clients * self.fraction_evaluate)
+        return max(num_clients, self.min_evaluate_clients), self.min_available_clients
+
+    def num_test_clients(self, num_available_clients: int) -> Tuple[int, int]:
+        """Use a fraction of available clients for evaluation."""
+        num_clients = int(num_available_clients * self.fraction_test)
         return max(num_clients, self.min_evaluate_clients), self.min_available_clients
 
     def initialize_parameters(
@@ -220,6 +226,38 @@ class FedAvg(Strategy):
         # Sample clients
         sample_size, min_num_clients = self.num_evaluation_clients(
             client_manager.num_available(phase)
+        )
+        clients = client_manager.sample(
+            num_clients=sample_size,
+            min_num_clients=min_num_clients,
+            phase=phase,
+        )
+
+        # Return client/config pairs
+        return [(client, evaluate_ins) for client in clients]
+
+    def configure_test(
+        self,
+        server_round: int,
+        parameters: Parameters,
+        client_manager: ClientManager,
+        phase: str,
+    ) -> List[Tuple[ClientProxy, EvaluateIns]]:
+        """Configure the next round of evaluation."""
+        # Do not configure federated evaluation if fraction eval is 0.
+        if self.fraction_test == 0.0:
+            return []
+
+        # Parameters and config
+        config = {}
+        if self.on_evaluate_config_fn is not None:
+            # Custom evaluation config function provided
+            config = self.on_evaluate_config_fn(server_round)
+        evaluate_ins = EvaluateIns(parameters, config)
+
+        # Sample clients
+        sample_size, min_num_clients = self.num_test_clients(
+            client_manager.num_available(phase),
         )
         clients = client_manager.sample(
             num_clients=sample_size,
