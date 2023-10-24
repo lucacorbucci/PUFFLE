@@ -68,6 +68,7 @@ parser.add_argument("--node_shuffle_seed", type=int, default=30)
 parser.add_argument("--starting_lambda_mode", type=str, default=None)
 parser.add_argument("--starting_lambda_value", type=float, default=None)
 parser.add_argument("--momentum", type=float, default=None)
+parser.add_argument("--update_lambda", type=bool, default=False)
 
 
 # DPL:
@@ -228,6 +229,7 @@ if __name__ == "__main__":
         starting_lambda_mode=args.starting_lambda_mode,
         starting_lambda_value=args.starting_lambda_value,
         momentum=args.momentum,
+        update_lambda=args.update_lambda,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
