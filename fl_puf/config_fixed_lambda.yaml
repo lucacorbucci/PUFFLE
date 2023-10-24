@@ -43,9 +43,9 @@ command:
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.15
+  - 0.30
   - --sampled_clients_test 
-  - 0.20
+  - 1.0
   - --sampled_clients_validation 
   - 0.34
   - --train_csv
@@ -82,3 +82,5 @@ command:
   - 0.335
   - --starting_lambda_mode 
   - no_tuning
+  - --target 
+  - 0.1

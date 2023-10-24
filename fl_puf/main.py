@@ -460,16 +460,12 @@ if __name__ == "__main__":
         custom_metric = accuracy_evaluation
         if args.target:
             distance = args.target - max_disparity_statistics
-            if distance < 0:
-                # If the disparity is below the target then we use the distance
-                # If the disparity is above the target, we want to penalize it
-                # assigning a distance equal to infinite
-                distance = float("inf")
+            distance = 0 if distance >= 0 else distance
 
             # custom_metric will be -inf when the disparity is above the target
             # otherwise we will have a positive value that depends on the distance
             # and on the accuracy on the validation set
-            custom_metric = accuracy_evaluation - distance
+            custom_metric = accuracy_evaluation + distance
 
         agg_metrics = {
             "Validation Loss": loss_evaluation,

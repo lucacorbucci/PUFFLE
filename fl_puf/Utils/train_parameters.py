@@ -29,3 +29,4 @@ class TrainParameters:
     sweep: bool = False
     optimizer: str = "sgd"
     starting_lambda_value: float = None
+    update_lambda: bool = False

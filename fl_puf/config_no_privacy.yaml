@@ -1,11 +1,11 @@
 program: main.py
-method: random
+method: bayes
 metric:
   name: Custom_metric
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 3
+  min_iter: 5
 parameters:
   epochs:
     min: 1
@@ -49,9 +49,9 @@ command:
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.15
+  - 0.30
   - --sampled_clients_test 
-  - 0.20
+  - 1.0
   - --sampled_clients_validation 
   - 0.34
   - --train_csv
@@ -67,7 +67,7 @@ command:
   - --delta 
   - 1e-4 
   - --partition_type 
-  - non_iid 
+  - iid 
   - --alpha 
   - 5 
   - --seed 
@@ -90,3 +90,5 @@ command:
   - 0.335
   - --starting_lambda_mode 
   - disparity
+  - --update_lambda 
+  - True
