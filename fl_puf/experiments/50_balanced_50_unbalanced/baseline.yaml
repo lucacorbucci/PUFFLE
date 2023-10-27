@@ -46,7 +46,7 @@ command:
   - --sampled_clients_validation 
   - 0.68
   - --train_csv
-  - unfair_train
+  - original_merged
   - --debug
   - True 
   - --base_path

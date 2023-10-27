@@ -137,8 +137,8 @@ class BalancedAndUnbalanced:
 
         # We have to sort the indexes so that each time we sample the nodes
         # we have some nodes from unbalanced and some from balanced
-        splitted_indexes = []
-        ratio_splitted = int(10 * percentage_unbalanced_nodes)
+        # splitted_indexes = []
+        # ratio_splitted = int(10 * percentage_unbalanced_nodes)
 
         # for index in range(len(balanced_partition) + len(new_to_be_unbalanced)):
         #     # The first ratio_splitted % of the nodes will be underrepresented in each batch of nodes
