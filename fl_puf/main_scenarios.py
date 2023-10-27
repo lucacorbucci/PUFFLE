@@ -136,7 +136,6 @@ def setup_wandb(args, train_parameters):
             "starting_lambda_value": args.starting_lambda_value,
             "momentum": args.momentum,
             "node_shuffle_seed": args.node_shuffle_seed,
-            "unbalanced_ratio": args.unbalanced_ratio,
         },
     )
     return wandb_run
@@ -232,7 +231,6 @@ if __name__ == "__main__":
         starting_lambda_value=args.starting_lambda_value,
         momentum=args.momentum,
         update_lambda=args.update_lambda,
-        unbalanced_ratio=args.unbalanced_ratio,
     )
 
     # partition dataset (use a large `alpha` to make it IID;

@@ -49,11 +49,11 @@ command:
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.30
+  - 0.29
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
-  - 0.34
+  - 0.68
   - --train_csv
   - unfair_train
   - --debug

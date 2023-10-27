@@ -11,15 +11,14 @@ python = "^3.8"
 flwr = { git = "https://github.com/lucacorbucci/flower", extras = ["simulation"], branch="main" }
 torch = "2.0.0"
 torchvision = "^0.15.1"
-black = "^23.3.0"
 wandb = "^0.14.0"
 pytest = "^7.3.1"
 pandas = "^1.5.3"
 scikit-learn = "^1.2.2"
 opacus = "^1.3.0"
-DPL = { file = "./DPL/dist/dpl-0.1.0.post19-py3-none-any.whl" }
+DPL = { file = "./DPL/dist/dpl-0.1.0.post20-py3-none-any.whl" }
 dill = "^0.3.6"
-
+ruff = "^0.1.2"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.23.1"
@@ -28,77 +27,34 @@ ipykernel = "^6.23.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-
-# --- Black config ------------------------------------------- #
-
-[tool.black]
-line-length = 88
-
-# --- isort config ------------------------------------------- #
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-line_length = 88
-lines_after_imports = 2
-
-
-
 [tool.ruff]
 line-length = 88
-select = ["ALL"]
-target-version = "py310"
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP",  # pyupgrade
+]
 ignore = [
-    "D101",
-    "D100",
-    "D404",
-    "I001",
-    "C901",
-    "D213",
-    "D203",
-    "B905",
-    "EM101",
-    "D205",
-    "D407",
-    "E501",
-    "ANN101",
-    "D401",
-    "T201",
-    "FBT001",
-    "B006",
-    "PLR0913", # too many arguments in function
-    "G004",
-    "S101",
-    "TCH002"
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+    "W191", # indentation contains tabs
 ]
-fix = true
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
-    "tests/codegen/snapshots"
-]
-src = ["pistacchio", "tests"]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+
 
 [tool.ruff.isort]
-known-first-party = ["pistacchio"]
-extra-standard-library = ["typing_extensions"]
+case-sensitive = true
+combine-as-imports = true
+
+[tool.ruff.pyupgrade]
+# Preserve types, even if a file imports `from __future__ import annotations`.
+keep-runtime-typing = true
+
 

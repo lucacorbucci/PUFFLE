@@ -7,8 +7,17 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
-from DPL.learning import Learning
+from PIL import Image
+from flwr.common.typing import Scalar
+from opacus import PrivacyEngine
+from opacus.grad_sample import GradSampleModule
+from opacus.optimizers import DPOptimizer
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from torchvision.datasets import VisionDataset
+
 from DPL.Utils.model_utils import ModelUtils
+from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
@@ -27,14 +36,6 @@ from fl_puf.FederatedDataset.PartitionTypes.underrepresented_partition import (
 )
 from fl_puf.FederatedDataset.Utils.utils import PartitionUtils
 from fl_puf.Utils.train_parameters import TrainParameters
-from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
-from opacus.grad_sample import GradSampleModule
-from opacus.optimizers import DPOptimizer
-from PIL import Image
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import VisionDataset
 
 
 class Utils:
@@ -172,7 +173,7 @@ class Utils:
             # a subset of the classes. For instance, if we have 2 classes and
             # 2 sensitive attributes (male and female) like in Celeba, we would assign
             # only the female samples to a node and only the male samples to another node.
-            ratio = train_parameters.partition_ratio
+            ratio = train_parameters.percentage_unbalanced_nodes
             ratio_list = [ratio, 1 - ratio]
             partitions_index_list = UnbalancedPartition.do_partitioning(
                 labels=labels,
@@ -195,7 +196,7 @@ class Utils:
 
             # Ratio is the percentage of nodes that will not have all the possible
             # combinations of classes and sensitive attributes.
-            ratio = train_parameters.partition_ratio
+            ratio = train_parameters.percentage_unbalanced_nodes
 
             partitions_index_list = UnbalancedPartitionOneClass.do_partitioning(
                 labels=labels,
@@ -210,7 +211,7 @@ class Utils:
                 dataset=dataset,
             )
         elif partition_type == "underrepresented":
-            ratio = train_parameters.partition_ratio
+            ratio = train_parameters.percentage_unbalanced_nodes
 
             partitions_index_list = UnderrepresentedPartition.do_partitioning(
                 labels=labels,
@@ -225,15 +226,14 @@ class Utils:
                 dataset=dataset,
             )
         elif partition_type == "balanced_and_unbalanced":
-            ratio = train_parameters.partition_ratio
-
             partitions_index_list = BalancedAndUnbalanced.do_partitioning(
                 labels=labels,
                 sensitive_features=sensitive_attribute,
                 num_partitions=pool_size,
                 total_num_classes=2,
                 alpha=alpha,
-                ratio_unbalanced=ratio,
+                percentage_unbalanced_nodes=train_parameters.percentage_unbalanced_nodes,
+                unbalanced_ratio=train_parameters.unbalanced_ratio,
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=partitions_index_list,
@@ -267,7 +267,11 @@ class Utils:
                     for item in partitions[p][1]
                 ],
             )
-            print(Counter(labels_and_sensitive))
+            counter = Counter(labels_and_sensitive)
+            print(
+                f"Node has {sum(counter.values())} - ",
+                counter,
+            )
 
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it
@@ -480,7 +484,6 @@ class Utils:
                     }
                 )
 
-   
             return test_loss, {"Test Accuracy": accuracy}
 
         return evaluate

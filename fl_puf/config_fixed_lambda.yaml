@@ -1,5 +1,5 @@
 program: main.py
-method: random
+method: bayes
 metric:
   name: Custom_metric
   goal: maximize
@@ -35,7 +35,7 @@ command:
   - --dataset
   - celeba
   - --num_rounds
-  - 100
+  - 50
   - --num_client_cpus
   - 1
   - --num_client_gpus
@@ -43,11 +43,11 @@ command:
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.30
+  - 0.29
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
-  - 0.34
+  - 0.68
   - --train_csv
   - unfair_train
   - --debug

@@ -117,7 +117,9 @@ class FlowerClient(fl.client.NumPyClient):
             self.train_parameters.DPL_lambda = 0
             first_round = True
         if self.train_parameters.starting_lambda_mode == "no_tuning":
-            self.train_parameters.DPL_lambda = self.train_parameters.starting_lambda_value
+            self.train_parameters.DPL_lambda = (
+                self.train_parameters.starting_lambda_value
+            )
 
         # compute the maximum disparity of the training dataset
         max_disparity_dataset = np.max(
@@ -170,7 +172,11 @@ class FlowerClient(fl.client.NumPyClient):
         # value, we can start from a value that depends on the target disparity
         # and on the disparity of the training dataset or we can use the average of the
         # disparities of the previous FL round
-        if not first_round and self.train_parameters.target:
+        if (
+            not first_round
+            and self.train_parameters.target
+            and self.train_parameters.update_lambda
+        ):
             if self.train_parameters.starting_lambda_mode == "fixed":
                 self.train_parameters.DPL_lambda = (
                     self.train_parameters.starting_lambda_value
@@ -180,10 +186,8 @@ class FlowerClient(fl.client.NumPyClient):
                     self.compute_starting_lambda_with_avg()
                 )
             elif self.train_parameters.starting_lambda_mode == "disparity":
-                self.train_parameters.DPL_lambda = (
-                    self.compute_starting_lambda_with_disparity(
-                        disparity_training=max_disparity_train_before_local_epoch, #max_disparity_dataset,
-                    )
+                self.train_parameters.DPL_lambda = self.compute_starting_lambda_with_disparity(
+                    disparity_training=max_disparity_train_before_local_epoch,  # max_disparity_dataset,
                 )
             else:
                 raise ValueError(
@@ -215,9 +219,6 @@ class FlowerClient(fl.client.NumPyClient):
         all_metrics = []
         all_losses = []
         for epoch in range(0, self.train_parameters.epochs):
-            print("BEFORE: ", self.train_parameters.DPL_lambda)
-            print("BEFORE: ", self.train_parameters.alpha)
-
             metrics = Learning.train_private_model(
                 train_parameters=self.train_parameters,
                 model=private_net,
@@ -230,9 +231,6 @@ class FlowerClient(fl.client.NumPyClient):
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
             )
-
-            print("AFTER: ", self.train_parameters.DPL_lambda)
-            print("AFTER: ", self.train_parameters.alpha)
 
             metrics[
                 "Max Disparity Train Before Local Epoch"

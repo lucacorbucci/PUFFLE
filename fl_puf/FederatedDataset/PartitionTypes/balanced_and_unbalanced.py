@@ -4,6 +4,7 @@ from collections import Counter
 
 import numpy as np
 import torch
+
 from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition import NonIIDPartition
 
@@ -15,7 +16,8 @@ class BalancedAndUnbalanced:
         num_partitions: int,
         total_num_classes: int,
         alpha: int,
-        ratio_unbalanced: float,
+        percentage_unbalanced_nodes: float,
+        unbalanced_ratio: float = 0.4,
     ) -> list:
         """This function splits a list of labels in num_partitions parts
         considering the sensitive features. If we have N possible sensitive features
@@ -82,7 +84,9 @@ class BalancedAndUnbalanced:
 
         # Now we can get the ratio% of the balanced partition and unbalanced them
         # using the removed_instances dictionary
-        ratio_to_be_unbalanced = int(len(balanced_partition) * ratio_unbalanced)
+        ratio_to_be_unbalanced = int(
+            len(balanced_partition) * percentage_unbalanced_nodes
+        )
 
         to_be_unbalanced = balanced_partition[:ratio_to_be_unbalanced]
         balanced_partition = balanced_partition[ratio_to_be_unbalanced:]
@@ -103,7 +107,9 @@ class BalancedAndUnbalanced:
                     sensitive_features[index],
                 ) == value_to_unbalance:
                     indexes_to_remove.append(index)
-            indexes_to_remove = indexes_to_remove[: int(len(indexes_to_remove) * 2 / 3)]
+            indexes_to_remove = indexes_to_remove[
+                : int(len(indexes_to_remove) * unbalanced_ratio)
+            ]
             removed_indexes = len(indexes_to_remove)
             indexes = np.array(
                 [index for index in indexes if index not in indexes_to_remove]
@@ -132,14 +138,16 @@ class BalancedAndUnbalanced:
         # We have to sort the indexes so that each time we sample the nodes
         # we have some nodes from unbalanced and some from balanced
         splitted_indexes = []
-        ratio_splitted = int(10 * ratio_unbalanced)
+        ratio_splitted = int(10 * percentage_unbalanced_nodes)
 
-        for index in range(len(balanced_partition) + len(new_to_be_unbalanced)):
-            # The first ratio_splitted % of the nodes will be underrepresented in each batch of nodes
-            if index % 10 < ratio_splitted:
-                splitted_indexes.append(new_to_be_unbalanced.pop())
-            else:
-                splitted_indexes.append(balanced_partition.pop())
+        # for index in range(len(balanced_partition) + len(new_to_be_unbalanced)):
+        #     # The first ratio_splitted % of the nodes will be underrepresented in each batch of nodes
+        #     if index % 10 < ratio_splitted:
+        #         splitted_indexes.append(new_to_be_unbalanced.pop())
+        #     else:
+        #         splitted_indexes.append(balanced_partition.pop())
 
-        # return the merge of the balanced partition and the unbalanced partition
-        return splitted_indexes
+        # # return the merge of the balanced partition and the unbalanced partition
+        # return splitted_indexes
+
+        return new_to_be_unbalanced + balanced_partition

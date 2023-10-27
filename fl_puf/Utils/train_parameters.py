@@ -23,10 +23,11 @@ class TrainParameters:
     alpha: float = 0.1
     probability_estimation: bool = False
     perfect_probability_estimation: bool = False
-    partition_ratio: int = None
+    percentage_unbalanced_nodes: int = None
     cross_silo: bool = False
     weight_decay_lambda: float = 0.01
     sweep: bool = False
     optimizer: str = "sgd"
     starting_lambda_value: float = None
     update_lambda: bool = False
+    unbalanced_ratio: float = None

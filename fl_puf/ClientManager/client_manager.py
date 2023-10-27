@@ -179,9 +179,7 @@ class SimpleClientManager(ClientManager):
 
         with self._cv:
             self._cv.notify_all()
-        # import sys
 
-        # sys.exit()
         return True
 
     def unregister(self, client: ClientProxy) -> None:
