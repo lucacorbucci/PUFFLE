@@ -516,13 +516,13 @@ six = ">=1.4.0"
 
 [[package]]
 name = "dpl"
-version = "0.1.0.post20"
+version = "0.1.0.post21"
 description = ""
 category = "main"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "dpl-0.1.0.post20-py3-none-any.whl", hash = "sha256:296532f091543b44e289f2dbcb0f1968469d7311ab0525273d7c54d9d84be448"},
+    {file = "dpl-0.1.0.post21-py3-none-any.whl", hash = "sha256:01ea9be2fcbba9e2aa0532eebdec773ee0e39b19aa8f290997dd2ceeedb36cca"},
 ]
 
 [package.dependencies]
@@ -540,7 +540,7 @@ wandb = ">=0.14.0,<0.15.0"
 
 [package.source]
 type = "file"
-url = "DPL/dist/dpl-0.1.0.post20-py3-none-any.whl"
+url = "DPL/dist/dpl-0.1.0.post21-py3-none-any.whl"
 
 [[package]]
 name = "exceptiongroup"
@@ -3307,4 +3307,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "c635a8934015ddc266ae767e9ed70733cde8f5a2748bfb38bc98116e5dbe89a8"
+content-hash = "3c1b94439041dbf69c67b00b9b2e3d55d4bb35e33de329021dfd85640f9bd96b"
