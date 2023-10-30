@@ -364,6 +364,27 @@ if __name__ == "__main__":
             ]
         )
 
+        # Log data from the different test clients:
+        for _, metric in metrics:
+            node_name = metric["cid"]
+            disparity = metric[
+                "max_disparity_test"
+                if not train_parameters.sweep
+                else "max_disparity_validation"
+            ]
+            accuracy = metric[
+                "test_accuracy" if not train_parameters.sweep else "validation_accuracy"
+            ]
+            disparity_dataset = metric["max_disparity_dataset"]
+            agg_metrics = {
+                f"Test Node {node_name} - Acc.": accuracy,
+                f"Test Node {node_name} - Disp.": disparity,
+                f"Test Node {node_name} - Disp. Dataset": disparity_dataset,
+                "FL Round": server_round,
+            }
+            if wandb_run:
+                wandb_run.log(agg_metrics)
+
         combinations = ["0|0", "0|1", "1|0", "1|1"]
         targets = ["0", "1"]
 
@@ -629,7 +650,7 @@ if __name__ == "__main__":
         fed_dir=fed_dir,
     )
 
-    ray_num_cpus = 15
+    ray_num_cpus = 20
     ray_num_gpus = 3
     ram_memory = 16_000 * 1024 * 1024 * 2
 

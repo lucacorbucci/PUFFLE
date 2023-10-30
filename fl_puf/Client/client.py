@@ -10,12 +10,13 @@ import flwr as fl
 import numpy as np
 import ray
 import torch
-from DPL.learning import Learning
+from flwr.common.typing import Scalar
+
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
+from DPL.learning import Learning
 from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
-from flwr.common.typing import Scalar
 
 
 class FlowerClient(fl.client.NumPyClient):
@@ -320,6 +321,20 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
+        # compute the maximum disparity of the training dataset
+        max_disparity_dataset = np.max(
+            [
+                RegularizationLoss().compute_violation_with_argmax(
+                    predictions_argmax=dataset.dataset.targets,
+                    sensitive_attribute_list=dataset.dataset.sensitive_features,
+                    current_target=target,
+                    current_sensitive_feature=sv,
+                )
+                for target in range(0, 1)
+                for sv in range(0, 1)
+            ]
+        )
+
         # Send model to device
         self.net.to(self.train_parameters.device)
 
@@ -368,6 +383,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
+                "max_disparity_dataset": max_disparity_dataset,
             }
         else:
             metrics = {
@@ -377,6 +393,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
+                "max_disparity_dataset": max_disparity_dataset,
             }
 
         # Return statistics
