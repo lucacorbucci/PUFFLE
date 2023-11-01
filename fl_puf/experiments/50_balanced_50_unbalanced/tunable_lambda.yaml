@@ -1,4 +1,4 @@
-program: main.py
+program: ../../main.py
 method: bayes
 metric:
   name: Custom_metric
@@ -59,7 +59,7 @@ command:
   - --debug
   - True 
   - --base_path
-  - ../data 
+  - ../../../data
   - --DPL 
   - True 
   - --private 
@@ -75,7 +75,7 @@ command:
   - --wandb 
   - True 
   - --target 
-  - 0.1
+  - 0.05
   - --sweep
   - True
   - --noise_multiplier 

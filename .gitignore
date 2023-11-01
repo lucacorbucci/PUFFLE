@@ -1,6 +1,8 @@
 *
 !*/
 !*.*
+*.png 
+*.pkl 
 
 .vector_cache
 data
@@ -99,5 +101,4 @@ target/
 # Jupyter NB Checkpoints
 .ipynb_checkpoints/
 *.pyc
-*.sh
 fl_puf/temp_output.txt

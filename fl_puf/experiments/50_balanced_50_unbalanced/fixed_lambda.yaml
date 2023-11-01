@@ -1,11 +1,11 @@
-program: main.py
+program: ../../main.py
 method: bayes
 metric:
   name: Custom_metric
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 3
+  min_iter: 5
 parameters:
   epochs:
     min: 1
@@ -22,8 +22,8 @@ parameters:
     min: 1
     max: 1000000000
   starting_lambda_value:
-    min: 0.4
-    max: 0.8
+    min: 0.40
+    max: 0.90
 
 command:
   - ${env}
@@ -47,13 +47,13 @@ command:
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
-  - 0.68
+  - 1.0
   - --train_csv
   - original_merged
   - --debug
   - True 
   - --base_path
-  - ../data 
+  - ../../../data
   - --DPL 
   - True 
   - --private 
@@ -81,9 +81,9 @@ command:
   - --test_nodes 
   - 0.335
   - --starting_lambda_mode 
-  - no_tuning
+  - fixed
   - --target 
-  - 0.1
+  - 0.05
   - --percentage_unbalanced_nodes
   - 0.5
   - --unbalanced_ratio

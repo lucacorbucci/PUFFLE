@@ -17,9 +17,11 @@ from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from torch import nn
 
+from DPL.Datasets.dutch import TabularDataset
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Client.client import FlowerClient
+from fl_puf.Utils.tabular_data_loader import get_tabular_data
 from fl_puf.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
@@ -70,6 +72,8 @@ parser.add_argument("--starting_lambda_mode", type=str, default=None)
 parser.add_argument("--starting_lambda_value", type=float, default=None)
 parser.add_argument("--momentum", type=float, default=None)
 parser.add_argument("--update_lambda", type=bool, default=False)
+parser.add_argument("--tabular", type=bool, default=False)
+parser.add_argument("--dataset_path", type=str, default="../data/celeba")
 
 
 # DPL:
@@ -182,17 +186,48 @@ if __name__ == "__main__":
         "num_gpus": args.num_client_gpus,
     }
 
-    train_set, test_set = DatasetUtils.download_dataset(
-        dataset_name,
-        train_csv=args.train_csv,
-        debug=args.debug,
-        base_path="../../../data/celeba",
-    )
-    train_path = Utils.prepare_dataset_for_FL(
-        dataset=train_set,
-        dataset_name=dataset_name,
-        base_path=args.base_path,
-    )
+    if args.tabular:
+        client_data, N_is, props_positive = get_tabular_data(
+            num_clients=150,
+            do_iid_split=False,
+            groups_balance_factor=0.6,  # fraction of privileged clients
+            priv_balance_factor=0.7,  # fraction of priv samples the privileged clients should have
+            dataset_name="dutch",
+            num_sensitive_features=1,
+            dataset_path=args.dataset_path,
+        )
+        # remove the old files in the data folder
+        os.system("rm -rf ../data/Tabular/dutch/federated/*")
+        for client_name, client in enumerate(client_data):
+            # Append 1 to each samples
+
+            custom_dataset = TabularDataset(
+                x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
+                    np.float32
+                ),
+                z=client["z"].astype(np.float32),
+                y=client["y"].astype(np.float32),
+            )
+            # Create the folder for the user client_name
+            os.system(f"mkdir ../data/Tabular/dutch/federated/{client_name}")
+            # store the dataset in the client folder with the name "train.pt"
+            torch.save(
+                custom_dataset,
+                f"../data/Tabular/dutch/federated/{client_name}/train.pt",
+            )
+        fed_dir = "../data/Tabular/dutch/federated"
+    else:
+        train_set, test_set = DatasetUtils.download_dataset(
+            dataset_name,
+            train_csv=args.train_csv,
+            debug=args.debug,
+            base_path=args.dataset_path,
+        )
+        train_path = Utils.prepare_dataset_for_FL(
+            dataset=train_set,
+            dataset_name=dataset_name,
+            base_path=args.base_path,
+        )
 
     DPL_value = None
     if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
@@ -245,66 +280,67 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
 
-    # Partitioning the training dataset
-    fed_dir = Utils.do_fl_partitioning(
-        train_path,
-        pool_size=pool_size,
-        num_classes=2,
-        val_ratio=0,
-        partition_type=args.partition_type,
-        alpha=args.alpha,
-        train_parameters=train_parameters,
-    )
-
-    print(fed_dir)
-    test = os.listdir(fed_dir)
-
-    for item in test:
-        if item.endswith(".pkl"):
-            os.remove(os.path.join(fed_dir, item))
-
-    if args.epsilon:
-        # We need to understand the noise that we need to add based
-        # on the epsilon that we want to guarantee
-        max_noise = 0
-        for i in range(args.pool_size):
-            model_noise = ModelUtils.get_model(
-                dataset_name, device=train_parameters.device
-            )
-            # get the training dataset of one of the clients
-            train_loader_client_0 = Utils.get_dataloader(
-                fed_dir,
-                str(i),
-                batch_size=train_parameters.batch_size,
-                workers=0,
-                dataset=dataset_name,
-                partition="train",
-            )
-            privacy_engine = PrivacyEngine(accountant="rdp")
-            optimizer_noise = get_optimizer(model_noise, train_parameters, args.lr)
-            (
-                _,
-                private_optimizer,
-                _,
-            ) = privacy_engine.make_private_with_epsilon(
-                module=model_noise,
-                optimizer=optimizer_noise,
-                data_loader=train_loader_client_0,
-                epochs=(args.num_rounds // 10) * args.epochs,
-                target_epsilon=train_parameters.epsilon,
-                target_delta=args.delta,
-                max_grad_norm=args.clipping,
-            )
-            max_noise = max(max_noise, private_optimizer.noise_multiplier)
-            print(
-                f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
-            )
-
-        train_parameters.noise_multiplier = max_noise
-        train_parameters.epsilon = None
-        print(
-            f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+    if not args.tabular:
+        # Partitioning the training dataset
+        fed_dir = Utils.do_fl_partitioning(
+            train_path,
+            pool_size=pool_size,
+            num_classes=2,
+            val_ratio=0,
+            partition_type=args.partition_type,
+            alpha=args.alpha,
+            train_parameters=train_parameters,
         )
+
+        print(fed_dir)
+        test = os.listdir(fed_dir)
+
+        for item in test:
+            if item.endswith(".pkl"):
+                os.remove(os.path.join(fed_dir, item))
+
+    # if args.epsilon:
+    #     # We need to understand the noise that we need to add based
+    #     # on the epsilon that we want to guarantee
+    #     max_noise = 0
+    #     for i in range(args.pool_size):
+    #         model_noise = ModelUtils.get_model(
+    #             dataset_name, device=train_parameters.device
+    #         )
+    #         # get the training dataset of one of the clients
+    #         train_loader_client_0 = Utils.get_dataloader(
+    #             fed_dir,
+    #             str(i),
+    #             batch_size=train_parameters.batch_size,
+    #             workers=0,
+    #             dataset=dataset_name,
+    #             partition="train",
+    #         )
+    #         privacy_engine = PrivacyEngine(accountant="rdp")
+    #         optimizer_noise = get_optimizer(model_noise, train_parameters, args.lr)
+    #         (
+    #             _,
+    #             private_optimizer,
+    #             _,
+    #         ) = privacy_engine.make_private_with_epsilon(
+    #             module=model_noise,
+    #             optimizer=optimizer_noise,
+    #             data_loader=train_loader_client_0,
+    #             epochs=(args.num_rounds // 10) * args.epochs,
+    #             target_epsilon=train_parameters.epsilon,
+    #             target_delta=args.delta,
+    #             max_grad_norm=args.clipping,
+    #         )
+    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
+    #         print(
+    #             f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
+    #         )
+
+    #     train_parameters.noise_multiplier = max_noise
+    #     train_parameters.epsilon = None
+    #     print(
+    #         f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+    #     )
 
     wandb_run = setup_wandb(args, train_parameters) if args.wandb else None
 

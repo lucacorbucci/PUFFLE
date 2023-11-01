@@ -86,17 +86,19 @@ class Utils:
                 ],
             )
         else:
-            raise ValueError(f"Unknown dataset: {dataset_name}")
+            return None
 
     @staticmethod
     def get_dataset(path_to_data: Path, cid: str, partition: str, dataset: str):
         # generate path to cid's data
         path_to_data = path_to_data / cid / (partition + ".pt")
-
-        return TorchVision_FL(
-            path_to_data,
-            transform=Utils.get_transformation(dataset),
-        )
+        if dataset == "dutch":
+            return torch.load(path_to_data)
+        else:
+            return TorchVision_FL(
+                path_to_data,
+                transform=Utils.get_transformation(dataset),
+            )
 
     @staticmethod
     def get_random_id_splits(total: int, val_ratio: float, shuffle: bool = True):
