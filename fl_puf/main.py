@@ -72,7 +72,7 @@ parser.add_argument("--starting_lambda_mode", type=str, default=None)
 parser.add_argument("--starting_lambda_value", type=float, default=None)
 parser.add_argument("--momentum", type=float, default=None)
 parser.add_argument("--update_lambda", type=bool, default=False)
-parser.add_argument("--tabular", type=bool, default=False)
+parser.add_argument("--tabular_data", type=bool, default=False)
 parser.add_argument("--dataset_path", type=str, default="../data/celeba")
 
 
@@ -186,7 +186,7 @@ if __name__ == "__main__":
         "num_gpus": args.num_client_gpus,
     }
 
-    if args.tabular:
+    if args.tabular_data:
         client_data, N_is, props_positive = get_tabular_data(
             num_clients=150,
             do_iid_split=False,
@@ -272,6 +272,7 @@ if __name__ == "__main__":
         momentum=args.momentum,
         update_lambda=args.update_lambda,
         unbalanced_ratio=args.unbalanced_ratio,
+        tabular_data=args.tabular_data,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -280,7 +281,7 @@ if __name__ == "__main__":
     # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
     # its own train/set split.
 
-    if not args.tabular:
+    if not args.tabular_data:
         # Partitioning the training dataset
         fed_dir = Utils.do_fl_partitioning(
             train_path,
