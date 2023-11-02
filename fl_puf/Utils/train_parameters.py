@@ -31,3 +31,4 @@ class TrainParameters:
     starting_lambda_value: float = None
     update_lambda: bool = False
     unbalanced_ratio: float = None
+    tabular_data: bool = False
