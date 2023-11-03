@@ -21,7 +21,7 @@ from DPL.Datasets.dutch import TabularDataset
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Client.client import FlowerClient
-from fl_puf.Utils.tabular_data_loader import get_tabular_data
+from fl_puf.Utils.tabular_data_loader import prepare_tabular_data
 from fl_puf.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
@@ -74,6 +74,8 @@ parser.add_argument("--momentum", type=float, default=None)
 parser.add_argument("--update_lambda", type=bool, default=False)
 parser.add_argument("--tabular_data", type=bool, default=False)
 parser.add_argument("--dataset_path", type=str, default="../data/celeba")
+parser.add_argument("--groups_balance_factor", type=float, default=0.9)
+parser.add_argument("--priv_balance_factor", type=float, default=0.5)
 
 
 # DPL:
@@ -187,35 +189,13 @@ if __name__ == "__main__":
     }
 
     if args.tabular_data:
-        client_data, N_is, props_positive = get_tabular_data(
-            num_clients=150,
-            do_iid_split=False,
-            groups_balance_factor=0.6,  # fraction of privileged clients
-            priv_balance_factor=0.7,  # fraction of priv samples the privileged clients should have
-            dataset_name="dutch",
-            num_sensitive_features=1,
+        fed_dir, _ = prepare_tabular_data(
             dataset_path=args.dataset_path,
+            dataset_name=dataset_name,
+            groups_balance_factor=args.groups_balance_factor,
+            priv_balance_factor=args.priv_balance_factor,
         )
-        # remove the old files in the data folder
-        os.system("rm -rf ../data/Tabular/dutch/federated/*")
-        for client_name, client in enumerate(client_data):
-            # Append 1 to each samples
 
-            custom_dataset = TabularDataset(
-                x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
-                    np.float32
-                ),
-                z=client["z"].astype(np.float32),
-                y=client["y"].astype(np.float32),
-            )
-            # Create the folder for the user client_name
-            os.system(f"mkdir ../data/Tabular/dutch/federated/{client_name}")
-            # store the dataset in the client folder with the name "train.pt"
-            torch.save(
-                custom_dataset,
-                f"../data/Tabular/dutch/federated/{client_name}/train.pt",
-            )
-        fed_dir = "../data/Tabular/dutch/federated"
     else:
         train_set, test_set = DatasetUtils.download_dataset(
             dataset_name,
@@ -613,7 +593,38 @@ if __name__ == "__main__":
                     to_be_logged,
                 )
 
-        disparity_from_statistics = max(
+        # max_disparity_statistics = max(
+        #     [
+        #         sum_counters["0|0"] / sum_targets["0"]
+        #         - sum_counters["0|1"] / sum_targets["1"],
+        #         sum_counters["0|1"] / sum_targets["1"]
+        #         - sum_counters["0|0"] / sum_targets["0"],
+        #         sum_counters["1|0"] / sum_targets["0"]
+        #         - sum_counters["1|1"] / sum_targets["1"],
+        #         sum_counters["1|1"] / sum_targets["1"]
+        #         - sum_counters["1|0"] / sum_targets["0"],
+        #     ],
+        # )
+
+        average_probabilities = {}
+        for combination in combinations:
+            average_probabilities[combination] = (
+                sum_counters[combination] / sum_targets[combination[2]]
+            )
+
+        combinations = ["0|0", "0|1", "1|0", "1|1"]
+        targets = ["0", "1"]
+
+        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters"]
+            for combination in combinations:
+                sum_counters[combination] += metric[combination]
+            for target in targets:
+                sum_targets[target] += metric[target]
+        max_disparity_statistics = max(
             [
                 sum_counters["0|0"] / sum_targets["0"]
                 - sum_counters["0|1"] / sum_targets["1"],
@@ -625,16 +636,11 @@ if __name__ == "__main__":
                 - sum_counters["1|0"] / sum_targets["0"],
             ]
         )
-        average_probabilities = {}
-        for combination in combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
-            )
 
         if wandb_run:
             wandb_run.log(
                 {
-                    "Training Disparity with statistics": disparity_from_statistics,
+                    "Training Disparity with statistics": max_disparity_statistics,
                     "FL Round": server_round,
                 }
             )

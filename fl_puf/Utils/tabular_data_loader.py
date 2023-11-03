@@ -1,8 +1,13 @@
+import os
+
 import numpy as np
 import pandas as pd
+import torch
 from scipy.io import arff
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
+
+from DPL.Datasets.dutch import TabularDataset
 
 ##############################################################################################################
 
@@ -1120,6 +1125,44 @@ def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path
     return _X, _Z, _y
 
 
+def prepare_tabular_data(
+    dataset_path: str,
+    dataset_name: str,
+    groups_balance_factor: float,
+    priv_balance_factor: float,
+):
+    client_data, N_is, props_positive = get_tabular_data(
+        num_clients=150,
+        do_iid_split=False,
+        groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
+        priv_balance_factor=priv_balance_factor,  # fraction of priv samples the privileged clients should have
+        dataset_name="dutch",
+        num_sensitive_features=1,
+        dataset_path=dataset_path,
+    )
+    # remove the old files in the data folder
+    os.system(f"rm -rf {dataset_path}/federated/*")
+    for client_name, client in enumerate(client_data):
+        # Append 1 to each samples
+
+        custom_dataset = TabularDataset(
+            x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
+                np.float32
+            ),
+            z=client["z"].astype(np.float32),
+            y=client["y"].astype(np.float32),
+        )
+        # Create the folder for the user client_name
+        os.system(f"mkdir {dataset_path}/federated/{client_name}")
+        # store the dataset in the client folder with the name "train.pt"
+        torch.save(
+            custom_dataset,
+            f"{dataset_path}/federated/{client_name}/train.pt",
+        )
+    fed_dir = f"{dataset_path}/federated"
+    return fed_dir, client_data
+
+
 if __name__ == "__main__":
     client_data, N_is, props_positive = get_tabular_data(
         num_clients=150,
@@ -1130,7 +1173,6 @@ if __name__ == "__main__":
         num_sensitive_features=2,
         dataset_path="../../data/Tabular/dutch/",
     )
-    print(len(client_data[0]["x"][0]))
 
     # custom_dataset = CustomTabularDataset(
     #     x=client_data[0]["x"], z=client_data[0]["z"], y=client_data[0]["y"]
