@@ -70,7 +70,7 @@ parser.add_argument("--test_nodes", type=float, default=0)
 parser.add_argument("--node_shuffle_seed", type=int, default=30)
 parser.add_argument("--starting_lambda_mode", type=str, default=None)
 parser.add_argument("--starting_lambda_value", type=float, default=None)
-parser.add_argument("--momentum", type=float, default=None)
+parser.add_argument("--momentum", type=float, default=0)
 parser.add_argument("--update_lambda", type=bool, default=False)
 parser.add_argument("--tabular_data", type=bool, default=False)
 parser.add_argument("--dataset_path", type=str, default="../data/celeba")
@@ -433,6 +433,12 @@ if __name__ == "__main__":
             "Test Disparity with average": max_disparity_average,
             "Test Disparity with statistics": max_disparity_statistics,
             "FL Round": server_round,
+            "Test Counter 0|0": sum_counters["0|0"],
+            "Test Counter 0|1": sum_counters["0|1"],
+            "Test Counter 1|0": sum_counters["1|0"],
+            "Test Counter 1|1": sum_counters["1|1"],
+            "Test Target 0": sum_targets["0"],
+            "Test Target 1": sum_targets["1"],
         }
 
         if wandb_run:
@@ -521,6 +527,12 @@ if __name__ == "__main__":
             "Validation Disparity with statistics": max_disparity_statistics,
             "Custom_metric": custom_metric,
             "FL Round": server_round,
+            "Validation Counter 0|0": sum_counters["0|0"],
+            "Validation Counter 0|1": sum_counters["0|1"],
+            "Validation Counter 1|0": sum_counters["1|0"],
+            "Validation Counter 1|1": sum_counters["1|1"],
+            "Validation Target 0": sum_targets["0"],
+            "Validation Target 1": sum_targets["1"],
         }
 
         if wandb_run:
@@ -539,12 +551,7 @@ if __name__ == "__main__":
         accuracies = []
         lambda_list = []
         max_disparity_train = []
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
-
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
+        
         for n_examples, node_metrics in metrics:
             losses.append(n_examples * node_metrics["train_loss"])
             losses_with_regularization.append(
@@ -569,13 +576,6 @@ if __name__ == "__main__":
 
             DPL_lambda = node_metrics["DPL_lambda"]
 
-            # load the statistics
-            current_counter = node_metrics["counters"]
-            for combination in combinations:
-                sum_counters[combination] += current_counter[combination]
-            for target in targets:
-                sum_targets[target] += current_counter[target]
-
             # Create the dictionary we want to log. For some metrics we want to log
             # we have to check if they are present or not.
             to_be_logged = {
@@ -593,24 +593,6 @@ if __name__ == "__main__":
                     to_be_logged,
                 )
 
-        # max_disparity_statistics = max(
-        #     [
-        #         sum_counters["0|0"] / sum_targets["0"]
-        #         - sum_counters["0|1"] / sum_targets["1"],
-        #         sum_counters["0|1"] / sum_targets["1"]
-        #         - sum_counters["0|0"] / sum_targets["0"],
-        #         sum_counters["1|0"] / sum_targets["0"]
-        #         - sum_counters["1|1"] / sum_targets["1"],
-        #         sum_counters["1|1"] / sum_targets["1"]
-        #         - sum_counters["1|0"] / sum_targets["0"],
-        #     ],
-        # )
-
-        average_probabilities = {}
-        for combination in combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
-            )
 
         combinations = ["0|0", "0|1", "1|0", "1|1"]
         targets = ["0", "1"]
@@ -624,6 +606,13 @@ if __name__ == "__main__":
                 sum_counters[combination] += metric[combination]
             for target in targets:
                 sum_targets[target] += metric[target]
+
+        average_probabilities = {}
+        for combination in combinations:
+            average_probabilities[combination] = (
+                sum_counters[combination] / sum_targets[combination[2]]
+            )
+
         max_disparity_statistics = max(
             [
                 sum_counters["0|0"] / sum_targets["0"]
@@ -642,8 +631,15 @@ if __name__ == "__main__":
                 {
                     "Training Disparity with statistics": max_disparity_statistics,
                     "FL Round": server_round,
+                    "Training Counter 0|0": sum_counters["0|0"],
+                    "Training Counter 0|1": sum_counters["0|1"],
+                    "Training Counter 1|0": sum_counters["1|0"],
+                    "Training Counter 1|1": sum_counters["1|1"],
+                    "Training Target 0": sum_targets["0"],
+                    "Training Target 1": sum_targets["1"],
                 }
             )
+
         current_max_epsilon = max(current_max_epsilon, *epsilon_list)
         agg_metrics = {
             "Train Loss": sum(losses) / total_examples,

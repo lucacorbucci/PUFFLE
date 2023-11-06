@@ -69,9 +69,9 @@ command:
   - --clipping
   - 100000.0
   - --training_nodes 
-  - 0.47
+  - 0.40
   - --validation_nodes 
-  - 0.20
+  - 0.27
   - --test_nodes 
   - 0.335
   - --starting_lambda_mode 

@@ -1,0 +1,88 @@
+program: ../../main.py
+method: bayes
+metric:
+  name: Custom_metric
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  epochs:
+    min: 1
+    max: 5
+  batch_size:
+    min: 128
+    max: 512
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd", "adamw"]
+  node_shuffle_seed:
+    min: 1
+    max: 1000000000
+  starting_lambda_value:
+    min: 0.4
+    max: 0.8
+
+command:
+  - ${env}
+  - poetry 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --dataset
+  - dutch
+  - --num_rounds
+  - 40
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0.1
+  - --pool_size
+  - 150
+  - --sampled_clients 
+  - 0.29
+  - --sampled_clients_test 
+  - 1.0
+  - --sampled_clients_validation 
+  - 0.68
+  - --debug
+  - True 
+  - --base_path
+  - ../../../data/Tabular
+  - --DPL 
+  - True 
+  - --private 
+  - True 
+  - --delta 
+  - 1e-4 
+  - --seed 
+  - 41 
+  - --wandb 
+  - True 
+  - --sweep
+  - True
+  - --noise_multiplier 
+  - 0
+  - --clipping
+  - 100000.0
+  - --training_nodes 
+  - 0.40
+  - --validation_nodes 
+  - 0.27
+  - --test_nodes 
+  - 0.335
+  - --starting_lambda_mode 
+  - fixed
+  - --tabular_data 
+  - True
+  - --dataset_path 
+  - ../../../data/Tabular/dutch/
+  - --groups_balance_factor 
+  - 0.9
+  - --priv_balance_factor 
+  - 0.8
+  - --target 
+  - 0.15

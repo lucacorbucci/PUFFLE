@@ -989,6 +989,9 @@ def generate_clients_biased_data(
         # get the last column
         current_z = client_dataset["x"][:, -1]
         client_dataset["z"] = current_z
+    # remove the last two columns from client_dataset["x"]
+    for client_dataset in client_data:
+        client_dataset["x"] = client_dataset["x"][:, :-2]
 
     N_is = [data["x"].shape[0] for data in client_data]
     props_positive = [np.mean(data["y"] > 0) for data in client_data]
