@@ -8,7 +8,6 @@ from typing import Dict
 import flwr as fl
 import numpy as np
 import torch
-import wandb
 from ClientManager.client_manager import SimpleClientManager
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
@@ -17,162 +16,186 @@ from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from torch import nn
 
-from DPL.Datasets.dutch import TabularDataset
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Client.client import FlowerClient
+from fl_puf.Utils.federated_utils import FederatedUtils
 from fl_puf.Utils.tabular_data_loader import prepare_tabular_data
 from fl_puf.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
 
+# ----------------------------- Parsing Options ----------------------------------------
 parser = argparse.ArgumentParser(description="Flower Simulation with PyTorch")
 
-parser.add_argument("--num_client_cpus", type=float, default=1)
-parser.add_argument("--num_client_gpus", type=float, default=1)
-parser.add_argument("--num_rounds", type=int, default=5)
-parser.add_argument("--dataset", type=str, default=None)
-parser.add_argument("--epochs", type=int, default=1)
-parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--pool_size", type=int, default=100)
-parser.add_argument("--sampled_clients", type=float, default=0.1)
-parser.add_argument("--sampled_clients_test", type=float, default=0.1)
-parser.add_argument("--sampled_clients_validation", type=float, default=0)
-parser.add_argument("--wandb", type=bool, default=False)
-parser.add_argument("--DPL", type=bool, default=False)
-parser.add_argument("--private", type=bool, default=False)
-parser.add_argument("--epsilon", type=float, default=None)
-parser.add_argument("--noise_multiplier", type=float, default=0)
-parser.add_argument("--clipping", type=float, default=1000000000)
-parser.add_argument("--delta", type=float, default=None)
-parser.add_argument("--lr", type=float, default="0.1")
-parser.add_argument("--alpha", type=int, default=1000000)
-parser.add_argument("--train_csv", type=str, default="")
-parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--debug", type=bool, default=False)
-parser.add_argument("--base_path", type=str, default="")
-parser.add_argument("--probability_estimation", type=bool, default=False)
+# ----------------------
+# Training Settings
+parser.add_argument(
+    "--num_client_cpus", type=float, default=1
+)  # Percentage of CPUs used by each client
+parser.add_argument(
+    "--num_client_gpus", type=float, default=1
+)  # Percentage of GPUs used by each client
+parser.add_argument(
+    "--num_rounds", type=int, default=5
+)  # Number of rounds of federated learning
+parser.add_argument("--dataset", type=str, default=None)  # Dataset we want to use
+parser.add_argument("--pool_size", type=int, default=100)  # Number of clients
+parser.add_argument(
+    "--wandb", type=bool, default=False
+)  # If we want to use wandb to log the results
+parser.add_argument(
+    "--cross_silo", type=bool, default=False
+)  # If we are in a cross silo scenario
+parser.add_argument(
+    "--seed", type=int, default=42
+)  # Used to set the seed of the random functions and to sample every time the same test clients
+parser.add_argument(
+    "--debug", type=bool, default=False
+)  # Used to print debug information
+parser.add_argument(
+    "--probability_estimation", type=bool, default=False
+)  # If we want to use the probability estimation
 parser.add_argument("--perfect_probability_estimation", type=bool, default=False)
+
+
+# ----------------------
+# Privacy Settings
+parser.add_argument(
+    "--DPL", type=bool, default=False
+)  # If we want to use DPL Regularization
+parser.add_argument("--private", type=bool, default=False)  # If we want to use DP-SGD
+parser.add_argument("--epsilon", type=float, default=None)  # Target Epsilon for DP-SGD
+parser.add_argument(
+    "--noise_multiplier", type=float, default=0
+)  # Noise multiplier for DP-SGD
+parser.add_argument(
+    "--clipping", type=float, default=1000000000
+)  # Clipping value for DP-SGD
+parser.add_argument("--delta", type=float, default=None)
+
+# ----------------------
+# Dataset/Distribution Settings
+parser.add_argument("--train_csv", type=str, default="")
+parser.add_argument("--base_path", type=str, default="")
+parser.add_argument("--sort_clients", type=bool, default=True)
+parser.add_argument("--no_sort_clients", dest="sort_clients", action="store_false")
+parser.add_argument(
+    "--node_shuffle_seed", type=int, default=30
+)  # Seed to shuffle the nodes of validation/train group but not the test group
+
+parser.add_argument(
+    "--sweep", type=bool, default=False
+)  # true if we are using wandb sweep to tune the hyperparameters
+
+# ----------------------
+# Hyperparameters
+parser.add_argument(
+    "--weight_decay_lambda", type=float, default=None
+)  # weight decay for the alpha
+parser.add_argument("--optimizer", type=str, default=0)  # optimizer we want to use
+parser.add_argument(
+    "--alpha_target_lambda", type=float, default=None
+)  # alpha (velocity) to update the lambda
+parser.add_argument("--epochs", type=int, default=1)  # Number of epochs per round
+parser.add_argument("--batch_size", type=int, default=64)  # Batch size
+parser.add_argument("--lr", type=float, default="0.1")
+
+# ----------------------
+# Percentage of samples sampled from train, validation and test group
+parser.add_argument(
+    "--sampled_clients", type=float, default=0.1
+)  # Percentage of training clients sampled
+parser.add_argument(
+    "--sampled_clients_test", type=float, default=0.1
+)  # Percentage of test clients sampled
+parser.add_argument(
+    "--sampled_clients_validation", type=float, default=0
+)  # Percentage of validation clients sampled
+
+# ----------------------
+# Distributions of training/validation/test nodes
+parser.add_argument(
+    "--training_nodes", type=float, default=0
+)  # Percentage of training nodes
+parser.add_argument(
+    "--validation_nodes", type=float, default=0
+)  # Percentage of validation nodes
+parser.add_argument("--test_nodes", type=float, default=0)  # Percentage of test nodes
+
+
+# ----------------------
+# Parameters for the Lambda
+parser.add_argument(
+    "--starting_lambda_mode", type=str, default=None
+)  # how to initialize the Lambda
+parser.add_argument(
+    "--starting_lambda_value", type=float, default=None
+)  # value to initialize the Lambda, this is used when starting_lambda_mode is fixed
+parser.add_argument(
+    "--update_lambda", type=bool, default=False
+)  # if we want to update the Lambda during the training
+
+parser.add_argument(
+    "--momentum", type=float, default=0
+)  # Momentum value applied to the Lambda
+
+parser.add_argument("--target", type=float, default=None)
+
+
+# ----------------------
+# Partitioning Settings for NON TABULAR DATA
 parser.add_argument("--partition_type", type=str, default="non_iid")
 parser.add_argument("--percentage_unbalanced_nodes", type=float, default=None)
 parser.add_argument("--unbalanced_ratio", type=float, default=0.4)
-parser.add_argument("--sort_clients", type=bool, default=True)
-parser.add_argument("--no_sort_clients", dest="sort_clients", action="store_false")
-parser.add_argument("--alpha_target_lambda", type=float, default=None)
-parser.add_argument("--target", type=float, default=None)
-parser.add_argument("--cross_silo", type=bool, default=False)
-parser.add_argument("--weight_decay_lambda", type=float, default=None)
-parser.add_argument("--sweep", type=bool, default=False)
-parser.add_argument("--optimizer", type=str, default=0)
-parser.add_argument("--training_nodes", type=float, default=0)
-parser.add_argument("--validation_nodes", type=float, default=0)
-parser.add_argument("--test_nodes", type=float, default=0)
-parser.add_argument("--node_shuffle_seed", type=int, default=30)
-parser.add_argument("--starting_lambda_mode", type=str, default=None)
-parser.add_argument("--starting_lambda_value", type=float, default=None)
-parser.add_argument("--momentum", type=float, default=0)
-parser.add_argument("--update_lambda", type=bool, default=False)
+parser.add_argument(
+    "--alpha", type=int, default=1000000
+)  # Alpha of the dirichlet distribution
+
+# ----------------------
+# Parameters to generate the tabular dataset with Mikko's implementation
 parser.add_argument("--tabular_data", type=bool, default=False)
 parser.add_argument("--dataset_path", type=str, default="../data/celeba")
 parser.add_argument("--groups_balance_factor", type=float, default=0.9)
 parser.add_argument("--priv_balance_factor", type=float, default=0.5)
 
-
-# DPL:
-# 1) baseline without privacy and DPL -> compute maximum violation
-# 2) baseline without privacy and with DPL -> compute maximum violation
-# 3) baseline with privacy and without DPL -> compute maximum violation
-# 4) baseline with privacy and with DPL -> compute maximum violation
-def get_optimizer(model, train_parameters, lr):
-    if train_parameters.optimizer == "adam":
-        return torch.optim.Adam(
-            model.parameters(),
-            lr=lr,
-        )
-    elif train_parameters.optimizer == "sgd":
-        return torch.optim.SGD(
-            model.parameters(),
-            lr=lr,
-        )
-    elif train_parameters.optimizer == "adamW":
-        return torch.optim.AdamW(
-            model.parameters(),
-            lr=lr,
-        )
-    else:
-        raise ValueError("Optimizer not recognized")
-
-
-def setup_wandb(args, train_parameters):
-    if train_parameters.noise_multiplier > 0:
-        noise_multiplier = train_parameters.noise_multiplier
-    elif args.noise_multiplier > 0:
-        noise_multiplier = args.noise_multiplier
-    else:
-        noise_multiplier = 0
-    wandb_run = wandb.init(
-        # set the wandb project where this run will be logged
-        project="FL_fairness",
-        # name=f"FL - Lambda {args.DPL_lambda} - LR {args.lr} - Batch {args.batch_size}",
-        # track hyperparameters and run metadata
-        config={
-            "learning_rate": args.lr,
-            "csv": args.train_csv,
-            "DPL_regularization": args.DPL,
-            # "DPL_lambda": args.DPL_lambda,
-            "batch_size": args.batch_size,
-            "dataset": args.dataset,
-            "num_rounds": args.num_rounds,
-            "pool_size": args.pool_size,
-            "sampled_clients": args.sampled_clients,
-            "epochs": args.epochs,
-            "private": args.private,
-            "epsilon": args.epsilon if args.private else None,
-            "gradnorm": args.clipping,
-            "delta": args.delta if args.private else 0,
-            "noise_multiplier": noise_multiplier,
-            "probability_estimation": args.probability_estimation,
-            "perfect_probability_estimation": args.perfect_probability_estimation,
-            "alpha": args.alpha,
-            "percentage_unbalanced_nodes": args.percentage_unbalanced_nodes,
-            "alpha_target_lambda": args.alpha_target_lambda,
-            "target": args.target,
-            "weight_decay_lambda": args.weight_decay_lambda,
-            "starting_lambda_mode": args.starting_lambda_mode,
-            "starting_lambda_value": args.starting_lambda_value,
-            "momentum": args.momentum,
-            "node_shuffle_seed": args.node_shuffle_seed,
-            "unbalanced_ratio": args.unbalanced_ratio,
-        },
-    )
-    return wandb_run
+# ----------------------
+# Parameters to generate the tabular dataset
+parser.add_argument(
+    "--group_to_reduce", type=tuple, default=None
+)  # group of <target, sensitive value> that we want to reduce
+parser.add_argument(
+    "--group_to_increment", type=tuple, default=None
+)  # group of <target, sensitive value> that we want to increment
+parser.add_argument(
+    "--opposite_group_to_reduce", type=tuple, default=None
+)  # group of <target, sensitive value> that we want to reduce when opposite_direction is true
+parser.add_argument(
+    "--opposite_group_to_increment", type=tuple, default=None
+)  # group of <target, sensitive value> that we want to increment when opposite_direction is true
+parser.add_argument(
+    "--number_of_samples_per_node", type=int, default=None
+)  # maximum number of samples per node
+parser.add_argument(
+    "--ratio_unfairness", type=float, default=None
+)  # percentage of samples removed from group_to_reduce on the unfair nodes
+parser.add_argument(
+    "--opposite_ratio_unfairness", type=float, default=None
+)  # percentage of samples removed from group_to_reduce on the unfair nodes when opposite_direction is true
+parser.add_argument(
+    "--ratio_unfair_nodes", type=float, default=None
+)  # percentage of nodes that will be unbalanced (unfair nodes)
+parser.add_argument(
+    "--opposite_direction", type=bool, default=False
+)  # If we want a disparity in some nodes that is opposite to the one in the others
 
 
-def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
-    """Return a configuration with static batch size and (local) epochs."""
-    config = {
-        "epochs": args.epochs,  # number of local epochs
-        "batch_size": args.batch_size,
-        "dataset": args.dataset,
-    }
-    return config
-
-
-def evaluate_config(server_round: int = 0) -> Dict[str, Scalar]:
-    """Return a configuration with static batch size and (local) epochs."""
-    config = {
-        "epochs": args.epochs,  # number of local epochs
-        "batch_size": args.batch_size,
-        "dataset": args.dataset,
-    }
-    return config
-
+# --------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     # parse input arguments
     args = parser.parse_args()
     dataset_name = args.dataset
-
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -194,6 +217,18 @@ if __name__ == "__main__":
             dataset_name=dataset_name,
             groups_balance_factor=args.groups_balance_factor,
             priv_balance_factor=args.priv_balance_factor,
+            # do_iid_split=True,
+            approach=args.approach,
+            num_nodes=args.pool_size,
+            ratio_unfair_nodes=args.ratio_unfair_nodes,
+            opposite_direction=args.opposite_direction,
+            ratio_unfairness=args.ratio_unfairness,
+            group_to_reduce=args.group_to_reduce,
+            group_to_increment=args.group_to_increment,
+            number_of_samples_per_node=args.number_of_samples_per_node,
+            opposite_group_to_reduce=args.opposite_group_to_reduce,
+            opposite_group_to_increment=args.opposite_group_to_increment,
+            opposite_ratio_unfairness=args.opposite_ratio_unfairness,
         )
 
     else:
@@ -280,50 +315,52 @@ if __name__ == "__main__":
             if item.endswith(".pkl"):
                 os.remove(os.path.join(fed_dir, item))
 
-    # if args.epsilon:
-    #     # We need to understand the noise that we need to add based
-    #     # on the epsilon that we want to guarantee
-    #     max_noise = 0
-    #     for i in range(args.pool_size):
-    #         model_noise = ModelUtils.get_model(
-    #             dataset_name, device=train_parameters.device
-    #         )
-    #         # get the training dataset of one of the clients
-    #         train_loader_client_0 = Utils.get_dataloader(
-    #             fed_dir,
-    #             str(i),
-    #             batch_size=train_parameters.batch_size,
-    #             workers=0,
-    #             dataset=dataset_name,
-    #             partition="train",
-    #         )
-    #         privacy_engine = PrivacyEngine(accountant="rdp")
-    #         optimizer_noise = get_optimizer(model_noise, train_parameters, args.lr)
-    #         (
-    #             _,
-    #             private_optimizer,
-    #             _,
-    #         ) = privacy_engine.make_private_with_epsilon(
-    #             module=model_noise,
-    #             optimizer=optimizer_noise,
-    #             data_loader=train_loader_client_0,
-    #             epochs=(args.num_rounds // 10) * args.epochs,
-    #             target_epsilon=train_parameters.epsilon,
-    #             target_delta=args.delta,
-    #             max_grad_norm=args.clipping,
-    #         )
-    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
-    #         print(
-    #             f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
-    #         )
+    if args.epsilon:
+        # We need to understand the noise that we need to add based
+        # on the epsilon that we want to guarantee
+        max_noise = 0
+        for i in range(args.pool_size):
+            model_noise = ModelUtils.get_model(
+                dataset_name, device=train_parameters.device
+            )
+            # get the training dataset of one of the clients
+            train_loader_client_0 = Utils.get_dataloader(
+                fed_dir,
+                str(i),
+                batch_size=train_parameters.batch_size,
+                workers=0,
+                dataset=dataset_name,
+                partition="train",
+            )
+            privacy_engine = PrivacyEngine(accountant="rdp")
+            optimizer_noise = Utils.get_optimizer(
+                model_noise, train_parameters, args.lr
+            )
+            (
+                _,
+                private_optimizer,
+                _,
+            ) = privacy_engine.make_private_with_epsilon(
+                module=model_noise,
+                optimizer=optimizer_noise,
+                data_loader=train_loader_client_0,
+                epochs=(args.num_rounds // 10) * args.epochs,
+                target_epsilon=train_parameters.epsilon,
+                target_delta=args.delta,
+                max_grad_norm=args.clipping,
+            )
+            max_noise = max(max_noise, private_optimizer.noise_multiplier)
+            print(
+                f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
+            )
 
-    #     train_parameters.noise_multiplier = max_noise
-    #     train_parameters.epsilon = None
-    #     print(
-    #         f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
-    #     )
+        train_parameters.noise_multiplier = max_noise
+        train_parameters.epsilon = None
+        print(
+            f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+        )
 
-    wandb_run = setup_wandb(args, train_parameters) if args.wandb else None
+    wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 
     def client_fn(cid: str):
         # create a single client instance
@@ -340,6 +377,24 @@ if __name__ == "__main__":
     model = ModelUtils.get_model(dataset_name, "cuda")
     model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
     initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
+
+    def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
+        """Return a configuration with static batch size and (local) epochs."""
+        config = {
+            "epochs": args.epochs,  # number of local epochs
+            "batch_size": args.batch_size,
+            "dataset": args.dataset,
+        }
+        return config
+
+    def evaluate_config(server_round: int = 0) -> Dict[str, Scalar]:
+        """Return a configuration with static batch size and (local) epochs."""
+        config = {
+            "epochs": args.epochs,  # number of local epochs
+            "batch_size": args.batch_size,
+            "dataset": args.dataset,
+        }
+        return config
 
     def agg_metrics_test(metrics: list, server_round: int) -> dict:
         total_examples = sum([n_examples for n_examples, _ in metrics])
@@ -551,7 +606,7 @@ if __name__ == "__main__":
         accuracies = []
         lambda_list = []
         max_disparity_train = []
-        
+
         for n_examples, node_metrics in metrics:
             losses.append(n_examples * node_metrics["train_loss"])
             losses_with_regularization.append(
@@ -592,7 +647,6 @@ if __name__ == "__main__":
                 wandb_run.log(
                     to_be_logged,
                 )
-
 
         combinations = ["0|0", "0|1", "1|0", "1|1"]
         targets = ["0", "1"]
@@ -671,16 +725,8 @@ if __name__ == "__main__":
         min_fit_clients=args.sampled_clients,
         min_evaluate_clients=0,
         min_available_clients=args.sampled_clients,
-        on_fit_config_fn=fit_config,
-        # evaluate_fn=Utils.get_evaluate_fn(
-        #     test_set=test_set,
-        #     dataset_name=dataset_name,
-        #     train_parameters=train_parameters,
-        #     wandb_run=wandb_run,
-        #     batch_size=args.batch_size,
-        #     train_set=train_set,
-        # ),  # centralised evaluation of global model
-        on_evaluate_config_fn=evaluate_config,
+        on_fit_config_fn=FederatedUtils.fit_config,
+        on_evaluate_config_fn=FederatedUtils.evaluate_config,
         initial_parameters=initial_parameters,
         fit_metrics_aggregation_fn=agg_metrics_train,
         evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
