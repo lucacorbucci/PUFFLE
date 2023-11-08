@@ -188,6 +188,9 @@ parser.add_argument(
 parser.add_argument(
     "--opposite_direction", type=bool, default=False
 )  # If we want a disparity in some nodes that is opposite to the one in the others
+parser.add_argument(
+    "--approach", type=str, default=""
+)  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
 
 # --------------------------------------------------------------------------------------
