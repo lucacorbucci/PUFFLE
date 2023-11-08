@@ -40,6 +40,71 @@ from fl_puf.Utils.train_parameters import TrainParameters
 
 class Utils:
     @staticmethod
+    def setup_wandb(args, train_parameters):
+        if train_parameters.noise_multiplier > 0:
+            noise_multiplier = train_parameters.noise_multiplier
+        elif args.noise_multiplier > 0:
+            noise_multiplier = args.noise_multiplier
+        else:
+            noise_multiplier = 0
+        wandb_run = wandb.init(
+            # set the wandb project where this run will be logged
+            project="FL_fairness",
+            # name=f"FL - Lambda {args.DPL_lambda} - LR {args.lr} - Batch {args.batch_size}",
+            # track hyperparameters and run metadata
+            config={
+                "learning_rate": args.lr,
+                "csv": args.train_csv,
+                "DPL_regularization": args.DPL,
+                # "DPL_lambda": args.DPL_lambda,
+                "batch_size": args.batch_size,
+                "dataset": args.dataset,
+                "num_rounds": args.num_rounds,
+                "pool_size": args.pool_size,
+                "sampled_clients": args.sampled_clients,
+                "epochs": args.epochs,
+                "private": args.private,
+                "epsilon": args.epsilon if args.private else None,
+                "gradnorm": args.clipping,
+                "delta": args.delta if args.private else 0,
+                "noise_multiplier": noise_multiplier,
+                "probability_estimation": args.probability_estimation,
+                "perfect_probability_estimation": args.perfect_probability_estimation,
+                "alpha": args.alpha,
+                "percentage_unbalanced_nodes": args.percentage_unbalanced_nodes,
+                "alpha_target_lambda": args.alpha_target_lambda,
+                "target": args.target,
+                "weight_decay_lambda": args.weight_decay_lambda,
+                "starting_lambda_mode": args.starting_lambda_mode,
+                "starting_lambda_value": args.starting_lambda_value,
+                "momentum": args.momentum,
+                "node_shuffle_seed": args.node_shuffle_seed,
+                "unbalanced_ratio": args.unbalanced_ratio,
+            },
+        )
+        return wandb_run
+
+    @staticmethod
+    def get_optimizer(model, train_parameters, lr):
+        if train_parameters.optimizer == "adam":
+            return torch.optim.Adam(
+                model.parameters(),
+                lr=lr,
+            )
+        elif train_parameters.optimizer == "sgd":
+            return torch.optim.SGD(
+                model.parameters(),
+                lr=lr,
+            )
+        elif train_parameters.optimizer == "adamW":
+            return torch.optim.AdamW(
+                model.parameters(),
+                lr=lr,
+            )
+        else:
+            raise ValueError("Optimizer not recognized")
+
+    @staticmethod
     def rescale_lambda(value, old_min, old_max, new_min, new_max):
         old_range = old_max - old_min
         new_range = new_max - new_min
