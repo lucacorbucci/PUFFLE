@@ -1,4 +1,5 @@
 import os
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -841,7 +842,18 @@ def get_tabular_data(
     priv_balance_factor: float,
     dataset_name: str,
     num_sensitive_features: int,
+    approach: str,
+    num_nodes: int,
+    ratio_unfair_nodes: float,
+    opposite_direction: bool,
+    ratio_unfairness: tuple,
     dataset_path=None,
+    group_to_reduce: tuple = None,
+    group_to_increment: tuple = None,
+    number_of_samples_per_node: int = None,
+    opposite_group_to_reduce: tuple = None,
+    opposite_group_to_increment: tuple = None,
+    opposite_ratio_unfairness: tuple = None,
 ):
     X, z, y = get_tabular_numpy_dataset(
         dataset_name=dataset_name,
@@ -850,152 +862,428 @@ def get_tabular_data(
     )
     print(f"Data shapes: x={X.shape}, y={y.shape}, z={z.shape}")
     # Prepare training data held by each client
-    client_data, N_is, props_positive = generate_clients_biased_data(
-        x=X,
+    client_data, N_is, props_positive = generate_clients_biased_data_mod(
+        X=X,
         y=y,
         z=z,
-        M=num_clients,
-        do_iid_split=do_iid_split,
-        clients_balance_factor=groups_balance_factor,
-        priv_balance_factor=priv_balance_factor,
+        approach=approach,
+        num_nodes=num_nodes,
+        ratio_unfair_nodes=ratio_unfair_nodes,
+        opposite_direction=opposite_direction,
+        ratio_unfairness=ratio_unfairness,
+        group_to_reduce=group_to_reduce,
+        group_to_increment=group_to_increment,
+        number_of_samples_per_node=number_of_samples_per_node,
+        opposite_group_to_reduce=opposite_group_to_reduce,
+        opposite_group_to_increment=opposite_group_to_increment,
+        opposite_ratio_unfairness=opposite_ratio_unfairness,
     )
+    # client_data, N_is, props_positive = generate_clients_biased_data(
+    #     x=X,
+    #     y=y,
+    #     z=z,
+    #     M=num_clients,
+    #     do_iid_split=do_iid_split,
+    #     clients_balance_factor=groups_balance_factor,
+    #     priv_balance_factor=priv_balance_factor,
+    # )
     return client_data, N_is, props_positive
 
 
-def generate_clients_biased_data(
-    x, y, z, M, do_iid_split, clients_balance_factor, priv_balance_factor
-):
-    """Args:
-        x : numpy array of non-sensitive features
-        y : numpy array of targets
-        z : numpy array of sensitive feature(s), 1-hot encoded as 2 features: (priv, unpriv) [currently only single sensitive feature supported]
-        M : int > 1, number of clients (should be even)
-        do_iid_split : bool, whether to do iid split or split according to clients_balance_factor and priv_balance_factor
-        clients_balance_factor : float in [0,1], fraction of privileged clients
-        priv_balance_factor : float [.5,1.] fraction of priv samples the privileged clients should have; rest of the samples are divided equally between unprivileged clients
-    Returns:
-        list of dicts with keys x, y corresponding to features and target
+def egalitarian_approach(X, y, z, num_nodes, number_of_samples_per_node=None):
     """
-    # how this should work?
-    # client_balance_factor in [0,1] controls fraction of clients who will have only priv classes, rest will have only unpriv
-    # all priv clients have same number of samples, which depends on total number of priv samples and number of priv clients
-    # target variable split is not controlled separately but depends on priv/unpriv feature
-    # will actually want at least some samples from both priv and unpriv groups on each client, otherwise poisoning is hard
-    # try to populate privileged clients with given frac of priv samples, divide rest equally
-    assert M > 1, "Need more than 1 client!"
-    assert (
-        0.0 <= clients_balance_factor <= 1.0 and 0.5 <= priv_balance_factor <= 1.0
-    ), "Invalid privileged fractions!"
-    N = x.shape[0]
-    # shuffle data to avoid unintential biasing in the target when doing client split
-    print(f"shapes before shuffle: {x.shape}, {y.shape}, {z.shape}")
-    shuffle_inds = np.random.permutation(N)
-    x = x[shuffle_inds, :]
-    y = y[shuffle_inds]
-    z = z[shuffle_inds, :]
-    # check that data is 1-hot encoded
-    assert np.all(
-        len(np.unique(z)) == 2
-    ), f"Sensitive features not properly 1-hot encoded! Got uniques: {np.unique(z)}"
-    assert (
-        z.shape[1] == 2
-    ), "Currently only single 1-hot encoded sensitive feature supported!"
-    # x_priv = x[z==1]
-    # include sensitive features in x
-    x = np.hstack((x, z))
-    # do iid split
-    if do_iid_split:
-        print("Doing iid split!")
-        # shuffle data
-        shuffle_inds = np.random.permutation(N)
-        x = x[shuffle_inds, :]
-        y = y[shuffle_inds]
-        # split data into M parts
-        client_data = []
-        for i in range(M):
-            client_x = x[i::M]
-            client_y = y[i::M]
-            client_data.append({"x": client_x, "y": client_y})
-        N_is = [data["x"].shape[0] for data in client_data]
-        props_positive = [np.mean(data["y"] > 0) for data in client_data]
-        return client_data, N_is, props_positive
-    # non-iid split
-    M_priv = int(M * clients_balance_factor)
-    M_unpriv = M - M_priv
-    assert (
-        M_priv > 0 and M_unpriv > 0
-    ), f"Got num priv clients={M_priv}, unpriv={M_unpriv}, try changing client balance factor!"
-    print(f"Number of priv clients: {M_priv}, unpriv clients: {M_unpriv}")
-    # group priv/unpriv samples
-    x_priv = x[z[:, 0] == 1]
-    x_unpriv = x[z[:, 1] == 1]
-    y_priv = y[z[:, 0] == 1]
-    y_unpriv = y[z[:, 1] == 1]
-    N_priv = x_priv.shape[0]
-    N_unpriv = x_unpriv.shape[0]
-    print(
-        f"Total number of priv samples: {N_priv} ({np.round(np.sum(y_priv==1)/N_priv,4)} positive label), unpriv samples: {N_unpriv} ({np.round(np.sum(y_unpriv==1)/N_unpriv,4)} positive label)"
-    )
-    priv_priv_client_size = int(N_priv * priv_balance_factor / M_priv)
-    priv_unpriv_client_size = int(N_unpriv * (1 - priv_balance_factor) / M_priv)
-    unpriv_priv_client_size = int((N_priv - M_priv * priv_priv_client_size) / M_unpriv)
-    unpriv_unpriv_client_size = int(
-        (N_unpriv - M_priv * priv_unpriv_client_size) / M_unpriv
-    )
-    assert (
-        priv_priv_client_size > 0
-        and priv_unpriv_client_size > 0
-        and unpriv_priv_client_size > 0
-        and unpriv_unpriv_client_size > 0
-    ), f"Invalid client partitioning: got 0 priv/unpriv divide over clients ({priv_priv_client_size,priv_unpriv_client_size, unpriv_priv_client_size, unpriv_unpriv_client_size})!"
-    print(
-        f"Priv clients size: {priv_priv_client_size}+{priv_unpriv_client_size}, unpriv clients size: {unpriv_priv_client_size}+{unpriv_unpriv_client_size}"
-    )
-    client_data = []
-    # Populate privileged clients.
-    for i in range(M_priv):
-        client_x = np.vstack(
-            (x_priv[:priv_priv_client_size], x_unpriv[:priv_unpriv_client_size])
-        )
-        x_priv = x_priv[priv_priv_client_size:]
-        x_unpriv = x_unpriv[priv_unpriv_client_size:]
-        client_y = np.concatenate(
-            (y_priv[:priv_priv_client_size], y_priv[:priv_unpriv_client_size])
-        )
-        y_priv = y_priv[priv_priv_client_size:]
-        y_unpriv = y_unpriv[priv_unpriv_client_size:]
-        shuffle_inds = np.random.permutation(client_x.shape[0])
-        client_x = client_x[shuffle_inds, :]
-        client_y = client_y[shuffle_inds]
-        client_data.append({"x": client_x, "y": client_y})
-    # Populate unprivileged clients.
-    for i in range(M_unpriv):
-        client_x = np.vstack(
-            (x_priv[:unpriv_priv_client_size], x_unpriv[:unpriv_unpriv_client_size])
-        )
-        x_priv = x_priv[unpriv_priv_client_size:]
-        x_unpriv = x_unpriv[unpriv_unpriv_client_size:]
-        client_y = np.concatenate(
-            (y_priv[:unpriv_priv_client_size], y_unpriv[:unpriv_unpriv_client_size])
-        )
-        y_priv = y_priv[unpriv_priv_client_size:]
-        y_unpriv = y_unpriv[unpriv_unpriv_client_size:]
-        shuffle_inds = np.random.permutation(client_x.shape[0])
-        client_x = client_x[shuffle_inds, :]
-        client_y = client_y[shuffle_inds]
-        client_data.append({"x": client_x, "y": client_y})
+    With this approach we want to distribute the data among the nodes in an egalitarian way.
+    This means that each node has the same amount of data and the same ratio of each group
 
-    for client_dataset in client_data:
-        # get the last column
-        current_z = client_dataset["x"][:, -1]
-        client_dataset["z"] = current_z
-    # remove the last two columns from client_dataset["x"]
-    for client_dataset in client_data:
-        client_dataset["x"] = client_dataset["x"][:, :-2]
+    params:
+    X: numpy array of shape (N, D) where N is the number of samples and D is the number of features
+    y: numpy array of shape (N, ) where N is the number of samples. Here we have the samples labels
+    z: numpy array of shape (N, ) where N is the number of samples. Here we have the samples sensitive features
+    num_nodes: number of nodes to generate
+    number_of_samples_per_node: number of samples that we want in each node. Can be None, in this case we just use
+        len(y)//num_nodes
+    """
+    combinations = [(target, sensitive_value) for target, sensitive_value in zip(y, z)]
+    possible_combinations = set(combinations)
+    data = {}
+    for combination, x_, y_, z_ in zip(combinations, X, y, z):
+        if combination not in data:
+            data[combination] = []
+        data[combination].append({"x": x_, "y": y_, "z": z_})
 
-    N_is = [data["x"].shape[0] for data in client_data]
-    props_positive = [np.mean(data["y"] > 0) for data in client_data]
-    return client_data, N_is, props_positive
+    samples_from_each_group = min(list(Counter(combinations).values())) // num_nodes
+
+    if number_of_samples_per_node:
+        assert (
+            samples_from_each_group * len(possible_combinations)
+            >= number_of_samples_per_node
+        ), "Too many samples per node, choose a different number of samples per node"
+        if (
+            samples_from_each_group * len(possible_combinations)
+            >= number_of_samples_per_node
+        ):
+            to_be_removed = (
+                samples_from_each_group * len(possible_combinations)
+                - number_of_samples_per_node
+            ) // len(possible_combinations)
+            samples_from_each_group -= to_be_removed
+
+    # create the nodes
+    nodes = []
+    for i in range(num_nodes):
+        nodes.append([])
+        # fill the nodes
+        for combination in data:
+            nodes[i].extend(data[combination][:samples_from_each_group])
+            data[combination] = data[combination][samples_from_each_group:]
+
+    return nodes, data
+
+
+def create_unfair_nodes(
+    nodes_to_unfair: list,
+    remaining_data: dict,
+    group_to_reduce: tuple,
+    group_to_increment: tuple,
+    ratio_unfairness: tuple,
+):
+    """
+    This function creates the unfair nodes. It takes the nodes that we want to be unfair and the remaining data
+    and it returns the unfair nodes created by reducing the group_to_reduce and incrementing the group_to_increment
+    based on the ratio_unfairness
+
+    params:
+    nodes_to_unfair: list of nodes that we want to make unfair
+    remaining_data: dictionary with the remaining data that we will use to replace the
+        samples that we remove from the nodes_to_unfair
+    group_to_reduce: the group that we want to be unfair. For instance, in the case of binary target and binary sensitive value
+        we could have (0,0), (0,1), (1,0) or (1,1)
+    group_to_increment: the group that we want to increment. For instance, in the case of binary target and binary sensitive value
+        we could have (0,0), (0,1), (1,0) or (1,1)
+    ratio_unfairness: tuple (min, max) where min is the minimum ratio of samples that we want to remove from the group_to_reduce
+    """
+    assert (
+        remaining_data[group_to_reduce] != []
+    ), "Choose a different group to be unfair"
+    # remove the samples from the group that we want to be unfair
+    unfair_nodes = []
+    number_of_samples_to_add = []
+    for node in nodes_to_unfair:
+        node_data = []
+        count_sensitive_group_samples = 0
+        for sample in node:
+            if (sample["y"], sample["z"]) == group_to_reduce:
+                count_sensitive_group_samples += 1
+
+        current_ratio = np.random.uniform(ratio_unfairness[0], ratio_unfairness[1])
+        samples_to_be_removed = int(count_sensitive_group_samples * current_ratio)
+        number_of_samples_to_add.append(samples_to_be_removed)
+
+        for sample in node:
+            if (
+                sample["y"],
+                sample["z"],
+            ) == group_to_reduce and samples_to_be_removed > 0:
+                samples_to_be_removed -= 1
+            else:
+                node_data.append(sample)
+        unfair_nodes.append(node_data)
+
+    assert sum(number_of_samples_to_add) < len(
+        remaining_data[group_to_increment]
+    ), "Choose a different group to increment or reduce the ratio_unfairness"
+    # now we have to add the same amount of data taken from group_to_unfair
+    for node, samples_to_add in zip(unfair_nodes, number_of_samples_to_add):
+        node.extend(remaining_data[group_to_increment][:samples_to_add])
+        remaining_data[group_to_increment] = remaining_data[group_to_increment][
+            samples_to_add:
+        ]
+
+    return unfair_nodes
+
+
+def representative_diversity_approach(X, y, z, num_nodes, number_of_samples_per_node):
+    """
+    With this approach we want to distribute the data among the nodes in a representative diversity way.
+    This means that each node has the same ratio of each group that we are observing in the dataset
+
+    params:
+    X: numpy array of shape (N, D) where N is the number of samples and D is the number of features
+    y: numpy array of shape (N, ) where N is the number of samples. Here we have the samples labels
+    z: numpy array of shape (N, ) where N is the number of samples. Here we have the samples sensitive features
+    num_nodes: number of nodes to generate
+    number_of_samples_per_node: number of samples that we want in each node. Can be None, in this case we just use
+        len(y)//num_nodes
+    """
+    samples_per_node = (
+        number_of_samples_per_node
+        if number_of_samples_per_node
+        else len(y) // num_nodes
+    )
+    # create the nodes sampling from the dataset wihout replacement
+    dataset = [{"x": x_, "y": y_, "z": z_} for x_, y_, z_ in zip(X, y, z)]
+    # shuffle the dataset
+    np.random.shuffle(dataset)
+
+    # Distribute the data among the nodes with a random sample from the dataset
+    # considering the number of samples per node
+    nodes = []
+    for i in range(num_nodes):
+        nodes.append([])
+        nodes[i].extend(dataset[:samples_per_node])
+        dataset = dataset[samples_per_node:]
+
+    # Create the dictionary with the remaining data
+    remaining_data = {}
+    for sample in dataset:
+        if (sample["y"], sample["z"]) not in remaining_data:
+            remaining_data[(sample["y"], sample["z"])] = []
+        remaining_data[(sample["y"], sample["z"])].append(sample)
+
+    return nodes, remaining_data
+
+
+def generate_clients_biased_data_mod(
+    X,
+    y,
+    z,
+    approach: str,
+    num_nodes: int,
+    ratio_unfair_nodes: float,
+    opposite_direction: bool,
+    ratio_unfairness: tuple,
+    group_to_reduce: tuple = None,
+    group_to_increment: tuple = None,
+    number_of_samples_per_node: int = None,
+    opposite_group_to_reduce: tuple = None,
+    opposite_group_to_increment: tuple = None,
+    opposite_ratio_unfairness: tuple = None,
+):
+    """
+    This function generates the data for the clients.
+
+    params:
+    X: numpy array of shape (N, D) where N is the number of samples and D is the number of features
+    y: numpy array of shape (N, ) where N is the number of samples. Here we have the samples labels
+    z: numpy array of shape (N, ) where N is the number of samples. Here we have the samples sensitive features
+    num_nodes: number of nodes to generate
+    approach: type of approach we want to use to distribute the data among the fair clients. This can be egalitarian or representative
+    ratio_unfair_nodes: the fraction of unfair clients we want to have in the experiment
+    opposite_direction: true if we want to allow different nodes to have different majoritiarian classes. For instance,
+        we could have some nodes with a max disparity that depends on the majority class being 0 and other nodes with a max disparity
+        that depends on the majority class being 1.
+    group_to_reduce: the group that we want to be unfair. For instance, in the case of binary target and binary sensitive value
+        we could have (0,0), (0,1), (1,0) or (1,1)
+    ratio_unfairness: tuple (min, max) where min is the minimum ratio of samples that we want to remove from the group_to_reduce
+        and max is the maximum ratio of samples that we want to remove from the group_to_reduce
+    """
+
+    # check if the number of samples that we want in each node is
+    # greater than the number of samples we have in the dataset
+    if number_of_samples_per_node:
+        assert (
+            number_of_samples_per_node < len(y) // num_nodes
+        ), "Too many samples per node"
+    # check if the ratio_fair_nodes is between 0 and 1
+    assert ratio_unfair_nodes <= 1, "ratio_unfair_nodes must be less or equal than 1"
+    assert ratio_unfair_nodes >= 0, "ratio_unfair_nodes must be greater or equal than 0"
+    assert group_to_reduce, "group_to_reduce must be specified"
+    assert group_to_increment, "group_to_increment must be specified"
+    # check if the approach type is egalitarian or representative
+    assert approach in [
+        "egalitarian",
+        "representative",
+    ], "Approach must be egalitarian or representative"
+
+    number_unfair_nodes = int(num_nodes * ratio_unfair_nodes)
+    if approach == "egalitarian":
+        # first split the data among the nodes in an egalitarian way
+        # each node has the same amount of data and the same ratio of each group
+        nodes, remaining_data = egalitarian_approach(
+            X, y, z, num_nodes, number_of_samples_per_node
+        )
+    else:
+        nodes, remaining_data = representative_diversity_approach(
+            X, y, z, num_nodes, number_of_samples_per_node
+        )
+
+    if opposite_direction:
+        assert opposite_group_to_reduce, "opposite_group_to_reduce must be specified"
+        assert (
+            opposite_group_to_increment
+        ), "opposite_group_to_increment must be specified"
+        group_size = number_unfair_nodes // 2
+        unfair_nodes_direction_1 = create_unfair_nodes(
+            nodes_to_unfair=nodes[
+                number_unfair_nodes : number_unfair_nodes + group_size
+            ],
+            remaining_data=remaining_data,
+            group_to_reduce=group_to_reduce,
+            group_to_increment=group_to_increment,
+            ratio_unfairness=ratio_unfairness,
+        )
+        unfair_nodes_direction_2 = create_unfair_nodes(
+            nodes_to_unfair=nodes[number_unfair_nodes + group_size :],
+            remaining_data=remaining_data,
+            group_to_reduce=opposite_group_to_reduce,
+            group_to_increment=opposite_group_to_increment,
+            ratio_unfairness=opposite_ratio_unfairness,
+        )
+        return (
+            nodes[0:number_unfair_nodes]
+            + unfair_nodes_direction_1
+            + unfair_nodes_direction_2
+        )
+    else:
+        unfair_nodes = create_unfair_nodes(
+            nodes_to_unfair=nodes[number_unfair_nodes:],
+            remaining_data=remaining_data,
+            group_to_reduce=group_to_reduce,
+            group_to_increment=group_to_increment,
+            ratio_unfairness=ratio_unfairness,
+        )
+        return nodes[0:number_unfair_nodes] + unfair_nodes
+
+
+# def generate_clients_biased_data(
+#     x, y, z, M, do_iid_split, clients_balance_factor, priv_balance_factor
+# ):
+#     """Args:
+#         x : numpy array of non-sensitive features
+#         y : numpy array of targets
+#         z : numpy array of sensitive feature(s), 1-hot encoded as 2 features: (priv, unpriv) [currently only single sensitive feature supported]
+#         M : int > 1, number of clients (should be even)
+#         do_iid_split : bool, whether to do iid split or split according to clients_balance_factor and priv_balance_factor
+#         clients_balance_factor : float in [0,1], fraction of privileged clients
+#         priv_balance_factor : float [.5,1.] fraction of priv samples the privileged clients should have; rest of the samples are divided equally between unprivileged clients
+#     Returns:
+#         list of dicts with keys x, y corresponding to features and target
+#     """
+#     # how this should work?
+#     # client_balance_factor in [0,1] controls fraction of clients who will have only priv classes, rest will have only unpriv
+#     # all priv clients have same number of samples, which depends on total number of priv samples and number of priv clients
+#     # target variable split is not controlled separately but depends on priv/unpriv feature
+#     # will actually want at least some samples from both priv and unpriv groups on each client, otherwise poisoning is hard
+#     # try to populate privileged clients with given frac of priv samples, divide rest equally
+#     assert M > 1, "Need more than 1 client!"
+#     assert (
+#         0.0 <= clients_balance_factor <= 1.0 and 0.5 <= priv_balance_factor <= 1.0
+#     ), "Invalid privileged fractions!"
+#     N = x.shape[0]
+#     # shuffle data to avoid unintential biasing in the target when doing client split
+#     print(f"shapes before shuffle: {x.shape}, {y.shape}, {z.shape}")
+#     shuffle_inds = np.random.permutation(N)
+#     x = x[shuffle_inds, :]
+#     y = y[shuffle_inds]
+#     z = z[shuffle_inds, :]
+#     # check that data is 1-hot encoded
+#     assert np.all(
+#         len(np.unique(z)) == 2
+#     ), f"Sensitive features not properly 1-hot encoded! Got uniques: {np.unique(z)}"
+#     assert (
+#         z.shape[1] == 2
+#     ), "Currently only single 1-hot encoded sensitive feature supported!"
+#     # x_priv = x[z==1]
+#     # include sensitive features in x
+#     x = np.hstack((x, z))
+#     # do iid split
+#     if do_iid_split:
+#         print("Doing iid split!")
+#         # shuffle data
+#         shuffle_inds = np.random.permutation(N)
+#         x = x[shuffle_inds, :]
+#         y = y[shuffle_inds]
+#         z = z[shuffle_inds, :]
+#         # get only the first column of z
+#         z = z[:, 0]
+#         print(z)
+#         # split data into M parts
+#         client_data = []
+#         for i in range(M):
+#             client_x = x[i::M]
+#             client_y = y[i::M]
+#             client_z = z[i::M]
+#             client_data.append({"x": client_x, "y": client_y, "z": client_z})
+#         N_is = [data["x"].shape[0] for data in client_data]
+#         props_positive = [np.mean(data["y"] > 0) for data in client_data]
+#         return client_data, N_is, props_positive
+#     # non-iid split
+#     M_priv = int(M * clients_balance_factor)
+#     M_unpriv = M - M_priv
+#     assert (
+#         M_priv > 0 and M_unpriv > 0
+#     ), f"Got num priv clients={M_priv}, unpriv={M_unpriv}, try changing client balance factor!"
+#     print(f"Number of priv clients: {M_priv}, unpriv clients: {M_unpriv}")
+#     # group priv/unpriv samples
+#     x_priv = x[z[:, 0] == 1]
+#     x_unpriv = x[z[:, 1] == 1]
+#     y_priv = y[z[:, 0] == 1]
+#     y_unpriv = y[z[:, 1] == 1]
+#     N_priv = x_priv.shape[0]
+#     N_unpriv = x_unpriv.shape[0]
+#     print(
+#         f"Total number of priv samples: {N_priv} ({np.round(np.sum(y_priv==1)/N_priv,4)} positive label), unpriv samples: {N_unpriv} ({np.round(np.sum(y_unpriv==1)/N_unpriv,4)} positive label)"
+#     )
+#     priv_priv_client_size = int(N_priv * priv_balance_factor / M_priv)
+#     priv_unpriv_client_size = int(N_unpriv * (1 - priv_balance_factor) / M_priv)
+#     unpriv_priv_client_size = int((N_priv - M_priv * priv_priv_client_size) / M_unpriv)
+#     unpriv_unpriv_client_size = int(
+#         (N_unpriv - M_priv * priv_unpriv_client_size) / M_unpriv
+#     )
+#     assert (
+#         priv_priv_client_size > 0
+#         and priv_unpriv_client_size > 0
+#         and unpriv_priv_client_size > 0
+#         and unpriv_unpriv_client_size > 0
+#     ), f"Invalid client partitioning: got 0 priv/unpriv divide over clients ({priv_priv_client_size,priv_unpriv_client_size, unpriv_priv_client_size, unpriv_unpriv_client_size})!"
+#     print(
+#         f"Priv clients size: {priv_priv_client_size}+{priv_unpriv_client_size}, unpriv clients size: {unpriv_priv_client_size}+{unpriv_unpriv_client_size}"
+#     )
+#     client_data = []
+#     # Populate privileged clients.
+#     for i in range(M_priv):
+#         client_x = np.vstack(
+#             (x_priv[:priv_priv_client_size], x_unpriv[:priv_unpriv_client_size])
+#         )
+#         x_priv = x_priv[priv_priv_client_size:]
+#         x_unpriv = x_unpriv[priv_unpriv_client_size:]
+#         client_y = np.concatenate(
+#             (y_priv[:priv_priv_client_size], y_priv[:priv_unpriv_client_size])
+#         )
+#         y_priv = y_priv[priv_priv_client_size:]
+#         y_unpriv = y_unpriv[priv_unpriv_client_size:]
+#         shuffle_inds = np.random.permutation(client_x.shape[0])
+#         client_x = client_x[shuffle_inds, :]
+#         client_y = client_y[shuffle_inds]
+#         client_data.append({"x": client_x, "y": client_y})
+#     # Populate unprivileged clients.
+#     for i in range(M_unpriv):
+#         client_x = np.vstack(
+#             (x_priv[:unpriv_priv_client_size], x_unpriv[:unpriv_unpriv_client_size])
+#         )
+#         x_priv = x_priv[unpriv_priv_client_size:]
+#         x_unpriv = x_unpriv[unpriv_unpriv_client_size:]
+#         client_y = np.concatenate(
+#             (y_priv[:unpriv_priv_client_size], y_unpriv[:unpriv_unpriv_client_size])
+#         )
+#         y_priv = y_priv[unpriv_priv_client_size:]
+#         y_unpriv = y_unpriv[unpriv_unpriv_client_size:]
+#         shuffle_inds = np.random.permutation(client_x.shape[0])
+#         client_x = client_x[shuffle_inds, :]
+#         client_y = client_y[shuffle_inds]
+#         client_data.append({"x": client_x, "y": client_y})
+
+#     for client_dataset in client_data:
+#         # get the last column
+#         current_z = client_dataset["x"][:, -1]
+#         client_dataset["z"] = current_z
+#     # remove the last two columns from client_dataset["x"]
+#     for client_dataset in client_data:
+#         client_dataset["x"] = client_dataset["x"][:, :-2]
+
+#     N_is = [data["x"].shape[0] for data in client_data]
+#     props_positive = [np.mean(data["y"] > 0) for data in client_data]
+#     return client_data, N_is, props_positive
 
 
 def load_dutch(dataset_path):
@@ -1133,10 +1421,22 @@ def prepare_tabular_data(
     dataset_name: str,
     groups_balance_factor: float,
     priv_balance_factor: float,
+    approach: str,
+    num_nodes: int,
+    ratio_unfair_nodes: float,
+    opposite_direction: bool,
+    ratio_unfairness: tuple,
+    group_to_reduce: tuple = None,
+    group_to_increment: tuple = None,
+    number_of_samples_per_node: int = None,
+    opposite_group_to_reduce: tuple = None,
+    opposite_group_to_increment: tuple = None,
+    opposite_ratio_unfairness: tuple = None,
+    do_iid_split: bool = False,
 ):
     client_data, N_is, props_positive = get_tabular_data(
         num_clients=150,
-        do_iid_split=False,
+        do_iid_split=do_iid_split,
         groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
         priv_balance_factor=priv_balance_factor,  # fraction of priv samples the privileged clients should have
         dataset_name="dutch",
