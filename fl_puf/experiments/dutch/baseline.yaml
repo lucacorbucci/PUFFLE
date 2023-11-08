@@ -17,10 +17,11 @@ parameters:
     min: 0.0001
     max: 0.1
   optimizer:
-    values: ["adam", "sgd", "adamw"]
+    values: ["adam", "sgd"]
   node_shuffle_seed:
     min: 1
     max: 1000000000
+
 
 command:
   - ${env}
@@ -75,7 +76,15 @@ command:
   - True
   - --dataset_path 
   - ../../../data/Tabular/dutch/
-  - --groups_balance_factor 
-  - 0.5 
-  - --priv_balance_factor 
-  - 0.9
+  - --group_to_reduce
+  - (0,1)
+  - --group_to_increment
+  - (1,1)
+  - --number_of_samples_per_node
+  - 343
+  - --ratio_unfair_nodes
+  - 0.5,
+  - --ratio_unfairness
+  - (0.6, 0.8)
+  - --approach
+  - representative
