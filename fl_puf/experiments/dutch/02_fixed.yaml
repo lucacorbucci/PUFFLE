@@ -21,7 +21,9 @@ parameters:
   node_shuffle_seed:
     min: 1
     max: 1000000000
-
+  starting_lambda_value:
+    min: 0.4
+    max: 0.8
 
 command:
   - ${env}
@@ -50,6 +52,8 @@ command:
   - True 
   - --base_path
   - ../../../data/Tabular
+  - --DPL 
+  - True 
   - --private 
   - True 
   - --delta 
@@ -71,11 +75,13 @@ command:
   - --test_nodes 
   - 0.335
   - --starting_lambda_mode 
-  - no_tuning
+  - fixed
   - --tabular_data 
   - True
   - --dataset_path 
   - ../../../data/Tabular/dutch/
+  - --target 
+  - 0.2
   - --group_to_reduce
   - 0 
   - 1

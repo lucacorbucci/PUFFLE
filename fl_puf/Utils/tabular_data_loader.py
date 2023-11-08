@@ -860,9 +860,10 @@ def get_tabular_data(
         num_sensitive_features=num_sensitive_features,
         dataset_path=dataset_path,
     )
+    z = z[:, 0]
     print(f"Data shapes: x={X.shape}, y={y.shape}, z={z.shape}")
     # Prepare training data held by each client
-    client_data, N_is, props_positive = generate_clients_biased_data_mod(
+    client_data = generate_clients_biased_data_mod(
         X=X,
         y=y,
         z=z,
@@ -894,7 +895,7 @@ def get_tabular_data(
     #     clients_balance_factor=groups_balance_factor,
     #     priv_balance_factor=priv_balance_factor,
     # )
-    return client_data, N_is, props_positive
+    return client_data  # , N_is, props_positive
 
 
 def egalitarian_approach(X, y, z, num_nodes, number_of_samples_per_node=None):
@@ -1484,7 +1485,8 @@ def prepare_tabular_data(
     opposite_ratio_unfairness: tuple = None,
     do_iid_split: bool = False,
 ):
-    client_data, N_is, props_positive = get_tabular_data(
+    # client_data, N_is, props_positive = get_tabular_data(
+    client_data = get_tabular_data(
         num_clients=150,
         do_iid_split=do_iid_split,
         groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
@@ -1492,7 +1494,34 @@ def prepare_tabular_data(
         dataset_name="dutch",
         num_sensitive_features=1,
         dataset_path=dataset_path,
+        approach=approach,
+        num_nodes=num_nodes,
+        ratio_unfair_nodes=ratio_unfair_nodes,
+        opposite_direction=opposite_direction,
+        ratio_unfairness=ratio_unfairness,
+        group_to_reduce=group_to_reduce,
+        group_to_increment=group_to_increment,
+        number_of_samples_per_node=number_of_samples_per_node,
+        opposite_group_to_reduce=opposite_group_to_reduce,
+        opposite_group_to_increment=opposite_group_to_increment,
+        opposite_ratio_unfairness=opposite_ratio_unfairness,
     )
+
+    # transform client data so that they are compatiblw with the
+    # other functions
+    tmp_data = []
+    for client in client_data:
+        tmp_x = []
+        tmp_y = []
+        tmp_z = []
+        for sample in client:
+            tmp_x.append(sample["x"])
+            tmp_y.append(sample["y"])
+            tmp_z.append(sample["z"])
+        tmp_data.append(
+            {"x": np.array(tmp_x), "y": np.array(tmp_y), "z": np.array(tmp_z)}
+        )
+    client_data = tmp_data
 
     # remove the old files in the data folder
     os.system(f"rm -rf {dataset_path}/federated/*")

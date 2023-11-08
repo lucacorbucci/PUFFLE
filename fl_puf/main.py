@@ -19,7 +19,6 @@ from torch import nn
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
 from fl_puf.Client.client import FlowerClient
-from fl_puf.Utils.federated_utils import FederatedUtils
 from fl_puf.Utils.tabular_data_loader import prepare_tabular_data
 from fl_puf.Utils.utils import Utils
 
@@ -162,25 +161,25 @@ parser.add_argument("--priv_balance_factor", type=float, default=0.5)
 # ----------------------
 # Parameters to generate the tabular dataset
 parser.add_argument(
-    "--group_to_reduce", type=tuple, default=None
+    "--group_to_reduce", type=int, default=None, nargs="+"
 )  # group of <target, sensitive value> that we want to reduce
 parser.add_argument(
-    "--group_to_increment", type=tuple, default=None
+    "--group_to_increment", type=int, default=None, nargs="+"
 )  # group of <target, sensitive value> that we want to increment
 parser.add_argument(
-    "--opposite_group_to_reduce", type=tuple, default=None
+    "--opposite_group_to_reduce", type=int, default=None, nargs="+"
 )  # group of <target, sensitive value> that we want to reduce when opposite_direction is true
 parser.add_argument(
-    "--opposite_group_to_increment", type=tuple, default=None
+    "--opposite_group_to_increment", type=int, default=None, nargs="+"
 )  # group of <target, sensitive value> that we want to increment when opposite_direction is true
 parser.add_argument(
     "--number_of_samples_per_node", type=int, default=None
 )  # maximum number of samples per node
 parser.add_argument(
-    "--ratio_unfairness", type=float, default=None
+    "--ratio_unfairness", type=float, default=None, nargs="+"
 )  # percentage of samples removed from group_to_reduce on the unfair nodes
 parser.add_argument(
-    "--opposite_ratio_unfairness", type=float, default=None
+    "--opposite_ratio_unfairness", type=float, default=None, nargs="+"
 )  # percentage of samples removed from group_to_reduce on the unfair nodes when opposite_direction is true
 parser.add_argument(
     "--ratio_unfair_nodes", type=float, default=None
@@ -220,18 +219,30 @@ if __name__ == "__main__":
             dataset_name=dataset_name,
             groups_balance_factor=args.groups_balance_factor,
             priv_balance_factor=args.priv_balance_factor,
-            # do_iid_split=True,
+            do_iid_split=True,
             approach=args.approach,
             num_nodes=args.pool_size,
             ratio_unfair_nodes=args.ratio_unfair_nodes,
             opposite_direction=args.opposite_direction,
-            ratio_unfairness=args.ratio_unfairness,
-            group_to_reduce=args.group_to_reduce,
-            group_to_increment=args.group_to_increment,
+            ratio_unfairness=tuple(args.ratio_unfairness)
+            if args.ratio_unfairness
+            else None,
+            group_to_reduce=tuple(args.group_to_reduce)
+            if args.group_to_reduce
+            else None,
+            group_to_increment=tuple(args.group_to_increment)
+            if args.group_to_increment
+            else None,
             number_of_samples_per_node=args.number_of_samples_per_node,
-            opposite_group_to_reduce=args.opposite_group_to_reduce,
-            opposite_group_to_increment=args.opposite_group_to_increment,
-            opposite_ratio_unfairness=args.opposite_ratio_unfairness,
+            opposite_group_to_reduce=tuple(args.opposite_group_to_reduce)
+            if args.opposite_group_to_reduce
+            else None,
+            opposite_group_to_increment=tuple(args.opposite_group_to_increment)
+            if args.opposite_group_to_increment
+            else None,
+            opposite_ratio_unfairness=tuple(args.opposite_ratio_unfairness)
+            if args.opposite_ratio_unfairness
+            else None,
         )
 
     else:
@@ -247,548 +258,548 @@ if __name__ == "__main__":
             base_path=args.base_path,
         )
 
-    DPL_value = None
-    if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
-        raise Exception("Starting lambda value must be specified when using fixed mode")
-    if args.starting_lambda_mode == "no_tuning":
-        DPL_value = 0
-        args.starting_lambda_value = 0
-    elif args.starting_lambda_mode == "fixed" and args.starting_lambda_value:
-        DPL_value = args.starting_lambda_value
+    # DPL_value = None
+    # if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
+    #     raise Exception("Starting lambda value must be specified when using fixed mode")
+    # if args.starting_lambda_mode == "no_tuning":
+    #     DPL_value = 0
+    #     args.starting_lambda_value = 0
+    # elif args.starting_lambda_mode == "fixed" and args.starting_lambda_value:
+    #     DPL_value = args.starting_lambda_value
 
-    if (
-        args.starting_lambda_mode != "fixed"
-        and args.starting_lambda_mode != "avg"
-        and args.starting_lambda_mode != "disparity"
-        and args.starting_lambda_mode != "no_tuning"
-    ):
-        raise Exception(
-            f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
-        )
-    train_parameters = TrainParameters(
-        epochs=args.epochs,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        criterion=nn.CrossEntropyLoss(),
-        wandb_run=None,
-        batch_size=args.batch_size,
-        seed=args.seed,
-        epsilon=args.epsilon if args.private else None,
-        DPL_lambda=DPL_value,
-        private=args.private,
-        DPL=args.DPL,
-        noise_multiplier=args.noise_multiplier,
-        probability_estimation=args.probability_estimation,
-        perfect_probability_estimation=args.perfect_probability_estimation,
-        percentage_unbalanced_nodes=args.percentage_unbalanced_nodes,
-        target=args.target,
-        alpha=args.alpha_target_lambda,
-        cross_silo=args.cross_silo,
-        weight_decay_lambda=args.weight_decay_lambda,
-        sweep=args.sweep,
-        starting_lambda_mode=args.starting_lambda_mode,
-        starting_lambda_value=args.starting_lambda_value,
-        momentum=args.momentum,
-        update_lambda=args.update_lambda,
-        unbalanced_ratio=args.unbalanced_ratio,
-        tabular_data=args.tabular_data,
-    )
+    # if (
+    #     args.starting_lambda_mode != "fixed"
+    #     and args.starting_lambda_mode != "avg"
+    #     and args.starting_lambda_mode != "disparity"
+    #     and args.starting_lambda_mode != "no_tuning"
+    # ):
+    #     raise Exception(
+    #         f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
+    #     )
+    # train_parameters = TrainParameters(
+    #     epochs=args.epochs,
+    #     device="cuda" if torch.cuda.is_available() else "cpu",
+    #     criterion=nn.CrossEntropyLoss(),
+    #     wandb_run=None,
+    #     batch_size=args.batch_size,
+    #     seed=args.seed,
+    #     epsilon=args.epsilon if args.private else None,
+    #     DPL_lambda=DPL_value,
+    #     private=args.private,
+    #     DPL=args.DPL,
+    #     noise_multiplier=args.noise_multiplier,
+    #     probability_estimation=args.probability_estimation,
+    #     perfect_probability_estimation=args.perfect_probability_estimation,
+    #     percentage_unbalanced_nodes=args.percentage_unbalanced_nodes,
+    #     target=args.target,
+    #     alpha=args.alpha_target_lambda,
+    #     cross_silo=args.cross_silo,
+    #     weight_decay_lambda=args.weight_decay_lambda,
+    #     sweep=args.sweep,
+    #     starting_lambda_mode=args.starting_lambda_mode,
+    #     starting_lambda_value=args.starting_lambda_value,
+    #     momentum=args.momentum,
+    #     update_lambda=args.update_lambda,
+    #     unbalanced_ratio=args.unbalanced_ratio,
+    #     tabular_data=args.tabular_data,
+    # )
 
-    # partition dataset (use a large `alpha` to make it IID;
-    # a small value (e.g. 1) will make it non-IID)
-    # This will create a new directory called "federated": in the directory where
-    # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
-    # its own train/set split.
+    # # partition dataset (use a large `alpha` to make it IID;
+    # # a small value (e.g. 1) will make it non-IID)
+    # # This will create a new directory called "federated": in the directory where
+    # # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
+    # # its own train/set split.
 
-    if not args.tabular_data:
-        # Partitioning the training dataset
-        fed_dir = Utils.do_fl_partitioning(
-            train_path,
-            pool_size=pool_size,
-            num_classes=2,
-            val_ratio=0,
-            partition_type=args.partition_type,
-            alpha=args.alpha,
-            train_parameters=train_parameters,
-        )
+    # if not args.tabular_data:
+    #     # Partitioning the training dataset
+    #     fed_dir = Utils.do_fl_partitioning(
+    #         train_path,
+    #         pool_size=pool_size,
+    #         num_classes=2,
+    #         val_ratio=0,
+    #         partition_type=args.partition_type,
+    #         alpha=args.alpha,
+    #         train_parameters=train_parameters,
+    #     )
 
-        print(fed_dir)
-        test = os.listdir(fed_dir)
+    #     print(fed_dir)
+    #     test = os.listdir(fed_dir)
 
-        for item in test:
-            if item.endswith(".pkl"):
-                os.remove(os.path.join(fed_dir, item))
+    #     for item in test:
+    #         if item.endswith(".pkl"):
+    #             os.remove(os.path.join(fed_dir, item))
 
-    if args.epsilon:
-        # We need to understand the noise that we need to add based
-        # on the epsilon that we want to guarantee
-        max_noise = 0
-        for i in range(args.pool_size):
-            model_noise = ModelUtils.get_model(
-                dataset_name, device=train_parameters.device
-            )
-            # get the training dataset of one of the clients
-            train_loader_client_0 = Utils.get_dataloader(
-                fed_dir,
-                str(i),
-                batch_size=train_parameters.batch_size,
-                workers=0,
-                dataset=dataset_name,
-                partition="train",
-            )
-            privacy_engine = PrivacyEngine(accountant="rdp")
-            optimizer_noise = Utils.get_optimizer(
-                model_noise, train_parameters, args.lr
-            )
-            (
-                _,
-                private_optimizer,
-                _,
-            ) = privacy_engine.make_private_with_epsilon(
-                module=model_noise,
-                optimizer=optimizer_noise,
-                data_loader=train_loader_client_0,
-                epochs=(args.num_rounds // 10) * args.epochs,
-                target_epsilon=train_parameters.epsilon,
-                target_delta=args.delta,
-                max_grad_norm=args.clipping,
-            )
-            max_noise = max(max_noise, private_optimizer.noise_multiplier)
-            print(
-                f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
-            )
+    # if args.epsilon:
+    #     # We need to understand the noise that we need to add based
+    #     # on the epsilon that we want to guarantee
+    #     max_noise = 0
+    #     for i in range(args.pool_size):
+    #         model_noise = ModelUtils.get_model(
+    #             dataset_name, device=train_parameters.device
+    #         )
+    #         # get the training dataset of one of the clients
+    #         train_loader_client_0 = Utils.get_dataloader(
+    #             fed_dir,
+    #             str(i),
+    #             batch_size=train_parameters.batch_size,
+    #             workers=0,
+    #             dataset=dataset_name,
+    #             partition="train",
+    #         )
+    #         privacy_engine = PrivacyEngine(accountant="rdp")
+    #         optimizer_noise = Utils.get_optimizer(
+    #             model_noise, train_parameters, args.lr
+    #         )
+    #         (
+    #             _,
+    #             private_optimizer,
+    #             _,
+    #         ) = privacy_engine.make_private_with_epsilon(
+    #             module=model_noise,
+    #             optimizer=optimizer_noise,
+    #             data_loader=train_loader_client_0,
+    #             epochs=(args.num_rounds // 10) * args.epochs,
+    #             target_epsilon=train_parameters.epsilon,
+    #             target_delta=args.delta,
+    #             max_grad_norm=args.clipping,
+    #         )
+    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
+    #         print(
+    #             f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
+    #         )
 
-        train_parameters.noise_multiplier = max_noise
-        train_parameters.epsilon = None
-        print(
-            f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
-        )
+    #     train_parameters.noise_multiplier = max_noise
+    #     train_parameters.epsilon = None
+    #     print(
+    #         f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+    #     )
 
-    wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
+    # wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 
-    def client_fn(cid: str):
-        # create a single client instance
-        return FlowerClient(
-            train_parameters=train_parameters,
-            cid=cid,
-            fed_dir_data=fed_dir,
-            dataset_name=dataset_name,
-            clipping=args.clipping,
-            delta=args.delta,
-            lr=args.lr,
-        )
+    # def client_fn(cid: str):
+    #     # create a single client instance
+    #     return FlowerClient(
+    #         train_parameters=train_parameters,
+    #         cid=cid,
+    #         fed_dir_data=fed_dir,
+    #         dataset_name=dataset_name,
+    #         clipping=args.clipping,
+    #         delta=args.delta,
+    #         lr=args.lr,
+    #     )
 
-    model = ModelUtils.get_model(dataset_name, "cuda")
-    model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
-    initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
+    # model = ModelUtils.get_model(dataset_name, "cuda")
+    # model_parameters = [val.cpu().numpy() for _, val in model.state_dict().items()]
+    # initial_parameters = fl.common.ndarrays_to_parameters(model_parameters)
 
-    def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
-        """Return a configuration with static batch size and (local) epochs."""
-        config = {
-            "epochs": args.epochs,  # number of local epochs
-            "batch_size": args.batch_size,
-            "dataset": args.dataset,
-        }
-        return config
+    # def fit_config(server_round: int = 0) -> Dict[str, Scalar]:
+    #     """Return a configuration with static batch size and (local) epochs."""
+    #     config = {
+    #         "epochs": args.epochs,  # number of local epochs
+    #         "batch_size": args.batch_size,
+    #         "dataset": args.dataset,
+    #     }
+    #     return config
 
-    def evaluate_config(server_round: int = 0) -> Dict[str, Scalar]:
-        """Return a configuration with static batch size and (local) epochs."""
-        config = {
-            "epochs": args.epochs,  # number of local epochs
-            "batch_size": args.batch_size,
-            "dataset": args.dataset,
-        }
-        return config
+    # def evaluate_config(server_round: int = 0) -> Dict[str, Scalar]:
+    #     """Return a configuration with static batch size and (local) epochs."""
+    #     config = {
+    #         "epochs": args.epochs,  # number of local epochs
+    #         "batch_size": args.batch_size,
+    #         "dataset": args.dataset,
+    #     }
+    #     return config
 
-    def agg_metrics_test(metrics: list, server_round: int) -> dict:
-        total_examples = sum([n_examples for n_examples, _ in metrics])
+    # def agg_metrics_test(metrics: list, server_round: int) -> dict:
+    #     total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        loss_test = (
-            sum(
-                [
-                    n_examples
-                    * metric[
-                        "test_loss" if not train_parameters.sweep else "validation_loss"
-                    ]
-                    for n_examples, metric in metrics
-                ]
-            )
-            / total_examples
-        )
-        accuracy_test = (
-            sum(
-                [
-                    n_examples
-                    * metric[
-                        "test_accuracy"
-                        if not train_parameters.sweep
-                        else "validation_accuracy"
-                    ]
-                    for n_examples, metric in metrics
-                ]
-            )
-            / total_examples
-        )
-        max_disparity_average = np.mean(
-            [
-                metric[
-                    "max_disparity_test"
-                    if not train_parameters.sweep
-                    else "max_disparity_validation"
-                ]
-                for n_examples, metric in metrics
-            ]
-        )
+    #     loss_test = (
+    #         sum(
+    #             [
+    #                 n_examples
+    #                 * metric[
+    #                     "test_loss" if not train_parameters.sweep else "validation_loss"
+    #                 ]
+    #                 for n_examples, metric in metrics
+    #             ]
+    #         )
+    #         / total_examples
+    #     )
+    #     accuracy_test = (
+    #         sum(
+    #             [
+    #                 n_examples
+    #                 * metric[
+    #                     "test_accuracy"
+    #                     if not train_parameters.sweep
+    #                     else "validation_accuracy"
+    #                 ]
+    #                 for n_examples, metric in metrics
+    #             ]
+    #         )
+    #         / total_examples
+    #     )
+    #     max_disparity_average = np.mean(
+    #         [
+    #             metric[
+    #                 "max_disparity_test"
+    #                 if not train_parameters.sweep
+    #                 else "max_disparity_validation"
+    #             ]
+    #             for n_examples, metric in metrics
+    #         ]
+    #     )
 
-        # Log data from the different test clients:
-        for _, metric in metrics:
-            node_name = metric["cid"]
-            disparity = metric[
-                "max_disparity_test"
-                if not train_parameters.sweep
-                else "max_disparity_validation"
-            ]
-            accuracy = metric[
-                "test_accuracy" if not train_parameters.sweep else "validation_accuracy"
-            ]
-            disparity_dataset = metric["max_disparity_dataset"]
-            agg_metrics = {
-                f"Test Node {node_name} - Acc.": accuracy,
-                f"Test Node {node_name} - Disp.": disparity,
-                f"Test Node {node_name} - Disp. Dataset": disparity_dataset,
-                "FL Round": server_round,
-            }
-            if wandb_run:
-                wandb_run.log(agg_metrics)
+    #     # Log data from the different test clients:
+    #     for _, metric in metrics:
+    #         node_name = metric["cid"]
+    #         disparity = metric[
+    #             "max_disparity_test"
+    #             if not train_parameters.sweep
+    #             else "max_disparity_validation"
+    #         ]
+    #         accuracy = metric[
+    #             "test_accuracy" if not train_parameters.sweep else "validation_accuracy"
+    #         ]
+    #         disparity_dataset = metric["max_disparity_dataset"]
+    #         agg_metrics = {
+    #             f"Test Node {node_name} - Acc.": accuracy,
+    #             f"Test Node {node_name} - Disp.": disparity,
+    #             f"Test Node {node_name} - Disp. Dataset": disparity_dataset,
+    #             "FL Round": server_round,
+    #         }
+    #         if wandb_run:
+    #             wandb_run.log(agg_metrics)
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+    #     combinations = ["0|0", "0|1", "1|0", "1|1"]
+    #     targets = ["0", "1"]
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
+    #     sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+    #     sum_targets = {"0": 0, "1": 0}
 
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ],
-        )
+    #     for _, metric in metrics:
+    #         metric = metric["counters"]
+    #         for combination in combinations:
+    #             sum_counters[combination] += metric[combination]
+    #         for target in targets:
+    #             sum_targets[target] += metric[target]
+    #     max_disparity_statistics = max(
+    #         [
+    #             sum_counters["0|0"] / sum_targets["0"]
+    #             - sum_counters["0|1"] / sum_targets["1"],
+    #             sum_counters["0|1"] / sum_targets["1"]
+    #             - sum_counters["0|0"] / sum_targets["0"],
+    #             sum_counters["1|0"] / sum_targets["0"]
+    #             - sum_counters["1|1"] / sum_targets["1"],
+    #             sum_counters["1|1"] / sum_targets["1"]
+    #             - sum_counters["1|0"] / sum_targets["0"],
+    #         ],
+    #     )
 
-        agg_metrics = {
-            "Test Loss": loss_test,
-            "Test Accuracy": accuracy_test,
-            "Test Disparity with average": max_disparity_average,
-            "Test Disparity with statistics": max_disparity_statistics,
-            "FL Round": server_round,
-            "Test Counter 0|0": sum_counters["0|0"],
-            "Test Counter 0|1": sum_counters["0|1"],
-            "Test Counter 1|0": sum_counters["1|0"],
-            "Test Counter 1|1": sum_counters["1|1"],
-            "Test Target 0": sum_targets["0"],
-            "Test Target 1": sum_targets["1"],
-        }
+    #     agg_metrics = {
+    #         "Test Loss": loss_test,
+    #         "Test Accuracy": accuracy_test,
+    #         "Test Disparity with average": max_disparity_average,
+    #         "Test Disparity with statistics": max_disparity_statistics,
+    #         "FL Round": server_round,
+    #         "Test Counter 0|0": sum_counters["0|0"],
+    #         "Test Counter 0|1": sum_counters["0|1"],
+    #         "Test Counter 1|0": sum_counters["1|0"],
+    #         "Test Counter 1|1": sum_counters["1|1"],
+    #         "Test Target 0": sum_targets["0"],
+    #         "Test Target 1": sum_targets["1"],
+    #     }
 
-        if wandb_run:
-            wandb_run.log(agg_metrics)
-        return agg_metrics
+    #     if wandb_run:
+    #         wandb_run.log(agg_metrics)
+    #     return agg_metrics
 
-    def agg_metrics_evaluation(metrics: list, server_round: int) -> dict:
-        total_examples = sum([n_examples for n_examples, _ in metrics])
+    # def agg_metrics_evaluation(metrics: list, server_round: int) -> dict:
+    #     total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        loss_evaluation = (
-            sum(
-                [
-                    n_examples
-                    * metric[
-                        "test_loss" if not train_parameters.sweep else "validation_loss"
-                    ]
-                    for n_examples, metric in metrics
-                ]
-            )
-            / total_examples
-        )
-        accuracy_evaluation = (
-            sum(
-                [
-                    n_examples
-                    * metric[
-                        "test_accuracy"
-                        if not train_parameters.sweep
-                        else "validation_accuracy"
-                    ]
-                    for n_examples, metric in metrics
-                ]
-            )
-            / total_examples
-        )
-        max_disparity_average = np.mean(
-            [
-                metric[
-                    "max_disparity_test"
-                    if not train_parameters.sweep
-                    else "max_disparity_validation"
-                ]
-                for n_examples, metric in metrics
-            ]
-        )
+    #     loss_evaluation = (
+    #         sum(
+    #             [
+    #                 n_examples
+    #                 * metric[
+    #                     "test_loss" if not train_parameters.sweep else "validation_loss"
+    #                 ]
+    #                 for n_examples, metric in metrics
+    #             ]
+    #         )
+    #         / total_examples
+    #     )
+    #     accuracy_evaluation = (
+    #         sum(
+    #             [
+    #                 n_examples
+    #                 * metric[
+    #                     "test_accuracy"
+    #                     if not train_parameters.sweep
+    #                     else "validation_accuracy"
+    #                 ]
+    #                 for n_examples, metric in metrics
+    #             ]
+    #         )
+    #         / total_examples
+    #     )
+    #     max_disparity_average = np.mean(
+    #         [
+    #             metric[
+    #                 "max_disparity_test"
+    #                 if not train_parameters.sweep
+    #                 else "max_disparity_validation"
+    #             ]
+    #             for n_examples, metric in metrics
+    #         ]
+    #     )
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+    #     combinations = ["0|0", "0|1", "1|0", "1|1"]
+    #     targets = ["0", "1"]
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
+    #     sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+    #     sum_targets = {"0": 0, "1": 0}
 
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
+    #     for _, metric in metrics:
+    #         metric = metric["counters"]
+    #         for combination in combinations:
+    #             sum_counters[combination] += metric[combination]
+    #         for target in targets:
+    #             sum_targets[target] += metric[target]
+    #     max_disparity_statistics = max(
+    #         [
+    #             sum_counters["0|0"] / sum_targets["0"]
+    #             - sum_counters["0|1"] / sum_targets["1"],
+    #             sum_counters["0|1"] / sum_targets["1"]
+    #             - sum_counters["0|0"] / sum_targets["0"],
+    #             sum_counters["1|0"] / sum_targets["0"]
+    #             - sum_counters["1|1"] / sum_targets["1"],
+    #             sum_counters["1|1"] / sum_targets["1"]
+    #             - sum_counters["1|0"] / sum_targets["0"],
+    #         ]
+    #     )
 
-        custom_metric = accuracy_evaluation
-        if args.target:
-            distance = args.target - max_disparity_statistics
-            distance = 0 if distance >= 0 else distance
+    #     custom_metric = accuracy_evaluation
+    #     if args.target:
+    #         distance = args.target - max_disparity_statistics
+    #         distance = 0 if distance >= 0 else distance
 
-            # custom_metric will be -inf when the disparity is above the target
-            # otherwise we will have a positive value that depends on the distance
-            # and on the accuracy on the validation set
-            custom_metric = accuracy_evaluation + distance
+    #         # custom_metric will be -inf when the disparity is above the target
+    #         # otherwise we will have a positive value that depends on the distance
+    #         # and on the accuracy on the validation set
+    #         custom_metric = accuracy_evaluation + distance
 
-        agg_metrics = {
-            "Validation Loss": loss_evaluation,
-            "Validation_Accuracy": accuracy_evaluation,
-            "Validation Disparity with average": max_disparity_average,
-            "Validation Disparity with statistics": max_disparity_statistics,
-            "Custom_metric": custom_metric,
-            "FL Round": server_round,
-            "Validation Counter 0|0": sum_counters["0|0"],
-            "Validation Counter 0|1": sum_counters["0|1"],
-            "Validation Counter 1|0": sum_counters["1|0"],
-            "Validation Counter 1|1": sum_counters["1|1"],
-            "Validation Target 0": sum_targets["0"],
-            "Validation Target 1": sum_targets["1"],
-        }
+    #     agg_metrics = {
+    #         "Validation Loss": loss_evaluation,
+    #         "Validation_Accuracy": accuracy_evaluation,
+    #         "Validation Disparity with average": max_disparity_average,
+    #         "Validation Disparity with statistics": max_disparity_statistics,
+    #         "Custom_metric": custom_metric,
+    #         "FL Round": server_round,
+    #         "Validation Counter 0|0": sum_counters["0|0"],
+    #         "Validation Counter 0|1": sum_counters["0|1"],
+    #         "Validation Counter 1|0": sum_counters["1|0"],
+    #         "Validation Counter 1|1": sum_counters["1|1"],
+    #         "Validation Target 0": sum_targets["0"],
+    #         "Validation Target 1": sum_targets["1"],
+    #     }
 
-        if wandb_run:
-            wandb_run.log(agg_metrics)
-        return agg_metrics
+    #     if wandb_run:
+    #         wandb_run.log(agg_metrics)
+    #     return agg_metrics
 
-    def agg_metrics_train(
-        metrics: list, server_round: int, current_max_epsilon: float, fed_dir
-    ) -> dict:
-        # Collect the losses logged during each epoch in each client
-        total_examples = sum([n_examples for n_examples, _ in metrics])
+    # def agg_metrics_train(
+    #     metrics: list, server_round: int, current_max_epsilon: float, fed_dir
+    # ) -> dict:
+    #     # Collect the losses logged during each epoch in each client
+    #     total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        losses = []
-        losses_with_regularization = []
-        epsilon_list = []
-        accuracies = []
-        lambda_list = []
-        max_disparity_train = []
+    #     losses = []
+    #     losses_with_regularization = []
+    #     epsilon_list = []
+    #     accuracies = []
+    #     lambda_list = []
+    #     max_disparity_train = []
 
-        for n_examples, node_metrics in metrics:
-            losses.append(n_examples * node_metrics["train_loss"])
-            losses_with_regularization.append(
-                n_examples * node_metrics["train_loss_with_regularization"]
-            )
-            epsilon_list.append(node_metrics["epsilon"])
-            accuracies.append(n_examples * node_metrics["train_accuracy"])
-            lambda_list.append(node_metrics["Lambda"])
-            disparity = node_metrics["Max Disparity Dataset"]
-            client_id = node_metrics["cid"]
-            disparity_client_after_local_epoch = node_metrics["Disparity Train"]
-            max_disparity_train.append(disparity_client_after_local_epoch)
-            disparity_client_before_local_epoch = node_metrics[
-                "Max Disparity Train Before Local Epoch"
-            ]
+    #     for n_examples, node_metrics in metrics:
+    #         losses.append(n_examples * node_metrics["train_loss"])
+    #         losses_with_regularization.append(
+    #             n_examples * node_metrics["train_loss_with_regularization"]
+    #         )
+    #         epsilon_list.append(node_metrics["epsilon"])
+    #         accuracies.append(n_examples * node_metrics["train_accuracy"])
+    #         lambda_list.append(node_metrics["Lambda"])
+    #         disparity = node_metrics["Max Disparity Dataset"]
+    #         client_id = node_metrics["cid"]
+    #         disparity_client_after_local_epoch = node_metrics["Disparity Train"]
+    #         max_disparity_train.append(disparity_client_after_local_epoch)
+    #         disparity_client_before_local_epoch = node_metrics[
+    #             "Max Disparity Train Before Local Epoch"
+    #         ]
 
-            # Load the lambda for the client
-            # fed_dir = Path(fed_dir)
-            # if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
-            #     with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
-            #         lambda_client = dill.load(file)
+    #         # Load the lambda for the client
+    #         # fed_dir = Path(fed_dir)
+    #         # if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
+    #         #     with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
+    #         #         lambda_client = dill.load(file)
 
-            DPL_lambda = node_metrics["DPL_lambda"]
+    #         DPL_lambda = node_metrics["DPL_lambda"]
 
-            # Create the dictionary we want to log. For some metrics we want to log
-            # we have to check if they are present or not.
-            to_be_logged = {
-                f"Disparity Client {client_id} After Local train": disparity_client_after_local_epoch,
-                f"Disparity Client {client_id} Before local train": disparity_client_before_local_epoch,
-                "FL Round": server_round,
-            }
-            if disparity:
-                to_be_logged[f"Disparity Dataset Client {client_id}"] = disparity
-            if DPL_lambda:
-                to_be_logged[f"Lambda Client {client_id}"] = DPL_lambda
+    #         # Create the dictionary we want to log. For some metrics we want to log
+    #         # we have to check if they are present or not.
+    #         to_be_logged = {
+    #             f"Disparity Client {client_id} After Local train": disparity_client_after_local_epoch,
+    #             f"Disparity Client {client_id} Before local train": disparity_client_before_local_epoch,
+    #             "FL Round": server_round,
+    #         }
+    #         if disparity:
+    #             to_be_logged[f"Disparity Dataset Client {client_id}"] = disparity
+    #         if DPL_lambda:
+    #             to_be_logged[f"Lambda Client {client_id}"] = DPL_lambda
 
-            if wandb_run:
-                wandb_run.log(
-                    to_be_logged,
-                )
+    #         if wandb_run:
+    #             wandb_run.log(
+    #                 to_be_logged,
+    #             )
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+    #     combinations = ["0|0", "0|1", "1|0", "1|1"]
+    #     targets = ["0", "1"]
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
+    #     sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+    #     sum_targets = {"0": 0, "1": 0}
 
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
+    #     for _, metric in metrics:
+    #         metric = metric["counters"]
+    #         for combination in combinations:
+    #             sum_counters[combination] += metric[combination]
+    #         for target in targets:
+    #             sum_targets[target] += metric[target]
 
-        average_probabilities = {}
-        for combination in combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
-            )
+    #     average_probabilities = {}
+    #     for combination in combinations:
+    #         average_probabilities[combination] = (
+    #             sum_counters[combination] / sum_targets[combination[2]]
+    #         )
 
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
+    #     max_disparity_statistics = max(
+    #         [
+    #             sum_counters["0|0"] / sum_targets["0"]
+    #             - sum_counters["0|1"] / sum_targets["1"],
+    #             sum_counters["0|1"] / sum_targets["1"]
+    #             - sum_counters["0|0"] / sum_targets["0"],
+    #             sum_counters["1|0"] / sum_targets["0"]
+    #             - sum_counters["1|1"] / sum_targets["1"],
+    #             sum_counters["1|1"] / sum_targets["1"]
+    #             - sum_counters["1|0"] / sum_targets["0"],
+    #         ]
+    #     )
 
-        if wandb_run:
-            wandb_run.log(
-                {
-                    "Training Disparity with statistics": max_disparity_statistics,
-                    "FL Round": server_round,
-                    "Training Counter 0|0": sum_counters["0|0"],
-                    "Training Counter 0|1": sum_counters["0|1"],
-                    "Training Counter 1|0": sum_counters["1|0"],
-                    "Training Counter 1|1": sum_counters["1|1"],
-                    "Training Target 0": sum_targets["0"],
-                    "Training Target 1": sum_targets["1"],
-                }
-            )
+    #     if wandb_run:
+    #         wandb_run.log(
+    #             {
+    #                 "Training Disparity with statistics": max_disparity_statistics,
+    #                 "FL Round": server_round,
+    #                 "Training Counter 0|0": sum_counters["0|0"],
+    #                 "Training Counter 0|1": sum_counters["0|1"],
+    #                 "Training Counter 1|0": sum_counters["1|0"],
+    #                 "Training Counter 1|1": sum_counters["1|1"],
+    #                 "Training Target 0": sum_targets["0"],
+    #                 "Training Target 1": sum_targets["1"],
+    #             }
+    #         )
 
-        current_max_epsilon = max(current_max_epsilon, *epsilon_list)
-        agg_metrics = {
-            "Train Loss": sum(losses) / total_examples,
-            "Train Accuracy": sum(accuracies) / total_examples,
-            "Train Loss with Regularization": sum(losses_with_regularization)
-            / total_examples,
-            "Average Probabilities": average_probabilities,
-            "Training Disparity with average": sum(max_disparity_train)
-            / len(max_disparity_train),
-            "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
-            "Train Epsilon": current_max_epsilon,
-            "FL Round": server_round,
-        }
+    #     current_max_epsilon = max(current_max_epsilon, *epsilon_list)
+    #     agg_metrics = {
+    #         "Train Loss": sum(losses) / total_examples,
+    #         "Train Accuracy": sum(accuracies) / total_examples,
+    #         "Train Loss with Regularization": sum(losses_with_regularization)
+    #         / total_examples,
+    #         "Average Probabilities": average_probabilities,
+    #         "Training Disparity with average": sum(max_disparity_train)
+    #         / len(max_disparity_train),
+    #         "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
+    #         "Train Epsilon": current_max_epsilon,
+    #         "FL Round": server_round,
+    #     }
 
-        if wandb_run:
-            wandb_run.log(
-                agg_metrics,
-            )
+    #     if wandb_run:
+    #         wandb_run.log(
+    #             agg_metrics,
+    #         )
 
-        return agg_metrics
+    #     return agg_metrics
 
-    print(
-        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
-    )
-    strategy = FedAvg(
-        fraction_fit=args.sampled_clients,
-        fraction_evaluate=args.sampled_clients_validation,
-        fraction_test=args.sampled_clients_test,
-        min_fit_clients=args.sampled_clients,
-        min_evaluate_clients=0,
-        min_available_clients=args.sampled_clients,
-        on_fit_config_fn=FederatedUtils.fit_config,
-        on_evaluate_config_fn=FederatedUtils.evaluate_config,
-        initial_parameters=initial_parameters,
-        fit_metrics_aggregation_fn=agg_metrics_train,
-        evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
-        test_metrics_aggregation_fn=agg_metrics_test,
-        current_max_epsilon=current_max_epsilon,
-        fed_dir=fed_dir,
-    )
+    # print(
+    #     f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
+    # )
+    # strategy = FedAvg(
+    #     fraction_fit=args.sampled_clients,
+    #     fraction_evaluate=args.sampled_clients_validation,
+    #     fraction_test=args.sampled_clients_test,
+    #     min_fit_clients=args.sampled_clients,
+    #     min_evaluate_clients=0,
+    #     min_available_clients=args.sampled_clients,
+    #     on_fit_config_fn=FederatedUtils.fit_config,
+    #     on_evaluate_config_fn=FederatedUtils.evaluate_config,
+    #     initial_parameters=initial_parameters,
+    #     fit_metrics_aggregation_fn=agg_metrics_train,
+    #     evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+    #     test_metrics_aggregation_fn=agg_metrics_test,
+    #     current_max_epsilon=current_max_epsilon,
+    #     fed_dir=fed_dir,
+    # )
 
-    ray_num_cpus = 20
-    ray_num_gpus = 3
-    ram_memory = 16_000 * 1024 * 1024 * 2
+    # ray_num_cpus = 20
+    # ray_num_gpus = 3
+    # ram_memory = 16_000 * 1024 * 1024 * 2
 
-    # (optional) specify Ray config
-    ray_init_args = {
-        "include_dashboard": False,
-        "num_cpus": ray_num_cpus,
-        "num_gpus": ray_num_gpus,
-        "_memory": ram_memory,
-        "_redis_max_memory": 100000000,
-        "object_store_memory": 100000000,
-        "logging_level": logging.ERROR,
-        "log_to_driver": True,
-    }
+    # # (optional) specify Ray config
+    # ray_init_args = {
+    #     "include_dashboard": False,
+    #     "num_cpus": ray_num_cpus,
+    #     "num_gpus": ray_num_gpus,
+    #     "_memory": ram_memory,
+    #     "_redis_max_memory": 100000000,
+    #     "object_store_memory": 100000000,
+    #     "logging_level": logging.ERROR,
+    #     "log_to_driver": True,
+    # }
 
-    num_training_nodes = int(args.pool_size * args.training_nodes)
-    num_validation_nodes = int(args.pool_size * args.validation_nodes)
-    num_test_nodes = int(args.pool_size * args.test_nodes)
+    # num_training_nodes = int(args.pool_size * args.training_nodes)
+    # num_validation_nodes = int(args.pool_size * args.validation_nodes)
+    # num_test_nodes = int(args.pool_size * args.test_nodes)
 
-    print(args.training_nodes, args.validation_nodes, args.test_nodes)
-    print(num_training_nodes, num_validation_nodes, num_test_nodes)
+    # print(args.training_nodes, args.validation_nodes, args.test_nodes)
+    # print(num_training_nodes, num_validation_nodes, num_test_nodes)
 
-    if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
-        raise Exception(
-            "The sum of training, validation and test nodes must be equal to the pool size"
-        )
+    # if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
+    #     raise Exception(
+    #         "The sum of training, validation and test nodes must be equal to the pool size"
+    #     )
 
-    client_manager = SimpleClientManager(
-        seed=args.seed,
-        num_clients=pool_size,
-        sort_clients=args.sort_clients,
-        num_training_nodes=num_training_nodes,
-        num_validation_nodes=num_validation_nodes,
-        num_test_nodes=num_test_nodes,
-        node_shuffle_seed=args.node_shuffle_seed,
-        fed_dir=fed_dir,
-    )
-    server = Server(client_manager=client_manager, strategy=strategy)
+    # client_manager = SimpleClientManager(
+    #     seed=args.seed,
+    #     num_clients=pool_size,
+    #     sort_clients=args.sort_clients,
+    #     num_training_nodes=num_training_nodes,
+    #     num_validation_nodes=num_validation_nodes,
+    #     num_test_nodes=num_test_nodes,
+    #     node_shuffle_seed=args.node_shuffle_seed,
+    #     fed_dir=fed_dir,
+    # )
+    # server = Server(client_manager=client_manager, strategy=strategy)
 
-    # start simulation
-    fl.simulation.start_simulation(
-        client_fn=client_fn,
-        num_clients=pool_size,
-        client_resources=client_resources,
-        config=fl.server.ServerConfig(num_rounds=args.num_rounds),
-        strategy=strategy,
-        ray_init_args=ray_init_args,
-        server=server,
-        client_manager=client_manager,
-    )
+    # # start simulation
+    # fl.simulation.start_simulation(
+    #     client_fn=client_fn,
+    #     num_clients=pool_size,
+    #     client_resources=client_resources,
+    #     config=fl.server.ServerConfig(num_rounds=args.num_rounds),
+    #     strategy=strategy,
+    #     ray_init_args=ray_init_args,
+    #     server=server,
+    #     client_manager=client_manager,
+    # )
 
-    if wandb_run:
-        wandb_run.finish()
+    # if wandb_run:
+    #     wandb_run.finish()

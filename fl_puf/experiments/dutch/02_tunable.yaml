@@ -5,7 +5,7 @@ metric:
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 3
+  min_iter: 5
 parameters:
   epochs:
     min: 1
@@ -17,11 +17,19 @@ parameters:
     min: 0.0001
     max: 0.1
   optimizer:
-    values: ["adam", "sgd"]
+    values: ["adam", "sgd", "adamw"]
+  alpha_target_lambda:
+    min: 0.1
+    max: 4.0
+  momentum:
+    min: 0.0
+    max: 0.9
   node_shuffle_seed:
     min: 1
     max: 1000000000
-
+  weight_decay_lambda:
+    min: 0.001
+    max: 1.0
 
 command:
   - ${env}
@@ -50,6 +58,8 @@ command:
   - True 
   - --base_path
   - ../../../data/Tabular
+  - --DPL 
+  - True 
   - --private 
   - True 
   - --delta 
@@ -71,11 +81,15 @@ command:
   - --test_nodes 
   - 0.335
   - --starting_lambda_mode 
-  - no_tuning
+  - disparity
+  - --update_lambda 
+  - True
   - --tabular_data 
   - True
   - --dataset_path 
   - ../../../data/Tabular/dutch/
+  - --target 
+  - 0.2
   - --group_to_reduce
   - 0 
   - 1
