@@ -878,6 +878,13 @@ def get_tabular_data(
         opposite_group_to_increment=opposite_group_to_increment,
         opposite_ratio_unfairness=opposite_ratio_unfairness,
     )
+    disparities = compute_disparities_debug(client_data)
+    plot_bar_plot(
+        title=f"{approach}",
+        disparities=disparities,
+        nodes=[f"{i}" for i in range(len(client_data))],
+    )
+
     # client_data, N_is, props_positive = generate_clients_biased_data(
     #     x=X,
     #     y=y,
@@ -1416,6 +1423,49 @@ def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path
     return _X, _Z, _y
 
 
+from DPL.RegularizationLoss import RegularizationLoss
+
+
+# DEBUG
+def compute_disparities_debug(nodes):
+    disparities = []
+    for node in nodes:
+        max_disparity = np.max(
+            [
+                RegularizationLoss().compute_violation_with_argmax(
+                    predictions_argmax=[sample["y"] for sample in node],
+                    sensitive_attribute_list=[sample["z"] for sample in node],
+                    current_target=target,
+                    current_sensitive_feature=sv,
+                )
+                for target in range(0, 1)
+                for sv in range(0, 1)
+            ]
+        )
+        disparities.append(max_disparity)
+    print(f"Mean of disparity {np.mean(disparities)} - std {np.std(disparities)}")
+    return disparities
+
+
+import matplotlib.pyplot as plt
+
+
+# plot the bar plot of the disparities
+def plot_bar_plot(title: str, disparities: list, nodes: list):
+    plt.figure(figsize=(20, 8))
+    plt.bar(range(len(disparities)), disparities)
+    plt.xticks(range(len(nodes)), nodes)
+    plt.title(title)
+    # add a vertical line on xtick=75
+    plt.axvline(x=75, color="r", linestyle="--")
+    plt.xticks(rotation=90)
+    # plt.show()
+    # font size x axis
+    plt.rcParams.update({"font.size": 10})
+    plt.savefig(f"./{title}.png")
+    plt.tight_layout()
+
+
 def prepare_tabular_data(
     dataset_path: str,
     dataset_name: str,
@@ -1443,6 +1493,7 @@ def prepare_tabular_data(
         num_sensitive_features=1,
         dataset_path=dataset_path,
     )
+
     # remove the old files in the data folder
     os.system(f"rm -rf {dataset_path}/federated/*")
     for client_name, client in enumerate(client_data):
