@@ -15,11 +15,11 @@ run_sweep_and_agent () {
   rm temp_output.txt
   
   # Run the wandb agent command
-  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 30
+  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 50
 }
 
 run_sweep_and_agent "baseline"
-run_sweep_and_agent "01_fixed"
-run_sweep_and_agent "01_tunable"
-run_sweep_and_agent "02_fixed"
-run_sweep_and_agent "02_tunable"
+#run_sweep_and_agent "01_fixed"
+#run_sweep_and_agent "01_tunable"
+# run_sweep_and_agent "02_fixed"
+# run_sweep_and_agent "02_tunable"
