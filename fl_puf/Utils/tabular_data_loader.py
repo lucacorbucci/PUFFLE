@@ -219,7 +219,7 @@ def load_compas():
     return df_compas, feature_columns_compas, metadata_compas
 
 
-def load_adult():
+def load_adult(dataset_path):
     adult_feat_cols = [
         "age",
         "workclass",
@@ -258,7 +258,7 @@ def load_adult():
         "income",
     )
 
-    df_adult = pd.read_csv("data/adult.data", names=adult_columns_names)
+    df_adult = pd.read_csv(dataset_path + "adult.data", names=adult_columns_names)
     df_adult["sex_binary"] = np.where(df_adult["sex"] == " Male", 1, 0)
     df_adult["race_binary"] = np.where(df_adult["race"] == " White", 1, 0)
     df_adult["age_binary"] = np.where(
@@ -1393,7 +1393,7 @@ def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path
     if dataset_name == "compas":
         tmp = load_compas()
     elif dataset_name == "adult":
-        tmp = load_adult()
+        tmp = load_adult(dataset_path=dataset_path)
     elif dataset_name == "german_credit":
         tmp = load_german()
     elif dataset_name == "kdd":
@@ -1532,8 +1532,8 @@ def prepare_tabular_data(
             x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
                 np.float32
             ),
-            z=client["z"].astype(np.float32),
-            y=client["y"].astype(np.float32),
+            z=client["z"],  # .astype(np.float32),
+            y=client["y"],  # .astype(np.float32),
         )
         # Create the folder for the user client_name
         os.system(f"mkdir {dataset_path}/federated/{client_name}")
