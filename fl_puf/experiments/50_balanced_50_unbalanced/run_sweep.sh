@@ -17,5 +17,6 @@ run_sweep_and_agent () {
   poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME"
 }
 
-# run_sweep_and_agent "config_fixed_lambda"
-run_sweep_and_agent "fixed_lambda"
+run_sweep_and_agent "baseline"
+# run_sweep_and_agent "fixed_lambda"
+# run_sweep_and_agent "tunable_lambda"
