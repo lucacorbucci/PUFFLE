@@ -18,18 +18,15 @@ parameters:
     max: 0.1
   optimizer:
     values: ["adam", "sgd", "adamw"]
-  alpha_target_lambda:
-    min: 0.1
-    max: 4.0
-  momentum:
-    min: 0.0
-    max: 0.9
   node_shuffle_seed:
     min: 1
     max: 1000000000
-  weight_decay_lambda:
-    min: 0.001
-    max: 1.0
+  starting_lambda_value:
+    min: 0.40
+    max: 0.90
+  clipping:
+    min: 2
+    max: 5
 
 command:
   - ${env}
@@ -45,15 +42,15 @@ command:
   - --num_client_cpus
   - 1
   - --num_client_gpus
-  - 0.2
+  - 0.5
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.34
+  - 0.20
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
-  - 1
+  - 1.0
   - --train_csv
   - original_merged
   - --debug
@@ -74,14 +71,8 @@ command:
   - 41 
   - --wandb 
   - True 
-  - --target 
-  - 0.05
   - --sweep
   - True
-  - --noise_multiplier 
-  - 0
-  - --clipping
-  - 100000.0
   - --training_nodes 
   - 0.40
   - --validation_nodes 
@@ -89,12 +80,14 @@ command:
   - --test_nodes 
   - 0.335
   - --starting_lambda_mode 
-  - disparity
-  - --update_lambda 
-  - True
+  - fixed
+  - --target 
+  - 0.05
   - --percentage_unbalanced_nodes
   - 0.5
   - --unbalanced_ratio
   - 0.5
   - --dataset_path 
   - ../../../data/celeba
+  - --epsilon
+  - 10

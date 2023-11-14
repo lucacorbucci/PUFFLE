@@ -191,6 +191,10 @@ parser.add_argument(
     "--approach", type=str, default=""
 )  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
+parser.add_argument(
+    "--sampling_frequency", type=int, default=None
+)  # The number of times that each node will be sampled
+
 
 # --------------------------------------------------------------------------------------
 
@@ -358,21 +362,24 @@ if __name__ == "__main__":
                 module=model_noise,
                 optimizer=optimizer_noise,
                 data_loader=train_loader_client_0,
-                epochs=(args.num_rounds // 10) * args.epochs,
+                epochs=args.sampling_frequency * args.epochs,
                 target_epsilon=train_parameters.epsilon,
                 target_delta=args.delta,
                 max_grad_norm=args.clipping,
             )
             max_noise = max(max_noise, private_optimizer.noise_multiplier)
             print(
-                f"Node {i} - {(args.num_rounds // 10) * args.epochs} -- {private_optimizer.noise_multiplier}"
+                f"Node {i} - {args.sampling_frequency * args.epochs} -- {private_optimizer.noise_multiplier}"
             )
 
         train_parameters.noise_multiplier = max_noise
         train_parameters.epsilon = None
         print(
-            f">>>>> FINALE {(args.num_rounds // 10) * args.epochs} -- {train_parameters.noise_multiplier}"
+            f">>>>> FINALE {args.sampling_frequency * args.epochs} -- {train_parameters.noise_multiplier}"
         )
+    else:
+        train_parameters.noise_multiplier = args.noise_multiplier
+        train_parameters.epsilon = None
 
     wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 

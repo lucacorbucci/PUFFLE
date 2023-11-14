@@ -30,6 +30,9 @@ parameters:
   weight_decay_lambda:
     min: 0.001
     max: 1.0
+  clipping:
+    min: 2
+    max: 5
 
 command:
   - ${env}
@@ -45,7 +48,7 @@ command:
   - --num_client_cpus
   - 1
   - --num_client_gpus
-  - 0.2
+  - 0.5
   - --pool_size
   - 150
   - --sampled_clients 
@@ -78,10 +81,6 @@ command:
   - 0.05
   - --sweep
   - True
-  - --noise_multiplier 
-  - 0
-  - --clipping
-  - 100000.0
   - --training_nodes 
   - 0.40
   - --validation_nodes 
@@ -98,3 +97,5 @@ command:
   - 0.5
   - --dataset_path 
   - ../../../data/celeba
+  - --epsilon
+  - 10
