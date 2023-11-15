@@ -1,3 +1,4 @@
+import json
 import shutil
 from collections import Counter, OrderedDict
 from pathlib import Path
@@ -16,6 +17,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
+from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
 from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
@@ -83,6 +85,82 @@ class Utils:
             },
         )
         return wandb_run
+
+    @staticmethod
+    def get_dataset_statistics(client_dataset, client_disparity, client_metadata):
+        sens_features = client_dataset.sensitive_features
+        targets = client_dataset.targets
+        sens_features_and_targets = list(zip(targets, sens_features))
+        counter_combination = Counter(sens_features_and_targets)
+        counter_sens_features = Counter(sens_features)
+        counter_targets = Counter(targets)
+
+        # Return a dictionary with the statistics of the dataset
+        return {
+            "counter_combination": {
+                str(key): value for key, value in counter_combination.items()
+            },
+            "counter_sens_features": {
+                str(key): value for key, value in counter_sens_features.items()
+            },
+            "counter_targets": {
+                str(key): value for key, value in counter_targets.items()
+            },
+            "client_disparity": client_disparity,
+            "unfair_client": client_metadata,
+        }
+
+    # DEBUG
+    def compute_disparities_debug(nodes):
+        disparities = []
+        for node in nodes:
+            max_disparity = np.max(
+                [
+                    RegularizationLoss().compute_violation_with_argmax(
+                        predictions_argmax=[sample["y"] for sample in node]
+                        if isinstance(node, list)
+                        else node["y"],
+                        sensitive_attribute_list=[sample["z"] for sample in node]
+                        if isinstance(node, list)
+                        else node["z"],
+                        current_target=target,
+                        current_sensitive_feature=sv,
+                    )
+                    for target in range(0, 1)
+                    for sv in range(0, 1)
+                ]
+            )
+            disparities.append(max_disparity)
+        print(f"Mean of disparity {np.mean(disparities)} - std {np.std(disparities)}")
+        return disparities
+
+    @staticmethod
+    def get_dataset_statistics_with_lists(nodes, client_disparity, client_metadata):
+        dictionaries = []
+        for node, disparity, metadata in zip(nodes, client_disparity, client_metadata):
+            sens_features = [item.item() for item in node["z"]]
+            targets = [item.item() for item in node["y"]]
+            sens_features_and_targets = list(zip(targets, sens_features))
+
+            counter_combination = Counter(sens_features_and_targets)
+            counter_sens_features = Counter(sens_features)
+            counter_targets = Counter(targets)
+
+            dictionary = {
+                "counter_combination": {
+                    str(key): value for key, value in counter_combination.items()
+                },
+                "counter_sens_features": {
+                    str(key): value for key, value in counter_sens_features.items()
+                },
+                "counter_targets": {
+                    str(key): value for key, value in counter_targets.items()
+                },
+                "client_disparity": disparity,
+                "unfair_client": metadata,
+            }
+            dictionaries.append(dictionary)
+        return dictionaries
 
     @staticmethod
     def get_optimizer(model, train_parameters, lr):
@@ -209,6 +287,8 @@ class Utils:
         dataset = [idx, sensitive_attribute, labels]
         print(Counter(labels))
 
+        metadata = [0] * pool_size
+
         if partition_type == "iid":
             splitted_indexes = IIDPartition.do_iid_partitioning_with_indexes(
                 indexes=idx,
@@ -293,7 +373,7 @@ class Utils:
                 dataset=dataset,
             )
         elif partition_type == "balanced_and_unbalanced":
-            partitions_index_list = BalancedAndUnbalanced.do_partitioning(
+            partitions_index_list, metadata = BalancedAndUnbalanced.do_partitioning(
                 labels=labels,
                 sensitive_features=sensitive_attribute,
                 num_partitions=pool_size,
@@ -347,6 +427,8 @@ class Utils:
             shutil.rmtree(splits_dir)
             Path.mkdir(splits_dir, parents=True)
 
+        nodes = []
+        datasets = []
         for p in range(pool_size):
             labels = partitions[p][2]
             sensitive_features = partitions[p][1]
@@ -358,22 +440,22 @@ class Utils:
             if not (splits_dir / str(p)).exists():
                 Path.mkdir(splits_dir / str(p))
 
-            if val_ratio > 0.0:
-                # split data according to val_ratio
-                train_idx, val_idx = Utils.get_random_id_splits(len(labels), val_ratio)
-                val_imgs = [imgs[val_id] for val_id in val_idx]
-                val_labels = labels[val_idx]
-                val_sensitive = sensitive_features[val_idx]
+            # if val_ratio > 0.0:
+            #     # split data according to val_ratio
+            #     train_idx, val_idx = Utils.get_random_id_splits(len(labels), val_ratio)
+            #     val_imgs = [imgs[val_id] for val_id in val_idx]
+            #     val_labels = labels[val_idx]
+            #     val_sensitive = sensitive_features[val_idx]
 
-                with open(splits_dir / str(p) / "val.pt", "wb") as f:
-                    torch.save([val_imgs, val_sensitive, val_labels], f)
+            #     with open(splits_dir / str(p) / "val.pt", "wb") as f:
+            #         torch.save([val_imgs, val_sensitive, val_labels], f)
 
-                a = torch.load(splits_dir / str(p) / "val.pt")
+            #     a = torch.load(splits_dir / str(p) / "val.pt")
 
-                imgs = [imgs[train_id] for train_id in train_idx]
-                labels = labels[train_idx]
-                sensitive_features = sensitive_features[train_idx]
-
+            #     imgs = [imgs[train_id] for train_id in train_idx]
+            #     labels = labels[train_idx]
+            #     sensitive_features = sensitive_features[train_idx]
+            nodes.append({"y": labels, "z": sensitive_features})
             with open(
                 splits_dir
                 / str(p)
@@ -382,6 +464,19 @@ class Utils:
             ) as f:
                 torch.save([imgs, sensitive_features, labels], f)
 
+        disparities = Utils.compute_disparities_debug(nodes)
+
+        # store statistics about the dataset in the same folder
+        statistics = Utils.get_dataset_statistics_with_lists(
+            nodes, disparities, metadata
+        )
+        for statistic, p in zip(statistics, range(pool_size)):
+            with open(
+                splits_dir / str(p) / ("metadata.json"),
+                "w",
+            ) as outfile:
+                json_object = json.dumps(statistic, indent=4)
+                outfile.write(json_object)
         return splits_dir
 
     @staticmethod

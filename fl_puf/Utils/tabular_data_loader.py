@@ -1,14 +1,17 @@
+import json
 import os
 from collections import Counter
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
+from matplotlib.pyplot import figure
 from scipy.io import arff
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
 
 from DPL.Datasets.dutch import TabularDataset
+from fl_puf.Utils.utils import Utils
 
 ##############################################################################################################
 
@@ -832,6 +835,123 @@ def load_lsac():
     return df_lsac, feature_columns_lsac, metadata_lsac
 
 
+def plot_distribution(distributions, title):
+    counters = {}
+    key_list = set()
+    nodes_data = []
+    for distribution in distributions:
+        counter = Counter(distribution)
+        nodes_data.append(counter)
+        for key, value in counter.items():
+            key_list.add(key)
+
+    for node_data in nodes_data:
+        for key in key_list:
+            if key not in node_data:
+                if key not in counters:
+                    counters[key] = []
+                counters[key].append(0)
+            else:
+                if key not in counters:
+                    counters[key] = []
+                counters[key].append(node_data[key])
+
+    figure(figsize=(25, 8), dpi=80)
+    indexes = np.arange(len(distributions))
+
+    legend_values = []
+    colors = ["blue", "green", "red", "purple", "orange", "yellow", "pink", "brown"]
+    markers = ["+", "o", "x", "*", "v", "^", "<", ">"]
+    for i, (key, value) in enumerate(counters.items()):
+        plt.scatter(
+            indexes, value, marker=markers[i], linewidths=4, s=100, color=colors[i]
+        )
+        legend_values.append(key)
+    plt.xticks(indexes, list(range(0, len(indexes))))
+    plt.rcParams.update({"font.size": 16})
+    plt.xlabel("Nodes")
+    plt.ylabel("Samples")
+    plt.xticks(rotation=90)
+    plt.title(title)
+    plt.legend(legend_values)
+    plt.savefig("distribution.png")
+
+    # # Plots the final disparity of the baseline, fixed and tunable models for each node
+    # baseline_disparity_dict = {}
+    # fixed_disparity_dict = {}
+    # tunable_disparit_dict = {}
+
+    # for node_name, column in zip(nodes, baseline.columns):
+    #     # get the last value of the column
+    #     if column in baseline.columns:
+    #         baseline_disparity_dict[node_name] = baseline[column].iloc[-1]
+    #     # check if the dataframe fixed and tunable are None or not
+    #     # and if the column is in the dataframe
+    #     if column in fixed.columns:
+    #         fixed_disparity_dict[node_name] = fixed[column].iloc[-1]
+    #     if column in tunable.columns:
+    #         tunable_disparit_dict[node_name] = tunable[column].iloc[-1]
+
+    # baseline_disparity = []
+    # fixed_disparity = []
+    # tunable_disparity = []
+    # for node in sorted_nodes:
+    #     if node in baseline_disparity_dict:
+    #         baseline_disparity.append(baseline_disparity_dict[node])
+    #     if fixed_disparity_dict != {} and node in fixed_disparity_dict:
+    #         fixed_disparity.append(fixed_disparity_dict[node])
+    #     if tunable_disparit_dict != {} and node in tunable_disparit_dict:
+    #         tunable_disparity.append(tunable_disparit_dict[node])
+
+    # # get the training disparity
+    # nodes_with_disparity = {}
+    # for node_name, column in zip(nodes, disparity_dataset.columns):
+    #     # get the last value of the column
+    #     nodes_with_disparity[node_name] = disparity_dataset[column].iloc[-1]
+
+    # training_disparity = [nodes_with_disparity[node_name] for node_name in sorted_nodes]
+
+    # width = 0.27
+    # figure(figsize=(25, 8), dpi=80)
+    # indexes = np.arange(len(sorted_nodes))
+
+    # plt.scatter(
+    #     indexes, baseline_disparity, marker="x", linewidths=4, s=100, color="red"
+    # )
+    # if fixed_disparity:
+    #     plt.scatter(
+    #         indexes, fixed_disparity, marker="o", linewidths=4, s=100, color="green"
+    #     )
+    # if tunable_disparity:
+    #     plt.scatter(
+    #         indexes, tunable_disparity, marker="+", linewidths=4, s=100, color="blue"
+    #     )
+    # plt.scatter(
+    #     indexes, training_disparity, marker="*", linewidths=4, s=100, color="black"
+    # )
+
+    # plt.plot(indexes, baseline_disparity, linewidth=1, color="red")
+    # if fixed_disparity:
+    #     plt.plot(indexes, fixed_disparity, linewidth=1, color="green")
+    # if tunable_disparity:
+    #     plt.plot(indexes, tunable_disparity, linewidth=1, color="blue")
+    # plt.plot(indexes, training_disparity, linewidth=1, color="black")
+
+    # plt.axhline(y=target, color="purple", linestyle="--")
+
+    # if tunable_disparity and fixed_disparity:
+    #     plt.legend(["Baseline", "Fixed", "Tunable", "Dataset Disparity"])
+    # else:
+    #     plt.legend(["Baseline", "Dataset Disparity"])
+    # plt.xticks(indexes, sorted_nodes)
+    # plt.rcParams.update({"font.size": 16})
+    # plt.xlabel("Nodes")
+    # plt.ylabel("Disparity")
+    # plt.xticks(rotation=90)
+    # plt.title(title)
+    # plt.savefig(file_name)
+
+
 #########################################################################################
 
 
@@ -863,7 +983,8 @@ def get_tabular_data(
     z = z[:, 0]
     print(f"Data shapes: x={X.shape}, y={y.shape}, z={z.shape}")
     # Prepare training data held by each client
-    client_data = generate_clients_biased_data_mod(
+    # Metadata is a list with 0 if the client is fair, 0 otherwise
+    client_data, metadata = generate_clients_biased_data_mod(
         X=X,
         y=y,
         z=z,
@@ -879,23 +1000,26 @@ def get_tabular_data(
         opposite_group_to_increment=opposite_group_to_increment,
         opposite_ratio_unfairness=opposite_ratio_unfairness,
     )
-    disparities = compute_disparities_debug(client_data)
+    disparities = Utils.compute_disparities_debug(client_data)
     plot_bar_plot(
         title=f"{approach}",
         disparities=disparities,
         nodes=[f"{i}" for i in range(len(client_data))],
     )
 
-    # client_data, N_is, props_positive = generate_clients_biased_data(
-    #     x=X,
-    #     y=y,
-    #     z=z,
-    #     M=num_clients,
-    #     do_iid_split=do_iid_split,
-    #     clients_balance_factor=groups_balance_factor,
-    #     priv_balance_factor=priv_balance_factor,
+    education_level = []
+    for client in client_data:
+        education_level.append([sample["x"][6] for sample in client])
+
+    plot_distribution(education_level, title="Education Level")
+
+    # plot_bar_plot(
+    #     title=f"Education Level",
+    #     disparities=[client["x"][6] for client in client_data],
+    #     nodes=[f"{i}" for i in range(len(client_data))],
     # )
-    return client_data  # , N_is, props_positive
+
+    return client_data, disparities, metadata  # , N_is, props_positive
 
 
 def egalitarian_approach(X, y, z, num_nodes, number_of_samples_per_node=None):
@@ -1104,6 +1228,7 @@ def generate_clients_biased_data_mod(
     ], "Approach must be egalitarian or representative"
 
     number_unfair_nodes = int(num_nodes * ratio_unfair_nodes)
+    number_fair_nodes = num_nodes - number_unfair_nodes
     if approach == "egalitarian":
         # first split the data among the nodes in an egalitarian way
         # each node has the same amount of data and the same ratio of each group
@@ -1122,35 +1247,36 @@ def generate_clients_biased_data_mod(
         ), "opposite_group_to_increment must be specified"
         group_size = number_unfair_nodes // 2
         unfair_nodes_direction_1 = create_unfair_nodes(
-            nodes_to_unfair=nodes[
-                number_unfair_nodes : number_unfair_nodes + group_size
-            ],
+            nodes_to_unfair=nodes[number_fair_nodes : number_fair_nodes + group_size],
             remaining_data=remaining_data,
             group_to_reduce=group_to_reduce,
             group_to_increment=group_to_increment,
             ratio_unfairness=ratio_unfairness,
         )
         unfair_nodes_direction_2 = create_unfair_nodes(
-            nodes_to_unfair=nodes[number_unfair_nodes + group_size :],
+            nodes_to_unfair=nodes[number_fair_nodes + group_size :],
             remaining_data=remaining_data,
             group_to_reduce=opposite_group_to_reduce,
             group_to_increment=opposite_group_to_increment,
             ratio_unfairness=opposite_ratio_unfairness,
         )
         return (
-            nodes[0:number_unfair_nodes]
+            nodes[0:number_fair_nodes]
             + unfair_nodes_direction_1
             + unfair_nodes_direction_2
-        )
+        ), [0] * number_fair_nodes + [1] * len(unfair_nodes_direction_1)
     else:
         unfair_nodes = create_unfair_nodes(
-            nodes_to_unfair=nodes[number_unfair_nodes:],
+            nodes_to_unfair=nodes[number_fair_nodes:],
             remaining_data=remaining_data,
             group_to_reduce=group_to_reduce,
             group_to_increment=group_to_increment,
             ratio_unfairness=ratio_unfairness,
         )
-        return nodes[0:number_unfair_nodes] + unfair_nodes
+        return (
+            nodes[0:number_fair_nodes] + unfair_nodes,
+            [0] * number_fair_nodes + [1] * number_fair_nodes,
+        )
 
 
 # def generate_clients_biased_data(
@@ -1424,30 +1550,6 @@ def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path
     return _X, _Z, _y
 
 
-from DPL.RegularizationLoss import RegularizationLoss
-
-
-# DEBUG
-def compute_disparities_debug(nodes):
-    disparities = []
-    for node in nodes:
-        max_disparity = np.max(
-            [
-                RegularizationLoss().compute_violation_with_argmax(
-                    predictions_argmax=[sample["y"] for sample in node],
-                    sensitive_attribute_list=[sample["z"] for sample in node],
-                    current_target=target,
-                    current_sensitive_feature=sv,
-                )
-                for target in range(0, 1)
-                for sv in range(0, 1)
-            ]
-        )
-        disparities.append(max_disparity)
-    print(f"Mean of disparity {np.mean(disparities)} - std {np.std(disparities)}")
-    return disparities
-
-
 import matplotlib.pyplot as plt
 
 
@@ -1486,7 +1588,7 @@ def prepare_tabular_data(
     do_iid_split: bool = False,
 ):
     # client_data, N_is, props_positive = get_tabular_data(
-    client_data = get_tabular_data(
+    client_data, disparities, metadata = get_tabular_data(
         num_clients=150,
         do_iid_split=do_iid_split,
         groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
@@ -1525,7 +1627,9 @@ def prepare_tabular_data(
 
     # remove the old files in the data folder
     os.system(f"rm -rf {dataset_path}/federated/*")
-    for client_name, client in enumerate(client_data):
+    for client_name, (client, client_disparity, client_metadata) in enumerate(
+        zip(client_data, disparities, metadata)
+    ):
         # Append 1 to each samples
 
         custom_dataset = TabularDataset(
@@ -1542,6 +1646,17 @@ def prepare_tabular_data(
             custom_dataset,
             f"{dataset_path}/federated/{client_name}/train.pt",
         )
+        # store statistics about the dataset in the same folder
+        statistics = Utils.get_dataset_statistics(
+            custom_dataset, client_disparity, client_metadata
+        )
+        with open(
+            f"{dataset_path}/federated/{client_name}/metadata.json", "w"
+        ) as outfile:
+            print(statistics)
+            json_object = json.dumps(statistics, indent=4)
+            outfile.write(json_object)
+
     fed_dir = f"{dataset_path}/federated"
     return fed_dir, client_data
 

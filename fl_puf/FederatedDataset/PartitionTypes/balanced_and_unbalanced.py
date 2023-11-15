@@ -150,4 +150,6 @@ class BalancedAndUnbalanced:
         # # return the merge of the balanced partition and the unbalanced partition
         # return splitted_indexes
 
-        return new_to_be_unbalanced + balanced_partition
+        return balanced_partition + new_to_be_unbalanced, [0] * len(
+            balanced_partition
+        ) + [1] * len(new_to_be_unbalanced)
