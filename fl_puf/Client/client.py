@@ -137,17 +137,16 @@ class FlowerClient(fl.client.NumPyClient):
             ]
         )
 
-        if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
-            with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
-                self.train_parameters.noise_multiplier = dill.load(file)
+        if self.train_parameters.noise_multiplier is not None:
+            noise = self.train_parameters.noise_multiplier
         else:
-            noise = (
-                self.train_parameters.noise_multiplier
-                if self.train_parameters.noise_multiplier
-                else self.get_noise(dataset=train_loader)
-            )
-            with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
-                dill.dump(noise, file)
+            if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
+                with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
+                    self.train_parameters.noise_multiplier = dill.load(file)
+            else:
+                noise = self.get_noise(dataset=train_loader)
+                with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
+                    dill.dump(noise, file)
 
         (
             private_net,
