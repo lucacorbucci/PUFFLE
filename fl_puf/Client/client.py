@@ -141,7 +141,11 @@ class FlowerClient(fl.client.NumPyClient):
             with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
                 self.train_parameters.noise_multiplier = dill.load(file)
         else:
-            noise = self.get_noise(dataset=train_loader)
+            noise = (
+                self.train_parameters.noise_multiplier
+                if self.train_parameters.noise_multiplier
+                else self.get_noise(dataset=train_loader)
+            )
             with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
                 dill.dump(noise, file)
 
@@ -159,7 +163,7 @@ class FlowerClient(fl.client.NumPyClient):
             delta=self.delta,
             MAX_GRAD_NORM=self.clipping,
             batch_size=self.train_parameters.batch_size,
-            noise_multiplier=self.train_parameters.noise_multiplier,
+            noise_multiplier=noise,
             accountant=loaded_privacy_engine,
         )
         private_net.to(self.train_parameters.device)
