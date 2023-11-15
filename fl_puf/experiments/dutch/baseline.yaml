@@ -41,11 +41,11 @@ command:
   - --pool_size
   - 150
   - --sampled_clients 
-  - 0.29
+  - 0.34
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
-  - 0.68
+  - 1.0
   - --debug
   - True 
   - --base_path
