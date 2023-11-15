@@ -11,7 +11,7 @@ parameters:
     min: 1
     max: 5
   batch_size:
-    min: 128
+    min: 32
     max: 512
   lr:
     min: 0.0001

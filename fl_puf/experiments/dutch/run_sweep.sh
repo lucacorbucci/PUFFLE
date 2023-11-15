@@ -19,7 +19,7 @@ run_sweep_and_agent () {
 }
 
 # run_sweep_and_agent "baseline"
-#run_sweep_and_agent "01_fixed"
-run_sweep_and_agent "01_tunable"
+run_sweep_and_agent "01_fixed"
+# run_sweep_and_agent "01_tunable"
 # run_sweep_and_agent "02_fixed"
 # run_sweep_and_agent "02_tunable"
