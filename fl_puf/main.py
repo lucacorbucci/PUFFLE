@@ -725,10 +725,7 @@ if __name__ == "__main__":
         max_disparity_weighted_average = (
             sum(
                 [
-                    n_examples
-                    * metric[
-                        "Disparity Train"
-                    ]
+                    n_examples * metric["Disparity Train"]
                     for n_examples, metric in metrics
                 ]
             )
@@ -771,7 +768,7 @@ if __name__ == "__main__":
             "Average Probabilities": average_probabilities,
             "Training Disparity with average": sum(max_disparity_train)
             / len(max_disparity_train),
-            "Training Disparity with weighted average": ,
+            "Training Disparity with weighted average": max_disparity_weighted_average,
             "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
             "Train Epsilon": current_max_epsilon,
             "FL Round": server_round,
