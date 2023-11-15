@@ -306,6 +306,7 @@ if __name__ == "__main__":
         update_lambda=args.update_lambda,
         unbalanced_ratio=args.unbalanced_ratio,
         tabular_data=args.tabular_data,
+        sampling_frequency=args.sampling_frequency,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -333,53 +334,53 @@ if __name__ == "__main__":
             if item.endswith(".pkl"):
                 os.remove(os.path.join(fed_dir, item))
 
-    if args.epsilon:
-        # We need to understand the noise that we need to add based
-        # on the epsilon that we want to guarantee
-        max_noise = 0
-        for i in range(args.pool_size):
-            model_noise = ModelUtils.get_model(
-                dataset_name, device=train_parameters.device
-            )
-            # get the training dataset of one of the clients
-            train_loader_client_0 = Utils.get_dataloader(
-                fed_dir,
-                str(i),
-                batch_size=train_parameters.batch_size,
-                workers=0,
-                dataset=dataset_name,
-                partition="train",
-            )
-            privacy_engine = PrivacyEngine(accountant="rdp")
-            optimizer_noise = Utils.get_optimizer(
-                model_noise, train_parameters, args.lr
-            )
-            (
-                _,
-                private_optimizer,
-                _,
-            ) = privacy_engine.make_private_with_epsilon(
-                module=model_noise,
-                optimizer=optimizer_noise,
-                data_loader=train_loader_client_0,
-                epochs=args.sampling_frequency * args.epochs,
-                target_epsilon=train_parameters.epsilon,
-                target_delta=args.delta,
-                max_grad_norm=args.clipping,
-            )
-            max_noise = max(max_noise, private_optimizer.noise_multiplier)
-            print(
-                f"Node {i} - {args.sampling_frequency * args.epochs} -- {private_optimizer.noise_multiplier}"
-            )
+    # if args.epsilon:
+    #     # We need to understand the noise that we need to add based
+    #     # on the epsilon that we want to guarantee
+    #     max_noise = 0
+    #     for i in range(args.pool_size):
+    #         model_noise = ModelUtils.get_model(
+    #             dataset_name, device=train_parameters.device
+    #         )
+    #         # get the training dataset of one of the clients
+    #         train_loader_client_0 = Utils.get_dataloader(
+    #             fed_dir,
+    #             str(i),
+    #             batch_size=train_parameters.batch_size,
+    #             workers=0,
+    #             dataset=dataset_name,
+    #             partition="train",
+    #         )
+    #         privacy_engine = PrivacyEngine(accountant="rdp")
+    #         optimizer_noise = Utils.get_optimizer(
+    #             model_noise, train_parameters, args.lr
+    #         )
+    #         (
+    #             _,
+    #             private_optimizer,
+    #             _,
+    #         ) = privacy_engine.make_private_with_epsilon(
+    #             module=model_noise,
+    #             optimizer=optimizer_noise,
+    #             data_loader=train_loader_client_0,
+    #             epochs=args.sampling_frequency * args.epochs,
+    #             target_epsilon=train_parameters.epsilon,
+    #             target_delta=args.delta,
+    #             max_grad_norm=args.clipping,
+    #         )
+    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
+    #         print(
+    #             f"Node {i} - {args.sampling_frequency * args.epochs} -- {private_optimizer.noise_multiplier}"
+    #         )
 
-        train_parameters.noise_multiplier = max_noise
-        train_parameters.epsilon = None
-        print(
-            f">>>>> FINALE {args.sampling_frequency * args.epochs} -- {train_parameters.noise_multiplier}"
-        )
-    else:
-        train_parameters.noise_multiplier = args.noise_multiplier
-        train_parameters.epsilon = None
+    #     train_parameters.noise_multiplier = max_noise
+    #     train_parameters.epsilon = None
+    #     print(
+    #         f">>>>> FINALE {args.sampling_frequency * args.epochs} -- {train_parameters.noise_multiplier}"
+    #     )
+    # else:
+    #     train_parameters.noise_multiplier = args.noise_multiplier
+    #     train_parameters.epsilon = None
 
     wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 
@@ -456,6 +457,21 @@ if __name__ == "__main__":
                 for n_examples, metric in metrics
             ]
         )
+        # weighted average of the disparity of the different nodes
+        max_disparity_weighted_average = (
+            sum(
+                [
+                    n_examples
+                    * metric[
+                        "max_disparity_test"
+                        if not train_parameters.sweep
+                        else "max_disparity_validation"
+                    ]
+                    for n_examples, metric in metrics
+                ]
+            )
+            / total_examples
+        )
 
         # Log data from the different test clients:
         for _, metric in metrics:
@@ -507,6 +523,7 @@ if __name__ == "__main__":
             "Test Loss": loss_test,
             "Test Accuracy": accuracy_test,
             "Test Disparity with average": max_disparity_average,
+            "Test Disparity with weighted average": max_disparity_weighted_average,
             "Test Disparity with statistics": max_disparity_statistics,
             "FL Round": server_round,
             "Test Counter 0|0": sum_counters["0|0"],
@@ -560,6 +577,21 @@ if __name__ == "__main__":
                 for n_examples, metric in metrics
             ]
         )
+        # weighted average of the disparity of the different nodes
+        max_disparity_weighted_average = (
+            sum(
+                [
+                    n_examples
+                    * metric[
+                        "max_disparity_test"
+                        if not train_parameters.sweep
+                        else "max_disparity_validation"
+                    ]
+                    for n_examples, metric in metrics
+                ]
+            )
+            / total_examples
+        )
 
         combinations = ["0|0", "0|1", "1|0", "1|1"]
         targets = ["0", "1"]
@@ -600,6 +632,7 @@ if __name__ == "__main__":
             "Validation Loss": loss_evaluation,
             "Validation_Accuracy": accuracy_evaluation,
             "Validation Disparity with average": max_disparity_average,
+            "Validation Disparity with weighted average": max_disparity_weighted_average,
             "Validation Disparity with statistics": max_disparity_statistics,
             "Custom_metric": custom_metric,
             "FL Round": server_round,
@@ -688,6 +721,20 @@ if __name__ == "__main__":
                 sum_counters[combination] / sum_targets[combination[2]]
             )
 
+        # weighted average of the disparity of the different nodes
+        max_disparity_weighted_average = (
+            sum(
+                [
+                    n_examples
+                    * metric[
+                        "Disparity Train"
+                    ]
+                    for n_examples, metric in metrics
+                ]
+            )
+            / total_examples
+        )
+
         max_disparity_statistics = max(
             [
                 sum_counters["0|0"] / sum_targets["0"]
@@ -724,6 +771,7 @@ if __name__ == "__main__":
             "Average Probabilities": average_probabilities,
             "Training Disparity with average": sum(max_disparity_train)
             / len(max_disparity_train),
+            "Training Disparity with weighted average": ,
             "Aggregated Lambda": sum(lambda_list) / len(lambda_list),
             "Train Epsilon": current_max_epsilon,
             "FL Round": server_round,
