@@ -11,6 +11,7 @@ import numpy as np
 import ray
 import torch
 from flwr.common.typing import Scalar
+from opacus import PrivacyEngine
 
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
@@ -135,6 +136,14 @@ class FlowerClient(fl.client.NumPyClient):
                 for sv in range(0, 1)
             ]
         )
+
+        if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
+            with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
+                self.train_parameters.noise_multiplier = dill.load(file)
+        else:
+            noise = self.get_noise(dataset=train_loader)
+            with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
+                dill.dump(noise, file)
 
         (
             private_net,
@@ -446,3 +455,31 @@ class FlowerClient(fl.client.NumPyClient):
                 new_min=0,
                 new_max=1,
             )
+
+    def get_noise(self, dataset):
+        model_noise = ModelUtils.get_model(
+            self.dataset_name, device=self.train_parameters.device
+        )
+        privacy_engine = PrivacyEngine(accountant="rdp")
+        optimizer_noise = Utils.get_optimizer(
+            model_noise, self.train_parameters, self.lr
+        )
+        (
+            _,
+            private_optimizer,
+            _,
+        ) = privacy_engine.make_private_with_epsilon(
+            module=model_noise,
+            optimizer=optimizer_noise,
+            data_loader=dataset,
+            epochs=self.train_parameters.sampling_frequency
+            * self.train_parameters.epochs,
+            target_epsilon=self.train_parameters.epsilon,
+            target_delta=self.delta,
+            max_grad_norm=self.clipping,
+        )
+        print(
+            f"NOISE COMPUTE ON NODE {self.cid} is {private_optimizer.noise_multiplier}"
+        )
+
+        return private_optimizer.noise_multiplier
