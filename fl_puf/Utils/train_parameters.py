@@ -33,3 +33,4 @@ class TrainParameters:
     unbalanced_ratio: float = None
     tabular_data: bool = False
     binary_sensitive_value: bool = True
+    sampling_frequency: int = None
