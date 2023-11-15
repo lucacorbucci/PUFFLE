@@ -663,6 +663,9 @@ if __name__ == "__main__":
 
         for n_examples, node_metrics in metrics:
             losses.append(n_examples * node_metrics["train_loss"])
+            print(
+                f"Node {node_metrics['cid']} - {node_metrics['train_loss_with_regularization']}"
+            )
             losses_with_regularization.append(
                 n_examples * node_metrics["train_loss_with_regularization"]
             )
@@ -759,6 +762,9 @@ if __name__ == "__main__":
                 }
             )
 
+        print(
+            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}"
+        )
         current_max_epsilon = max(current_max_epsilon, *epsilon_list)
         agg_metrics = {
             "Train Loss": sum(losses) / total_examples,
