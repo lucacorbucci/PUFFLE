@@ -1,5 +1,5 @@
 program: ../../main.py
-method: bayes
+method: random
 metric:
   name: Custom_metric
   goal: maximize

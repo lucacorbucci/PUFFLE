@@ -18,8 +18,8 @@ run_sweep_and_agent () {
   poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME"
 }
 
-# run_sweep_and_agent "baseline"
-run_sweep_and_agent "01_fixed"
+run_sweep_and_agent "baseline"
+# run_sweep_and_agent "01_fixed"
 # run_sweep_and_agent "01_tunable"
 # run_sweep_and_agent "02_fixed"
 # run_sweep_and_agent "02_tunable"
