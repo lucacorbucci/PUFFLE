@@ -16,7 +16,7 @@ from fl_puf.Utils.utils import Utils
 ##############################################################################################################
 
 
-def load_compas():
+def load_compas(dataset_path):
     def load_preproc_data_compas2(df2, protected_attributes=None):
         def custom_preprocessing(df2):
             """The custom pre-processing function is adapted from
@@ -191,7 +191,7 @@ def load_compas():
     # _df2 = pd.read_csv("https://raw.githubusercontent.com/propublica/compas-analysis/master/compas-scores-two-years.csv")
     # often only violent recidivism is considered:
     # _df2 = pd.read_csv("https://raw.githubusercontent.com/propublica/compas-analysis/master/compas-scores-two-years-violent.csv")
-    _df2 = pd.read_csv("data/Tabular/compas/compas-scores-two-years-violent.csv")
+    _df2 = pd.read_csv(dataset_path + "compas-scores-two-years-violent.csv")
     df_compas = load_preproc_data_compas2(_df2, ["sex"])
 
     df_compas["year"] = pd.DatetimeIndex(df_compas["compas_screening_date"]).year
@@ -290,8 +290,8 @@ def load_adult(dataset_path):
     return df_adult, adult_feat_cols, metadata_adult
 
 
-def load_german():
-    df_german = pd.read_csv("data/Tabular/german_credit/german_credit_data.csv")
+def load_german(dataset_path):
+    df_german = pd.read_csv(dataset_path + "german_credit_data.csv")
 
     df_german["age_binary"] = np.where(df_german["Age (years)"] > 25, 1, 0)
     del df_german["Age (years)"]
@@ -1011,7 +1011,7 @@ def get_tabular_data(
     for client in client_data:
         education_level.append([sample["x"][6] for sample in client])
 
-    plot_distribution(education_level, title="Education Level")
+    # plot_distribution(education_level, title="Education Level")
 
     # plot_bar_plot(
     #     title=f"Education Level",
@@ -1517,11 +1517,11 @@ def dataset_to_numpy(
 
 def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path=None):
     if dataset_name == "compas":
-        tmp = load_compas()
+        tmp = load_compas(dataset_path=dataset_path)
     elif dataset_name == "adult":
         tmp = load_adult(dataset_path=dataset_path)
     elif dataset_name == "german_credit":
-        tmp = load_german()
+        tmp = load_german(dataset_path=dataset_path)
     elif dataset_name == "kdd":
         tmp = load_kdd()
     elif dataset_name == "dutch":
@@ -1593,7 +1593,7 @@ def prepare_tabular_data(
         do_iid_split=do_iid_split,
         groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
         priv_balance_factor=priv_balance_factor,  # fraction of priv samples the privileged clients should have
-        dataset_name="dutch",
+        dataset_name=dataset_name,
         num_sensitive_features=1,
         dataset_path=dataset_path,
         approach=approach,
