@@ -3,7 +3,7 @@
 !*.*
 *.png 
 *.pkl 
-
+*.csv
 .vector_cache
 data
 old

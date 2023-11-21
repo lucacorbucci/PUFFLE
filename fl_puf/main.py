@@ -626,7 +626,7 @@ if __name__ == "__main__":
             # custom_metric will be -inf when the disparity is above the target
             # otherwise we will have a positive value that depends on the distance
             # and on the accuracy on the validation set
-            custom_metric = accuracy_evaluation + distance
+            custom_metric = accuracy_evaluation + 5 * distance
 
         agg_metrics = {
             "Validation Loss": loss_evaluation,
