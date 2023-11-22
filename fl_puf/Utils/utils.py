@@ -237,6 +237,12 @@ class Utils:
         path_to_data = path_to_data / cid / (partition + ".pt")
         if dataset == "dutch":
             return torch.load(path_to_data)
+        elif dataset == "adult":
+            return torch.load(path_to_data)
+        elif dataset == "german":
+            return torch.load(path_to_data)
+        elif dataset == "compas":
+            return torch.load(path_to_data)
         else:
             return TorchVision_FL(
                 path_to_data,

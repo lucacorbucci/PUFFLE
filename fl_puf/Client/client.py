@@ -396,6 +396,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "cid": self.cid,
                 "counters": counters,
                 "max_disparity_dataset": max_disparity_dataset,
+                "f1_score": f1score,
             }
         else:
             metrics = {
@@ -406,6 +407,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "cid": self.cid,
                 "counters": counters,
                 "max_disparity_dataset": max_disparity_dataset,
+                "f1_score": f1score,
             }
 
         # Return statistics

@@ -262,6 +262,8 @@ def load_adult(dataset_path):
     )
 
     df_adult = pd.read_csv(dataset_path + "adult.data", names=adult_columns_names)
+    # df_adult = pd.DataFrame(df_adult[0]).astype("int32")
+
     df_adult["sex_binary"] = np.where(df_adult["sex"] == " Male", 1, 0)
     df_adult["race_binary"] = np.where(df_adult["race"] == " White", 1, 0)
     df_adult["age_binary"] = np.where(
@@ -1073,6 +1075,7 @@ def egalitarian_approach(X, y, z, num_nodes, number_of_samples_per_node=None):
 
 
 def create_unfair_nodes(
+    fair_nodes: list,
     nodes_to_unfair: list,
     remaining_data: dict,
     group_to_reduce: tuple,
@@ -1094,44 +1097,87 @@ def create_unfair_nodes(
         we could have (0,0), (0,1), (1,0) or (1,1)
     ratio_unfairness: tuple (min, max) where min is the minimum ratio of samples that we want to remove from the group_to_reduce
     """
-    assert (
-        remaining_data[group_to_reduce] != []
-    ), "Choose a different group to be unfair"
+    # assert (
+    #     remaining_data[group_to_reduce] != []
+    # ), "Choose a different group to be unfair"
     # remove the samples from the group that we want to be unfair
     unfair_nodes = []
     number_of_samples_to_add = []
+    removed_samples = []
+
     for node in nodes_to_unfair:
         node_data = []
         count_sensitive_group_samples = 0
+        # We count how many sample each node has from the group that we want to reduce
         for sample in node:
             if (sample["y"], sample["z"]) == group_to_reduce:
                 count_sensitive_group_samples += 1
 
+        # We compute the number of samples that we want to remove from the group_to_reduce
+        # based on the ratio_unfairness
         current_ratio = np.random.uniform(ratio_unfairness[0], ratio_unfairness[1])
         samples_to_be_removed = int(count_sensitive_group_samples * current_ratio)
         number_of_samples_to_add.append(samples_to_be_removed)
 
         for sample in node:
+            # Now we remove the samples from the group_to_reduce
+            # and we store them in removed_samples
             if (
                 sample["y"],
                 sample["z"],
             ) == group_to_reduce and samples_to_be_removed > 0:
                 samples_to_be_removed -= 1
+                removed_samples.append(sample)
             else:
                 node_data.append(sample)
         unfair_nodes.append(node_data)
 
-    assert sum(number_of_samples_to_add) < len(
-        remaining_data[group_to_increment]
-    ), "Choose a different group to increment or reduce the ratio_unfairness"
-    # now we have to add the same amount of data taken from group_to_unfair
-    for node, samples_to_add in zip(unfair_nodes, number_of_samples_to_add):
-        node.extend(remaining_data[group_to_increment][:samples_to_add])
-        remaining_data[group_to_increment] = remaining_data[group_to_increment][
-            samples_to_add:
-        ]
+    # Now we have to distribute the removed samples among the fair nodes
+    max_samples_to_add = len(removed_samples) // len(fair_nodes)
+    for node in fair_nodes:
+        node.extend(removed_samples[:max_samples_to_add])
+        removed_samples = removed_samples[max_samples_to_add:]
 
-    return unfair_nodes
+    if group_to_increment:
+        # Now we have to remove the samples from the group_to_increment
+        # from the fair_nodes based on the number_of_samples_to_add
+        for node in fair_nodes:
+            samples_to_remove = sum(number_of_samples_to_add) // len(fair_nodes)
+            for index, sample in enumerate(node):
+                if (
+                    sample["y"],
+                    sample["z"],
+                ) == group_to_increment and samples_to_remove > 0:
+                    if (sample["y"], sample["z"]) not in remaining_data:
+                        remaining_data[group_to_increment] = []
+                    remaining_data[group_to_increment].append(sample)
+                    samples_to_remove -= 1
+                    node.pop(index)
+            if sum(number_of_samples_to_add) > 0:
+                assert samples_to_remove == 0, "Not enough samples to remove"
+        assert sum(number_of_samples_to_add) <= len(
+            remaining_data[group_to_increment]
+        ), "Too many samples to add"
+        # now we have to add the same amount of data taken from group_to_unfair
+        for node, samples_to_add in zip(unfair_nodes, number_of_samples_to_add):
+            node.extend(remaining_data[group_to_increment][:samples_to_add])
+            remaining_data[group_to_increment] = remaining_data[group_to_increment][
+                samples_to_add:
+            ]
+
+    return fair_nodes, unfair_nodes
+
+    # assert sum(number_of_samples_to_add) < len(
+    #     remaining_data[group_to_increment]
+    # ), "Choose a different group to increment or reduce the ratio_unfairness"
+    # # now we have to add the same amount of data taken from group_to_unfair
+    # for node, samples_to_add in zip(unfair_nodes, number_of_samples_to_add):
+    #     node.extend(remaining_data[group_to_increment][:samples_to_add])
+    #     remaining_data[group_to_increment] = remaining_data[group_to_increment][
+    #         samples_to_add:
+    #     ]
+
+    # return unfair_nodes
 
 
 def representative_diversity_approach(X, y, z, num_nodes, number_of_samples_per_node):
@@ -1266,7 +1312,10 @@ def generate_clients_biased_data_mod(
             + unfair_nodes_direction_2
         ), [0] * number_fair_nodes + [1] * len(unfair_nodes_direction_1)
     else:
-        unfair_nodes = create_unfair_nodes(
+        # At the moment this is the only thing that is working, we need
+        # to fix the opposite direction version
+        fair_nodes, unfair_nodes = create_unfair_nodes(
+            fair_nodes=nodes[:number_fair_nodes],
             nodes_to_unfair=nodes[number_fair_nodes:],
             remaining_data=remaining_data,
             group_to_reduce=group_to_reduce,
@@ -1274,7 +1323,7 @@ def generate_clients_biased_data_mod(
             ratio_unfairness=ratio_unfairness,
         )
         return (
-            nodes[0:number_fair_nodes] + unfair_nodes,
+            fair_nodes + unfair_nodes,
             [0] * number_fair_nodes + [1] * number_fair_nodes,
         )
 
