@@ -243,6 +243,8 @@ class Utils:
             return torch.load(path_to_data)
         elif dataset == "compas":
             return torch.load(path_to_data)
+        elif dataset == "income":
+            return torch.load(path_to_data)
         else:
             return TorchVision_FL(
                 path_to_data,

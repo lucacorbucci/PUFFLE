@@ -31,17 +31,17 @@ command:
   - ${program}
   - ${args}
   - --dataset
-  - adult
+  - income
   - --num_rounds
-  - 40
+  - 20
   - --num_client_cpus
   - 1
   - --num_client_gpus
   - 0.1
   - --pool_size
-  - 150
+  - 51
   - --sampled_clients 
-  - 0.34
+  - 1.0
   - --sampled_clients_test 
   - 1.0
   - --sampled_clients_validation 
@@ -65,29 +65,14 @@ command:
   - --clipping
   - 100000.0
   - --training_nodes 
-  - 0.40
+  - 0.61
   - --validation_nodes 
-  - 0.27
+  - 0.20
   - --test_nodes 
-  - 0.335
+  - 0.20
   - --starting_lambda_mode 
   - no_tuning
   - --tabular_data 
   - True
   - --dataset_path 
-  - ../../../data/Tabular/adult/
-  - --group_to_reduce
-  - 1
-  - 0
-  - --group_to_increment
-  - 0
-  - 0
-  - --number_of_samples_per_node
-  - 650
-  - --ratio_unfair_nodes
-  - 0.5
-  - --ratio_unfairness
-  - 0
-  - 0
-  - --approach
-  - representative
+  - ../../../data/Tabular/income/

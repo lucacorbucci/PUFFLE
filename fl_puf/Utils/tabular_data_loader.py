@@ -312,7 +312,7 @@ def load_german(dataset_path):
     return df_german, german_feature_columns, metadata_german
 
 
-def load_kdd():
+def load_kdd(dataset_path):
     kdd_columns = [
         "age",
         "class of worker",
@@ -407,7 +407,8 @@ def load_kdd():
     ]
 
     kdd_census_df = pd.read_csv(
-        "data/Tabular/kdd/KDD-census-income.data", names=kdd_columns
+        dataset_path + "KDD-census-income.data",
+        names=kdd_columns,
     )
 
     kdd_census_df = kdd_census_df[kdd_census_df["sex"] != " Not in universe"]
@@ -420,11 +421,9 @@ def load_kdd():
 
     # print(kdd_census_df.head())
     # NOTE: e.g. fairness data survey recommends dropping some columns due to high missingness, e.g.:
-    print(kdd_census_df["migration code-move within reg"].unique())
 
     # drop missing values
-    # kdd_census_df.dropna(inplace=True, axis=1)
-    # print(kdd_census_df.isnull().sum())
+    kdd_census_df.dropna(inplace=True, axis=1)
     assert kdd_census_df.isnull().sum().sum() == 0, "Encountered missing values!"
 
     metadata_kdd = {
@@ -1522,6 +1521,8 @@ def dataset_to_numpy(
     """
 
     # transform features to 1-hot
+    print(_feature_cols)
+    print(_df.columns)
     _X = _df[_feature_cols]
     # take sensitive features separately
     print(
@@ -1572,7 +1573,7 @@ def get_tabular_numpy_dataset(dataset_name, num_sensitive_features, dataset_path
     elif dataset_name == "german_credit":
         tmp = load_german(dataset_path=dataset_path)
     elif dataset_name == "kdd":
-        tmp = load_kdd()
+        tmp = load_kdd(dataset_path=dataset_path)
     elif dataset_name == "dutch":
         tmp = load_dutch(dataset_path=dataset_path)
     elif dataset_name == "bank_marketing":
@@ -1636,78 +1637,105 @@ def prepare_tabular_data(
     opposite_ratio_unfairness: tuple = None,
     do_iid_split: bool = False,
 ):
-    # client_data, N_is, props_positive = get_tabular_data(
-    client_data, disparities, metadata = get_tabular_data(
-        num_clients=150,
-        do_iid_split=do_iid_split,
-        groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
-        priv_balance_factor=priv_balance_factor,  # fraction of priv samples the privileged clients should have
-        dataset_name=dataset_name,
-        num_sensitive_features=1,
-        dataset_path=dataset_path,
-        approach=approach,
-        num_nodes=num_nodes,
-        ratio_unfair_nodes=ratio_unfair_nodes,
-        opposite_direction=opposite_direction,
-        ratio_unfairness=ratio_unfairness,
-        group_to_reduce=group_to_reduce,
-        group_to_increment=group_to_increment,
-        number_of_samples_per_node=number_of_samples_per_node,
-        opposite_group_to_reduce=opposite_group_to_reduce,
-        opposite_group_to_increment=opposite_group_to_increment,
-        opposite_ratio_unfairness=opposite_ratio_unfairness,
-    )
+    if dataset_name == "income":
+        for client_name in range(num_nodes):
+            os.system(f"rm -rf {dataset_path}/federated/{client_name}/train.pt")
 
-    # transform client data so that they are compatiblw with the
-    # other functions
-    tmp_data = []
-    for client in client_data:
-        tmp_x = []
-        tmp_y = []
-        tmp_z = []
-        for sample in client:
-            tmp_x.append(sample["x"])
-            tmp_y.append(sample["y"])
-            tmp_z.append(sample["z"])
-        tmp_data.append(
-            {"x": np.array(tmp_x), "y": np.array(tmp_y), "z": np.array(tmp_z)}
-        )
-    client_data = tmp_data
+            # open numpy arrays
+            X = np.load(
+                f"{dataset_path}/federated/{client_name}/income_dataframes_{client_name}.npy"
+            )
+            Y = np.load(
+                f"{dataset_path}/federated/{client_name}/income_labels_{client_name}.npy"
+            )
+            Z = np.load(
+                f"{dataset_path}/federated/{client_name}/income_groups_{client_name}.npy"
+            )
+            custom_dataset = TabularDataset(
+                x=np.hstack((X, np.ones((X.shape[0], 1)))).astype(np.float32),
+                z=Z,  # .astype(np.float32),
+                y=Y,  # .astype(np.float32),
+            )
+            torch.save(
+                custom_dataset,
+                f"{dataset_path}/federated/{client_name}/train.pt",
+            )
 
-    # remove the old files in the data folder
-    os.system(f"rm -rf {dataset_path}/federated/*")
-    for client_name, (client, client_disparity, client_metadata) in enumerate(
-        zip(client_data, disparities, metadata)
-    ):
-        # Append 1 to each samples
+        fed_dir = f"{dataset_path}/federated"
+        return fed_dir, None
+    else:
+        # client_data, N_is, props_positive = get_tabular_data(
+        client_data, disparities, metadata = get_tabular_data(
+            num_clients=150,
+            do_iid_split=do_iid_split,
+            groups_balance_factor=groups_balance_factor,  # fraction of privileged clients ->
+            priv_balance_factor=priv_balance_factor,  # fraction of priv samples the privileged clients should have
+            dataset_name=dataset_name,
+            num_sensitive_features=1,
+            dataset_path=dataset_path,
+            approach=approach,
+            num_nodes=num_nodes,
+            ratio_unfair_nodes=ratio_unfair_nodes,
+            opposite_direction=opposite_direction,
+            ratio_unfairness=ratio_unfairness,
+            group_to_reduce=group_to_reduce,
+            group_to_increment=group_to_increment,
+            number_of_samples_per_node=number_of_samples_per_node,
+            opposite_group_to_reduce=opposite_group_to_reduce,
+            opposite_group_to_increment=opposite_group_to_increment,
+            opposite_ratio_unfairness=opposite_ratio_unfairness,
+        )
 
-        custom_dataset = TabularDataset(
-            x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
-                np.float32
-            ),
-            z=client["z"],  # .astype(np.float32),
-            y=client["y"],  # .astype(np.float32),
-        )
-        # Create the folder for the user client_name
-        os.system(f"mkdir {dataset_path}/federated/{client_name}")
-        # store the dataset in the client folder with the name "train.pt"
-        torch.save(
-            custom_dataset,
-            f"{dataset_path}/federated/{client_name}/train.pt",
-        )
-        # store statistics about the dataset in the same folder
-        statistics = Utils.get_dataset_statistics(
-            custom_dataset, client_disparity, client_metadata
-        )
-        with open(
-            f"{dataset_path}/federated/{client_name}/metadata.json", "w"
-        ) as outfile:
-            print(statistics)
-            json_object = json.dumps(statistics, indent=4)
-            outfile.write(json_object)
+        # transform client data so that they are compatiblw with the
+        # other functions
+        tmp_data = []
+        for client in client_data:
+            tmp_x = []
+            tmp_y = []
+            tmp_z = []
+            for sample in client:
+                tmp_x.append(sample["x"])
+                tmp_y.append(sample["y"])
+                tmp_z.append(sample["z"])
+            tmp_data.append(
+                {"x": np.array(tmp_x), "y": np.array(tmp_y), "z": np.array(tmp_z)}
+            )
+        client_data = tmp_data
 
-    fed_dir = f"{dataset_path}/federated"
-    return fed_dir, client_data
+        # remove the old files in the data folder
+        os.system(f"rm -rf {dataset_path}/federated/*")
+        for client_name, (client, client_disparity, client_metadata) in enumerate(
+            zip(client_data, disparities, metadata)
+        ):
+            # Append 1 to each samples
+
+            custom_dataset = TabularDataset(
+                x=np.hstack((client["x"], np.ones((client["x"].shape[0], 1)))).astype(
+                    np.float32
+                ),
+                z=client["z"],  # .astype(np.float32),
+                y=client["y"],  # .astype(np.float32),
+            )
+            # Create the folder for the user client_name
+            os.system(f"mkdir {dataset_path}/federated/{client_name}")
+            # store the dataset in the client folder with the name "train.pt"
+            torch.save(
+                custom_dataset,
+                f"{dataset_path}/federated/{client_name}/train.pt",
+            )
+            # store statistics about the dataset in the same folder
+            statistics = Utils.get_dataset_statistics(
+                custom_dataset, client_disparity, client_metadata
+            )
+            with open(
+                f"{dataset_path}/federated/{client_name}/metadata.json", "w"
+            ) as outfile:
+                print(statistics)
+                json_object = json.dumps(statistics, indent=4)
+                outfile.write(json_object)
+
+        fed_dir = f"{dataset_path}/federated"
+        return fed_dir, client_data
 
 
 if __name__ == "__main__":

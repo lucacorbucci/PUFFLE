@@ -30,6 +30,7 @@ node_modules/
 _book/
 # C extensions
 *.so
+*.pkd
 
 charmap.json.gz
 
