@@ -523,12 +523,35 @@ if __name__ == "__main__":
             ],
         )
 
+        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets_no_noise = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters_no_noise"]
+            for combination in combinations:
+                sum_counters_no_noise[combination] += metric[combination]
+            for target in targets:
+                sum_targets_no_noise[target] += metric[target]
+        max_disparity_statistics_no_noise = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+
         agg_metrics = {
             "Test Loss": loss_test,
             "Test Accuracy": accuracy_test,
             "Test Disparity with average": max_disparity_average,
             "Test Disparity with weighted average": max_disparity_weighted_average,
             "Test Disparity with statistics": max_disparity_statistics,
+            "Test Disparity with statistics no noise": max_disparity_statistics_no_noise,
             "FL Round": server_round,
             "Test Counter 0|0": sum_counters["0|0"],
             "Test Counter 0|1": sum_counters["0|1"],
@@ -627,6 +650,28 @@ if __name__ == "__main__":
             ]
         )
 
+        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets_no_noise = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters_no_noise"]
+            for combination in combinations:
+                sum_counters_no_noise[combination] += metric[combination]
+            for target in targets:
+                sum_targets_no_noise[target] += metric[target]
+        max_disparity_statistics_no_noise = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+
         custom_metric = accuracy_evaluation
         if args.target:
             distance = args.target - max_disparity_statistics
@@ -643,6 +688,7 @@ if __name__ == "__main__":
             "Validation Disparity with average": max_disparity_average,
             "Validation Disparity with weighted average": max_disparity_weighted_average,
             "Validation Disparity with statistics": max_disparity_statistics,
+            "Validation Disparity with statistics no noise": max_disparity_statistics_no_noise,
             "Custom_metric": custom_metric,
             "FL Round": server_round,
             "Validation Counter 0|0": sum_counters["0|0"],
@@ -757,10 +803,33 @@ if __name__ == "__main__":
             ]
         )
 
+        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets_no_noise = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric["counters_no_noise"]
+            for combination in combinations:
+                sum_counters_no_noise[combination] += metric[combination]
+            for target in targets:
+                sum_targets_no_noise[target] += metric[target]
+        max_disparity_statistics_no_noise = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+
         if wandb_run:
             wandb_run.log(
                 {
                     "Training Disparity with statistics": max_disparity_statistics,
+                    "Training Disparity with statistics no noise": max_disparity_statistics_no_noise,
                     "FL Round": server_round,
                     "Training Counter 0|0": sum_counters["0|0"],
                     "Training Counter 0|1": sum_counters["0|1"],

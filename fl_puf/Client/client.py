@@ -278,7 +278,11 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        probabilities, counters = RegularizationLoss.compute_probabilities(
+        (
+            probabilities,
+            counters,
+            counters_no_noise,
+        ) = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
             device=self.train_parameters.device,
@@ -310,6 +314,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "Disparity Train": all_metrics[-1]["Max Disparity Train"],
                 "Lambda": self.train_parameters.DPL_lambda,
                 "counters": counters,
+                "counters_no_noise": counters_no_noise,
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
                 ],
