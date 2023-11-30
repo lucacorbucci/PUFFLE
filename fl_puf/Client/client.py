@@ -12,6 +12,7 @@ import ray
 import torch
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
+from opacus.accountants.utils import get_noise_multiplier
 
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
@@ -56,6 +57,23 @@ class FlowerClient(fl.client.NumPyClient):
                 model=self.model_regularization
             )
 
+    def compute_noise(self, train_loader):
+        sampling_ratio = self.train_parameters.batch_size / len(train_loader.dataset)
+        iterations = (
+            self.train_parameters.fl_round
+            * self.train_parameters.epochs
+            * sampling_ratio
+        )
+
+        noise = get_noise_multiplier(
+            target_epsilon=self.train_parameters.epsilon_lambda,
+            target_delta=1 / len(train_loader.dataset),
+            sample_rate=sampling_ratio,
+            steps=iterations,
+            accountant="rdp",
+        )
+        return noise
+
     def get_optimizer(self, model):
         if self.train_parameters.optimizer == "adam":
             return torch.optim.Adam(
@@ -79,6 +97,12 @@ class FlowerClient(fl.client.NumPyClient):
         return Utils.get_params(self.net)
 
     def fit(self, parameters, config, average_probabilities=None):
+        next_round_selection = (
+            self.train_parameters.fl_round / self.train_parameters.sampling_frequency
+        )
+        self.is_last_round = (
+            config["server_round"] + next_round_selection
+        ) >= self.train_parameters.fl_round
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -92,6 +116,12 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
+        if self.train_parameters.epsilon_lambda is not None:
+            # this is the sigma that we will use to compute the noise
+            # that will be added to the Lambda
+            sigma_update_lambda = self.compute_noise(train_loader)
+        else:
+            sigma_update_lambda = None
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
         first_round = False
@@ -99,17 +129,17 @@ class FlowerClient(fl.client.NumPyClient):
         # If we already used this client we need to load the state regarding
         # the privacy engine both for the classic model and for the model
         # used for the regularization
-        if os.path.exists(
-            f"{self.fed_dir}/privacy_engine_{self.cid}.pkl"
-        ) and os.path.exists(
-            f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
-        ):
+        if os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl"):
             with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
                 loaded_privacy_engine = dill.load(file)
-            with open(
-                f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
-            ) as file:
-                loaded_privacy_engine_regularization = dill.load(file)
+
+            if os.path.exists(
+                f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
+            ):
+                with open(
+                    f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
+                ) as file:
+                    loaded_privacy_engine_regularization = dill.load(file)
         else:
             # If it is the first time that we use this client we use a Lambda = 0
             # because in the first round the model will be random and so the predictions
@@ -138,16 +168,22 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         if self.train_parameters.noise_multiplier is not None:
+            print("noise multiplier is not none")
             noise = self.train_parameters.noise_multiplier
         else:
             if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
                 with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
                     self.train_parameters.noise_multiplier = dill.load(file)
+                    noise = self.train_parameters.noise_multiplier
+                    self.train_parameters.epsilon = None
             else:
                 noise = self.get_noise(dataset=train_loader)
                 with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
                     dill.dump(noise, file)
+                self.train_parameters.noise_multiplier = noise
+                self.train_parameters.epsilon = None
 
+        print("noise: ", noise, self.train_parameters.noise_multiplier)
         (
             private_net,
             private_optimizer,
@@ -243,6 +279,7 @@ class FlowerClient(fl.client.NumPyClient):
                 current_epoch=epoch,
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
+                sigma_update_lambda=sigma_update_lambda,
             )
 
             metrics[
@@ -288,6 +325,7 @@ class FlowerClient(fl.client.NumPyClient):
             device=self.train_parameters.device,
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
+            train_parameters=self.train_parameters,
         )
 
         del private_net
@@ -307,6 +345,19 @@ class FlowerClient(fl.client.NumPyClient):
                 ],
                 "train_accuracy": all_metrics[-1]["Train Accuracy"],
                 "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
+                "epsilon_sum": privacy_engine.accountant.get_epsilon(self.delta)
+                + (
+                    self.train_parameters.epsilon_lambda
+                    if self.is_last_round
+                    and self.train_parameters.epsilon_lambda is not None
+                    else 0
+                )
+                + (
+                    self.train_parameters.sampling_frequency * self.epsilon_statistics
+                    if self.is_last_round
+                    and self.train_parameters.epsilon_statistics is not None
+                    else 0
+                ),
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "targets": possible_targets,
@@ -381,12 +432,17 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        probabilities, counters = RegularizationLoss.compute_probabilities(
+        (
+            probabilities,
+            counters,
+            counters_no_noise,
+        ) = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
             device=self.train_parameters.device,
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
+            train_parameters=self.train_parameters,
         )
 
         self.net.to("cpu")
@@ -400,6 +456,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
+                "counters_no_noise": counters_no_noise,
                 "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
@@ -467,6 +524,10 @@ class FlowerClient(fl.client.NumPyClient):
             )
 
     def get_noise(self, dataset):
+        print(
+            "get_noise ",
+            self.train_parameters.sampling_frequency * self.train_parameters.epochs,
+        )
         model_noise = ModelUtils.get_model(
             self.dataset_name, device=self.train_parameters.device
         )

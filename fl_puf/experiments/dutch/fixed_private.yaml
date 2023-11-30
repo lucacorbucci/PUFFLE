@@ -5,7 +5,7 @@ metric:
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 3
+  min_iter: 5
 parameters:
   epochs:
     min: 1
@@ -24,6 +24,9 @@ parameters:
   starting_lambda_value:
     min: 0.1
     max: 0.9
+  clipping:
+    min: 1.0
+    max: 10.0
 
 command:
   - ${env}
@@ -35,7 +38,7 @@ command:
   - --dataset
   - dutch
   - --num_rounds
-  - 40
+  - 39
   - --num_client_cpus
   - 1
   - --num_client_gpus
@@ -64,10 +67,6 @@ command:
   - True 
   - --sweep
   - True
-  - --noise_multiplier 
-  - 0
-  - --clipping
-  - 100000.0
   - --training_nodes 
   - 0.40
   - --validation_nodes 
@@ -81,7 +80,7 @@ command:
   - --dataset_path 
   - ../../../data/Tabular/dutch/
   - --target 
-  - 0.05
+  - 0.1
   - --group_to_reduce
   - 0 
   - 1
@@ -97,4 +96,8 @@ command:
   - 0.8
   - --approach
   - representative
+  - --epsilon
+  - 10
+  - --sampling_frequency
+  - 13
 

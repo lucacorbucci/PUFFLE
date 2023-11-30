@@ -66,7 +66,13 @@ parser.add_argument(
 parser.add_argument("--private", type=bool, default=False)  # If we want to use DP-SGD
 parser.add_argument("--epsilon", type=float, default=None)  # Target Epsilon for DP-SGD
 parser.add_argument(
-    "--noise_multiplier", type=float, default=0
+    "--epsilon_lambda", type=float, default=None
+)  # Target Epsilon for Lambda computation
+parser.add_argument(
+    "--epsilon_statistics", type=float, default=None
+)  # Target Epsilon for statistics sharing
+parser.add_argument(
+    "--noise_multiplier", type=float, default=None
 )  # Noise multiplier for DP-SGD
 parser.add_argument(
     "--clipping", type=float, default=1000000000
@@ -180,7 +186,7 @@ parser.add_argument(
 )  # percentage of samples removed from group_to_reduce on the unfair nodes
 parser.add_argument(
     "--opposite_ratio_unfairness", type=float, default=None, nargs="+"
-)  # percentage of samples removed from group_to_reduce on the unfair nodes when opposite_direction is true
+)  # percentage of samples removed from group_to_reduce one the unfair nodes when opposite_direction is true
 parser.add_argument(
     "--ratio_unfair_nodes", type=float, default=None
 )  # percentage of nodes that will be unbalanced (unfair nodes)
@@ -199,6 +205,8 @@ parser.add_argument(
 # --------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    # remove files in tmp/ray
+    os.system("rm -rf /tmp/ray/*")
     # parse input arguments
     args = parser.parse_args()
     dataset_name = args.dataset
@@ -307,6 +315,9 @@ if __name__ == "__main__":
         unbalanced_ratio=args.unbalanced_ratio,
         tabular_data=args.tabular_data,
         sampling_frequency=args.sampling_frequency,
+        fl_round=args.num_rounds,
+        epsilon_lambda=args.epsilon_lambda,
+        epsilon_statistics=args.epsilon_statistics,
     )
 
     # partition dataset (use a large `alpha` to make it IID;
@@ -406,6 +417,7 @@ if __name__ == "__main__":
             "epochs": args.epochs,  # number of local epochs
             "batch_size": args.batch_size,
             "dataset": args.dataset,
+            "server_round": server_round,
         }
         return config
 
@@ -534,14 +546,14 @@ if __name__ == "__main__":
                 sum_targets_no_noise[target] += metric[target]
         max_disparity_statistics_no_noise = max(
             [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
+                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
+                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
             ]
         )
 
@@ -557,6 +569,10 @@ if __name__ == "__main__":
             "Test Counter 0|1": sum_counters["0|1"],
             "Test Counter 1|0": sum_counters["1|0"],
             "Test Counter 1|1": sum_counters["1|1"],
+            "Test Counter 0|0 no noise": sum_counters_no_noise["0|0"],
+            "Test Counter 0|1 no noise": sum_counters_no_noise["0|1"],
+            "Test Counter 1|0 no noise": sum_counters_no_noise["1|0"],
+            "Test Counter 1|1 no noise": sum_counters_no_noise["1|1"],
             "Test Target 0": sum_targets["0"],
             "Test Target 1": sum_targets["1"],
             "Test F1": f1_test,
@@ -661,21 +677,21 @@ if __name__ == "__main__":
                 sum_targets_no_noise[target] += metric[target]
         max_disparity_statistics_no_noise = max(
             [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
+                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
+                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
             ]
         )
 
         custom_metric = accuracy_evaluation
         if args.target:
             distance = args.target - max_disparity_statistics
-            distance = 0 if distance >= 0 else distance
+            distance = 0 if distance >= 0 else float("-inf")  # distance
 
             # custom_metric will be -inf when the disparity is above the target
             # otherwise we will have a positive value that depends on the distance
@@ -694,8 +710,11 @@ if __name__ == "__main__":
             "Validation Counter 0|0": sum_counters["0|0"],
             "Validation Counter 0|1": sum_counters["0|1"],
             "Validation Counter 1|0": sum_counters["1|0"],
-            "Validation Counter 1|0": sum_counters["1|0"],
             "Validation Counter 1|1": sum_counters["1|1"],
+            "Validation Counter 0|0 no noise": sum_counters_no_noise["0|0"],
+            "Validation Counter 0|1 no noise": sum_counters_no_noise["0|1"],
+            "Validation Counter 1|0 no noise": sum_counters_no_noise["1|0"],
+            "Validation Counter 1|1 no noise": sum_counters_no_noise["1|1"],
             "Validation Target 0": sum_targets["0"],
             "Validation Target 1": sum_targets["1"],
             "Validation F1": f1_validation,
@@ -814,14 +833,14 @@ if __name__ == "__main__":
                 sum_targets_no_noise[target] += metric[target]
         max_disparity_statistics_no_noise = max(
             [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
+                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
+                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
+                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
+                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
+                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
             ]
         )
 
@@ -835,6 +854,10 @@ if __name__ == "__main__":
                     "Training Counter 0|1": sum_counters["0|1"],
                     "Training Counter 1|0": sum_counters["1|0"],
                     "Training Counter 1|1": sum_counters["1|1"],
+                    "Training Counter 0|0 no noise": sum_counters_no_noise["0|0"],
+                    "Training Counter 0|1 no noise": sum_counters_no_noise["0|1"],
+                    "Training Counter 1|0 no noise": sum_counters_no_noise["1|0"],
+                    "Training Counter 1|1 no noise": sum_counters_no_noise["1|1"],
                     "Training Target 0": sum_targets["0"],
                     "Training Target 1": sum_targets["1"],
                 }

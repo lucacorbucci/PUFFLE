@@ -8,18 +8,18 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
-from PIL import Image
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
 from opacus.optimizers import DPOptimizer
+from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
+from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
@@ -43,9 +43,9 @@ from fl_puf.Utils.train_parameters import TrainParameters
 class Utils:
     @staticmethod
     def setup_wandb(args, train_parameters):
-        if train_parameters.noise_multiplier > 0:
+        if train_parameters.noise_multiplier is not None and train_parameters.noise_multiplier > 0:
             noise_multiplier = train_parameters.noise_multiplier
-        elif args.noise_multiplier > 0:
+        elif args.noise_multiplier is not None and args.noise_multiplier > 0:
             noise_multiplier = args.noise_multiplier
         else:
             noise_multiplier = 0
