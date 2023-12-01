@@ -8,18 +8,18 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
+from PIL import Image
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
 from opacus.optimizers import DPOptimizer
-from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
-from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
+from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
@@ -42,8 +42,32 @@ from fl_puf.Utils.train_parameters import TrainParameters
 
 class Utils:
     @staticmethod
+    def get_noise(
+        mechanism_type: str,
+        epsilon: float = None,
+        sensitivity: float = None,
+        sigma: float = None,
+    ):
+        if mechanism_type == "laplace":
+            return np.random.laplace(loc=0, scale=sensitivity / epsilon, size=1)
+        elif mechanism_type == "geometric":
+            p = 1 - np.exp(-epsilon / sensitivity)
+            return (
+                np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1)
+            )[0]
+        elif mechanism_type == "gaussian":
+            return np.random.normal(loc=0, scale=sigma, size=1)[0]
+        else:
+            raise ValueError(
+                "The mechanism type must be either laplace, geometric or gaussian"
+            )
+
+    @staticmethod
     def setup_wandb(args, train_parameters):
-        if train_parameters.noise_multiplier is not None and train_parameters.noise_multiplier > 0:
+        if (
+            train_parameters.noise_multiplier is not None
+            and train_parameters.noise_multiplier > 0
+        ):
             noise_multiplier = train_parameters.noise_multiplier
         elif args.noise_multiplier is not None and args.noise_multiplier > 0:
             noise_multiplier = args.noise_multiplier
@@ -68,7 +92,7 @@ class Utils:
                 "private": args.private,
                 "epsilon": args.epsilon if args.private else None,
                 "gradnorm": args.clipping,
-                "delta": args.delta if args.private else 0,
+                # "delta": args.delta if args.private else 0,
                 "noise_multiplier": noise_multiplier,
                 "probability_estimation": args.probability_estimation,
                 "perfect_probability_estimation": args.perfect_probability_estimation,

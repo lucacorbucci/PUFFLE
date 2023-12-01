@@ -63,7 +63,7 @@ parser.add_argument("--perfect_probability_estimation", type=bool, default=False
 parser.add_argument(
     "--DPL", type=bool, default=False
 )  # If we want to use DPL Regularization
-parser.add_argument("--private", type=bool, default=False)  # If we want to use DP-SGD
+parser.add_argument("--private", type=bool, default=True)  # If we want to use DP-SGD
 parser.add_argument("--epsilon", type=float, default=None)  # Target Epsilon for DP-SGD
 parser.add_argument(
     "--epsilon_lambda", type=float, default=None
@@ -77,7 +77,7 @@ parser.add_argument(
 parser.add_argument(
     "--clipping", type=float, default=1000000000
 )  # Clipping value for DP-SGD
-parser.add_argument("--delta", type=float, default=None)
+# parser.add_argument("--delta", type=float, default=None)
 
 # ----------------------
 # Dataset/Distribution Settings
@@ -197,10 +197,6 @@ parser.add_argument(
     "--approach", type=str, default=""
 )  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
-parser.add_argument(
-    "--sampling_frequency", type=int, default=None
-)  # The number of times that each node will be sampled
-
 
 # --------------------------------------------------------------------------------------
 
@@ -288,6 +284,14 @@ if __name__ == "__main__":
         raise Exception(
             f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
         )
+
+    num_training_nodes = int(args.pool_size * args.training_nodes)
+    num_validation_nodes = int(args.pool_size * args.validation_nodes)
+    num_test_nodes = int(args.pool_size * args.test_nodes)
+
+    # how many times a node is selected for training during the entire FL process
+    sampling_frequency = args.pool_size // num_training_nodes
+
     train_parameters = TrainParameters(
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -295,7 +299,7 @@ if __name__ == "__main__":
         wandb_run=None,
         batch_size=args.batch_size,
         seed=args.seed,
-        epsilon=args.epsilon if args.private else None,
+        epsilon=args.epsilon,
         DPL_lambda=DPL_value,
         private=args.private,
         DPL=args.DPL,
@@ -314,7 +318,7 @@ if __name__ == "__main__":
         update_lambda=args.update_lambda,
         unbalanced_ratio=args.unbalanced_ratio,
         tabular_data=args.tabular_data,
-        sampling_frequency=args.sampling_frequency,
+        sampling_frequency=sampling_frequency,
         fl_round=args.num_rounds,
         epsilon_lambda=args.epsilon_lambda,
         epsilon_statistics=args.epsilon_statistics,
@@ -345,54 +349,6 @@ if __name__ == "__main__":
             if item.endswith(".pkl"):
                 os.remove(os.path.join(fed_dir, item))
 
-    # if args.epsilon:
-    #     # We need to understand the noise that we need to add based
-    #     # on the epsilon that we want to guarantee
-    #     max_noise = 0
-    #     for i in range(args.pool_size):
-    #         model_noise = ModelUtils.get_model(
-    #             dataset_name, device=train_parameters.device
-    #         )
-    #         # get the training dataset of one of the clients
-    #         train_loader_client_0 = Utils.get_dataloader(
-    #             fed_dir,
-    #             str(i),
-    #             batch_size=train_parameters.batch_size,
-    #             workers=0,
-    #             dataset=dataset_name,
-    #             partition="train",
-    #         )
-    #         privacy_engine = PrivacyEngine(accountant="rdp")
-    #         optimizer_noise = Utils.get_optimizer(
-    #             model_noise, train_parameters, args.lr
-    #         )
-    #         (
-    #             _,
-    #             private_optimizer,
-    #             _,
-    #         ) = privacy_engine.make_private_with_epsilon(
-    #             module=model_noise,
-    #             optimizer=optimizer_noise,
-    #             data_loader=train_loader_client_0,
-    #             epochs=args.sampling_frequency * args.epochs,
-    #             target_epsilon=train_parameters.epsilon,
-    #             target_delta=args.delta,
-    #             max_grad_norm=args.clipping,
-    #         )
-    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
-    #         print(
-    #             f"Node {i} - {args.sampling_frequency * args.epochs} -- {private_optimizer.noise_multiplier}"
-    #         )
-
-    #     train_parameters.noise_multiplier = max_noise
-    #     train_parameters.epsilon = None
-    #     print(
-    #         f">>>>> FINALE {args.sampling_frequency * args.epochs} -- {train_parameters.noise_multiplier}"
-    #     )
-    # else:
-    #     train_parameters.noise_multiplier = args.noise_multiplier
-    #     train_parameters.epsilon = None
-
     wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 
     def client_fn(cid: str):
@@ -403,7 +359,7 @@ if __name__ == "__main__":
             fed_dir_data=fed_dir,
             dataset_name=dataset_name,
             clipping=args.clipping,
-            delta=args.delta,
+            # delta=args.delta,
             lr=args.lr,
         )
 
@@ -429,6 +385,92 @@ if __name__ == "__main__":
             "dataset": args.dataset,
         }
         return config
+
+    def handle_counters(metrics, key):
+        combinations = ["1|0", "1|1"]
+        all_combinations = ["0|0", "0|1", "1|0", "1|1"]
+        missing_combinations = [("0|0", "1|0"), ("0|1", "1|1")]
+        targets = ["0", "1"]
+        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric[key]
+            for combination in combinations:
+                sum_counters[combination] += metric[combination]
+            for target in targets:
+                sum_targets[target] += metric[target]
+
+        for non_existing, existing in missing_combinations:
+            sum_counters[non_existing] = (
+                sum_targets[existing[-1]] - sum_counters[existing]
+                if sum_targets[existing[-1]] - sum_counters[existing] > 0
+                else 0
+            )
+        average_probabilities = {}
+        for combination in all_combinations:
+            average_probabilities[combination] = (
+                sum_counters[combination] / sum_targets[combination[2]]
+            )
+        max_disparity_statistics = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+        return (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        )
+
+    def handle_counters_error_ratio(metrics):
+        sum_counters = {
+            "fp_0|0": 0,
+            "fp_0|1": 0,
+            "fp_1|0": 0,
+            "fp_1|1": 0,
+            "fn_0|0": 0,
+            "fn_0|1": 0,
+            "fn_1|0": 0,
+            "fn_1|1": 0,
+        }
+        dataset_size = {"len_0|0": 0, "len_0|1": 0, "len_1|0": 0, "len_1|1": 0}
+        combinations = sum_counters.keys()
+        targets = dataset_size.keys()
+
+        for _, metric in metrics:
+            metric = metric["counters_error_rate"]
+            for combination in combinations:
+                sum_counters[combination] += metric[combination]
+            for target in targets:
+                dataset_size[target] += metric[target]
+
+        priv_unpriv = [
+            ("0|0", "0|1"),
+            ("1|0", "1|1"),
+            ("0|1", "0|0"),
+            ("1|1", "1|0"),
+        ]
+        ratios = []
+        for priv, unpriv in priv_unpriv:
+            error_rate_priv = (
+                sum_counters[f"fp_{priv}"] + sum_counters[f"fn_{priv}"]
+            ) / (dataset_size[f"len_{priv}"])
+            error_rate_unpriv = (
+                sum_counters[f"fp_{unpriv}"] + sum_counters[f"fn_{unpriv}"]
+            ) / (dataset_size[f"len_{unpriv}"])
+            error_ratio = error_rate_priv / error_rate_unpriv
+            ratios.append(error_ratio)
+
+        return max(ratios)
 
     def agg_metrics_test(metrics: list, server_round: int) -> dict:
         total_examples = sum([n_examples for n_examples, _ in metrics])
@@ -510,52 +552,14 @@ if __name__ == "__main__":
             if wandb_run:
                 wandb_run.log(agg_metrics)
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ],
-        )
-
-        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets_no_noise = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters_no_noise"]
-            for combination in combinations:
-                sum_counters_no_noise[combination] += metric[combination]
-            for target in targets:
-                sum_targets_no_noise[target] += metric[target]
-        max_disparity_statistics_no_noise = max(
-            [
-                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
-                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
-            ]
-        )
+        error_ratio = handle_counters_error_ratio(metrics)
 
         agg_metrics = {
             "Test Loss": loss_test,
@@ -563,16 +567,12 @@ if __name__ == "__main__":
             "Test Disparity with average": max_disparity_average,
             "Test Disparity with weighted average": max_disparity_weighted_average,
             "Test Disparity with statistics": max_disparity_statistics,
-            "Test Disparity with statistics no noise": max_disparity_statistics_no_noise,
+            "Test Error Ratio": error_ratio,
             "FL Round": server_round,
             "Test Counter 0|0": sum_counters["0|0"],
             "Test Counter 0|1": sum_counters["0|1"],
             "Test Counter 1|0": sum_counters["1|0"],
             "Test Counter 1|1": sum_counters["1|1"],
-            "Test Counter 0|0 no noise": sum_counters_no_noise["0|0"],
-            "Test Counter 0|1 no noise": sum_counters_no_noise["0|1"],
-            "Test Counter 1|0 no noise": sum_counters_no_noise["1|0"],
-            "Test Counter 1|1 no noise": sum_counters_no_noise["1|1"],
             "Test Target 0": sum_targets["0"],
             "Test Target 1": sum_targets["1"],
             "Test F1": f1_test,
@@ -641,52 +641,14 @@ if __name__ == "__main__":
             / total_examples
         )
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
-
-        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets_no_noise = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters_no_noise"]
-            for combination in combinations:
-                sum_counters_no_noise[combination] += metric[combination]
-            for target in targets:
-                sum_targets_no_noise[target] += metric[target]
-        max_disparity_statistics_no_noise = max(
-            [
-                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
-                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
-            ]
-        )
+        error_ratio = handle_counters_error_ratio(metrics)
 
         custom_metric = accuracy_evaluation
         if args.target:
@@ -704,17 +666,13 @@ if __name__ == "__main__":
             "Validation Disparity with average": max_disparity_average,
             "Validation Disparity with weighted average": max_disparity_weighted_average,
             "Validation Disparity with statistics": max_disparity_statistics,
-            "Validation Disparity with statistics no noise": max_disparity_statistics_no_noise,
+            "Validation Error Ratio": error_ratio,
             "Custom_metric": custom_metric,
             "FL Round": server_round,
             "Validation Counter 0|0": sum_counters["0|0"],
             "Validation Counter 0|1": sum_counters["0|1"],
             "Validation Counter 1|0": sum_counters["1|0"],
             "Validation Counter 1|1": sum_counters["1|1"],
-            "Validation Counter 0|0 no noise": sum_counters_no_noise["0|0"],
-            "Validation Counter 0|1 no noise": sum_counters_no_noise["0|1"],
-            "Validation Counter 1|0 no noise": sum_counters_no_noise["1|0"],
-            "Validation Counter 1|1 no noise": sum_counters_no_noise["1|1"],
             "Validation Target 0": sum_targets["0"],
             "Validation Target 1": sum_targets["1"],
             "Validation F1": f1_validation,
@@ -754,12 +712,6 @@ if __name__ == "__main__":
                 "Max Disparity Train Before Local Epoch"
             ]
 
-            # Load the lambda for the client
-            # fed_dir = Path(fed_dir)
-            # if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
-            #     with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
-            #         lambda_client = dill.load(file)
-
             DPL_lambda = node_metrics["DPL_lambda"]
 
             # Create the dictionary we want to log. For some metrics we want to log
@@ -778,25 +730,8 @@ if __name__ == "__main__":
                 wandb_run.log(
                     to_be_logged,
                 )
-
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
-
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-
-        average_probabilities = {}
-        for combination in combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
-            )
+            
+            print(f"Node {node_metrics['cid']} - Epsilon {node_metrics['epsilon']} - Delta {node_metrics['delta']}")
 
         # weighted average of the disparity of the different nodes
         max_disparity_weighted_average = (
@@ -809,40 +744,21 @@ if __name__ == "__main__":
             / total_examples
         )
 
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
 
-        sum_counters_no_noise = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets_no_noise = {"0": 0, "1": 0}
+        (
+            sum_counters_no_noise,
+            sum_targets_no_noise,
+            _,
+            max_disparity_statistics_no_noise,
+        ) = handle_counters(metrics, "counters_no_noise")
 
-        for _, metric in metrics:
-            metric = metric["counters_no_noise"]
-            for combination in combinations:
-                sum_counters_no_noise[combination] += metric[combination]
-            for target in targets:
-                sum_targets_no_noise[target] += metric[target]
-        max_disparity_statistics_no_noise = max(
-            [
-                sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["0|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["0|0"] / sum_targets_no_noise["0"],
-                sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"]
-                - sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"],
-                sum_counters_no_noise["1|1"] / sum_targets_no_noise["1"]
-                - sum_counters_no_noise["1|0"] / sum_targets_no_noise["0"],
-            ]
-        )
+        error_ratio = handle_counters_error_ratio(metrics)
 
         if wandb_run:
             wandb_run.log(
@@ -860,6 +776,7 @@ if __name__ == "__main__":
                     "Training Counter 1|1 no noise": sum_counters_no_noise["1|1"],
                     "Training Target 0": sum_targets["0"],
                     "Training Target 1": sum_targets["1"],
+                    "Train Error ratio": error_ratio,
                 }
             )
 
@@ -880,6 +797,7 @@ if __name__ == "__main__":
             "Train Epsilon": current_max_epsilon,
             "FL Round": server_round,
         }
+
 
         if wandb_run:
             wandb_run.log(
@@ -923,10 +841,6 @@ if __name__ == "__main__":
         "logging_level": logging.ERROR,
         "log_to_driver": True,
     }
-
-    num_training_nodes = int(args.pool_size * args.training_nodes)
-    num_validation_nodes = int(args.pool_size * args.validation_nodes)
-    num_test_nodes = int(args.pool_size * args.test_nodes)
 
     print(args.training_nodes, args.validation_nodes, args.test_nodes)
     print(num_training_nodes, num_validation_nodes, num_test_nodes)
