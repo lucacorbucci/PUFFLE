@@ -11,11 +11,12 @@ run_sweep_and_agent () {
   SWEEP_ID=$(awk '/wandb agent/{ match($0, /wandb agent (.+)/, arr); print arr[1]; }' temp_output.txt)
 
   # Remove the temporary output file
-  rm temp_output.txt
+#   rm temp_output.txt
   
   # Run the wandb agent command
-  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME"
+  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
 }
 
-# run_sweep_and_agent "config_fixed_lambda"
-run_sweep_and_agent "fixed_lambda"
+run_sweep_and_agent "baseline_private"
+run_sweep_and_agent "tunable_private"
+# run_sweep_and_agent "fixed_lambda"

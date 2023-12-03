@@ -33,7 +33,7 @@ command:
   - --dataset
   - income
   - --num_rounds
-  - 20
+  - 10
   - --num_client_cpus
   - 1
   - --num_client_gpus
@@ -52,8 +52,6 @@ command:
   - ../../../data/Tabular
   - --private 
   - True 
-  - --delta 
-  - 1e-4 
   - --seed 
   - 41 
   - --wandb 

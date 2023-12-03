@@ -16,9 +16,9 @@ from opacus.accountants.rdp import RDPAccountant
 from opacus.accountants.utils import get_noise_multiplier
 
 from DPL.ErrorRateRegularizationLoss import ErrorRateRegularizationLoss
+from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.learning import Learning
 from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 
@@ -163,6 +163,7 @@ class FlowerClient(fl.client.NumPyClient):
         if self.train_parameters.noise_multiplier is not None:
             print("noise multiplier is not none")
             noise = self.train_parameters.noise_multiplier
+            self.original_epsilon = 0
         else:
             if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
                 with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
@@ -357,6 +358,7 @@ class FlowerClient(fl.client.NumPyClient):
         else:
             noise_statistics = None
 
+        
         # convert rdp to (epsilon, delta)-DP
         final_epsilon = (
             self.original_epsilon

@@ -35,7 +35,7 @@ command:
   - --dataset
   - dutch
   - --num_rounds
-  - 40
+  - 39
   - --num_client_cpus
   - 1
   - --num_client_gpus

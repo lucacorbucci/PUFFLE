@@ -3,7 +3,6 @@ PROJECT_NAME="FL_PUF_Sweep" # swap out globally
 run_sweep_and_agent () {
   # Set the SWEEP_NAME variable
   SWEEP_NAME="$1"
-
   
   # Run the wandb sweep command and store the output in a temporary file
   poetry run wandb sweep --project "$PROJECT_NAME" --name "$SWEEP_NAME" "$SWEEP_NAME.yaml" >temp_output.txt 2>&1
@@ -15,11 +14,9 @@ run_sweep_and_agent () {
   rm temp_output.txt
   
   # Run the wandb agent command
-  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
+  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME"
 }
 
 run_sweep_and_agent "baseline_private"
-# run_sweep_and_agent "fixed"
-# run_sweep_and_agent "tunable"
-# run_sweep_and_agent "02_fixed"
-# run_sweep_and_agent "02_tunable"
+# run_sweep_and_agent "baseline"
+# run_sweep_and_agent "fixed_lambda"
