@@ -8,18 +8,18 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
-from PIL import Image
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
 from opacus.optimizers import DPOptimizer
+from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
+from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
@@ -27,6 +27,7 @@ from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
 )
+from fl_puf.FederatedDataset.PartitionTypes.representative import Representative
 from fl_puf.FederatedDataset.PartitionTypes.unbalanced_partition import (
     UnbalancedPartition,
 )
@@ -305,6 +306,11 @@ class Utils:
         alpha: float = 1,
         train_parameters: TrainParameters = None,
         partition: str = "train",
+        group_to_reduce=None,
+        group_to_increment=None,
+        number_of_samples_per_node=None,
+        ratio_unfair_nodes=None,
+        ratio_unfairness=None,
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -413,6 +419,22 @@ class Utils:
                 alpha=alpha,
                 percentage_unbalanced_nodes=train_parameters.percentage_unbalanced_nodes,
                 unbalanced_ratio=train_parameters.unbalanced_ratio,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        elif partition_type == "representative":
+            partitions_index_list, metadata = Representative.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                group_to_reduce=group_to_reduce,
+                group_to_increment=group_to_increment,
+                number_of_samples_per_node=number_of_samples_per_node,
+                ratio_unfair_nodes=ratio_unfair_nodes,
+                ratio_unfairness=ratio_unfairness,
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=partitions_index_list,
@@ -616,13 +638,16 @@ class Utils:
                 max_grad_norm=MAX_GRAD_NORM,
             )
         else:
-            print("Create private model with noise multiplier")
+            print(f"Create private model with noise multiplier {noise_multiplier}")
             private_model, optimizer, train_loader = privacy_engine.make_private(
                 module=model,
                 optimizer=original_optimizer,
                 data_loader=train_loader,
                 noise_multiplier=noise_multiplier,
                 max_grad_norm=MAX_GRAD_NORM,
+            )
+            print(
+                f"Created private model with noise {optimizer.noise_multiplier}"
             )
 
         return private_model, optimizer, train_loader, privacy_engine

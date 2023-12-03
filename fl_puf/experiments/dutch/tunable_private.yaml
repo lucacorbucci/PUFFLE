@@ -65,8 +65,6 @@ command:
   - True 
   - --private 
   - True 
-  - --delta 
-  - 1e-4 
   - --seed 
   - 41 
   - --wandb 
@@ -88,7 +86,7 @@ command:
   - --dataset_path 
   - ../../../data/Tabular/dutch/
   - --target 
-  - 0.1
+  - 0.05
   - --group_to_reduce
   - 0 
   - 1
@@ -108,3 +106,5 @@ command:
   - 1.0
   - --epsilon
   - 10
+  - --sampling_frequency
+  - 13
