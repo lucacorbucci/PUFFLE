@@ -1,4 +1,4 @@
-wandb: Creating sweep from: tunable_private.yaml
-wandb: Created sweep with ID: d5dr8sco
-wandb: View sweep at: https://wandb.ai/lucacorbucci/FL_PUF_Sweep/sweeps/d5dr8sco
-wandb: Run sweep agent with: wandb agent lucacorbucci/FL_PUF_Sweep/d5dr8sco
+wandb: Creating sweep from: baseline_private.yaml
+wandb: Created sweep with ID: 5hk8ry5m
+wandb: View sweep at: https://wandb.ai/lucacorbucci/FL_PUF_Sweep/sweeps/5hk8ry5m
+wandb: Run sweep agent with: wandb agent lucacorbucci/FL_PUF_Sweep/5hk8ry5m
