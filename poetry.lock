@@ -671,7 +671,7 @@ category = "main"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "dpl-0.1.0.post37-py3-none-any.whl", hash = "sha256:ec7f1519acb7c663f3ce81b49a7d24d0838e8a695bf2ce2bfbeda5af046c4784"},
+    {file = "dpl-0.1.0.post37-py3-none-any.whl", hash = "sha256:4f5c3bc0623a58e69b8e7512242e26a060f455b5a284973f8b27a257bf07b542"},
 ]
 
 [package.dependencies]
@@ -3850,4 +3850,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "c7dc2b1d003f511e4ed00c1d5758d7b485a4a0974114d4ae19027ae82d81a214"
+content-hash = "e532da6af85928176cfbface981620062f701f21a2a82e023737952e24c3b02e"
