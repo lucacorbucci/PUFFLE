@@ -665,13 +665,13 @@ six = ">=1.4.0"
 
 [[package]]
 name = "dpl"
-version = "0.1.0.post32"
+version = "0.1.0.post37"
 description = ""
 category = "main"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "dpl-0.1.0.post32-py3-none-any.whl", hash = "sha256:e57b69cdcee59c5a5b728b6ce68e1d0ac57c5b7fd34f985f413df461440d5631"},
+    {file = "dpl-0.1.0.post37-py3-none-any.whl", hash = "sha256:4f5c3bc0623a58e69b8e7512242e26a060f455b5a284973f8b27a257bf07b542"},
 ]
 
 [package.dependencies]
@@ -691,7 +691,7 @@ wandb = ">=0.14.0,<0.15.0"
 
 [package.source]
 type = "file"
-url = "DPL/dist/dpl-0.1.0.post32-py3-none-any.whl"
+url = "DPL/dist/dpl-0.1.0.post37-py3-none-any.whl"
 
 [[package]]
 name = "exceptiongroup"
@@ -3796,8 +3796,8 @@ GitPython = ">=1.0.0,<3.1.29 || >3.1.29"
 pathtools = "*"
 protobuf = [
     {version = ">=3.12.0,<4.21.0 || >4.21.0,<5", markers = "python_version < \"3.9\" and sys_platform == \"linux\""},
-    {version = ">=3.19.0,<4.21.0 || >4.21.0,<5", markers = "python_version > \"3.9\" or sys_platform != \"linux\""},
     {version = ">=3.15.0,<4.21.0 || >4.21.0,<5", markers = "python_version == \"3.9\" and sys_platform == \"linux\""},
+    {version = ">=3.19.0,<4.21.0 || >4.21.0,<5", markers = "python_version > \"3.9\" or sys_platform != \"linux\""},
 ]
 psutil = ">=5.0.0"
 PyYAML = "*"
@@ -3865,4 +3865,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.8"
-content-hash = "c7be2cc1719ee0f880250e38d9d8a575ca228c3f34b98f41deeaf6401d8c3ef9"
+content-hash = "e532da6af85928176cfbface981620062f701f21a2a82e023737952e24c3b02e"

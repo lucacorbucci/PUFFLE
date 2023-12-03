@@ -18,4 +18,5 @@ run_sweep_and_agent () {
 }
 
 # run_sweep_and_agent "config_fixed_lambda"
-run_sweep_and_agent "fixed_lambda"
+# run_sweep_and_agent "baseline"
+run_sweep_and_agent "tunable_private"
