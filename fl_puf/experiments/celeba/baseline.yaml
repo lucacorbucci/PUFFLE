@@ -21,9 +21,7 @@ parameters:
   node_shuffle_seed:
     min: 1
     max: 1000000000
-  clipping:
-    min: 1.0
-    max: 20.0
+
 
 command:
   - ${env}
@@ -89,5 +87,7 @@ command:
   - --ratio_unfairness 
   - 0.9 
   - 0.9
-  - --epsilon
-  - 1
+  - --noise_multiplier
+  - 0
+  - --clipping 
+  - 1000000000000

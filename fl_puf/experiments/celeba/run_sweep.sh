@@ -17,6 +17,7 @@ run_sweep_and_agent () {
   poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
 }
 
+# run_sweep_and_agent "baseline"
 run_sweep_and_agent "baseline_private"
 # run_sweep_and_agent "tunable_private"
 # run_sweep_and_agent "fixed_lambda"

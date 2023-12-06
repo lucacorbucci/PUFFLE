@@ -16,9 +16,9 @@ from opacus.accountants.rdp import RDPAccountant
 from opacus.accountants.utils import get_noise_multiplier
 
 from DPL.ErrorRateRegularizationLoss import ErrorRateRegularizationLoss
-from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
+from DPL.learning import Learning
 from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 
@@ -57,6 +57,7 @@ class FlowerClient(fl.client.NumPyClient):
                 model=self.model_regularization
             )
 
+
     def get_optimizer(self, model):
         if self.train_parameters.optimizer == "adam":
             return torch.optim.Adam(
@@ -82,6 +83,10 @@ class FlowerClient(fl.client.NumPyClient):
     def fit(self, parameters, config, average_probabilities=None):
         Utils.set_params(self.net, parameters)
 
+        with open(f"{self.fed_dir}/counter_sampling.pkl", "rb") as f:
+            counter_sampling = dill.load(f)
+            self.sampling_frequency = counter_sampling[str(self.cid)]
+
         # Load data for this client and get trainloader
         num_workers = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
         train_loader = Utils.get_dataloader(
@@ -101,7 +106,7 @@ class FlowerClient(fl.client.NumPyClient):
             sampling_ratio = 1 / len(train_loader)
 
             iterations = (
-                self.train_parameters.sampling_frequency
+                self.sampling_frequency
                 * self.train_parameters.epochs
                 * len(train_loader)
             )
@@ -179,6 +184,7 @@ class FlowerClient(fl.client.NumPyClient):
                 self.original_epsilon = self.train_parameters.epsilon
                 self.train_parameters.epsilon = None
 
+        print("NOISE: ", self.train_parameters.noise_multiplier)
         (
             private_net,
             private_optimizer,
@@ -320,18 +326,18 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
         )
 
-        (
-            _,
-            counters_error_rate,
-        ) = ErrorRateRegularizationLoss.compute_probabilities(
-            predictions=predictions,
-            sensitive_attribute_list=sensitive_attributes,
-            device=self.train_parameters.device,
-            possible_sensitive_attributes=possible_sensitive_attributes,
-            possible_targets=possible_targets,
-            train_parameters=self.train_parameters,
-            real_targets=y_true,
-        )
+        # (
+        #     _,
+        #     counters_error_rate,
+        # ) = ErrorRateRegularizationLoss.compute_probabilities(
+        #     predictions=predictions,
+        #     sensitive_attribute_list=sensitive_attributes,
+        #     device=self.train_parameters.device,
+        #     possible_sensitive_attributes=possible_sensitive_attributes,
+        #     possible_targets=possible_targets,
+        #     train_parameters=self.train_parameters,
+        #     real_targets=y_true,
+        # )
 
         counters_no_noise = copy.deepcopy(counters)
 
@@ -340,7 +346,7 @@ class FlowerClient(fl.client.NumPyClient):
         if self.train_parameters.epsilon_statistics is not None:
             sampling_ratio = 1
             iterations = (
-                self.train_parameters.sampling_frequency * 2
+                self.sampling_frequency * 2
             )  # we multiply by 2 because every time we send two values
             noise_statistics = get_noise_multiplier(
                 target_epsilon=self.train_parameters.epsilon_statistics,
@@ -401,7 +407,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "Disparity Train": all_metrics[-1]["Max Disparity Train"],
                 "Lambda": self.train_parameters.DPL_lambda,
                 "counters": counters,
-                "counters_error_rate": counters_error_rate,
+                # "counters_error_rate": counters_error_rate,
                 "counters_no_noise": counters_no_noise,
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
@@ -482,18 +488,18 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
         )
 
-        (
-            _,
-            counters_error_rate,
-        ) = ErrorRateRegularizationLoss.compute_probabilities(
-            predictions=predictions,
-            sensitive_attribute_list=sensitive_attributes,
-            device=self.train_parameters.device,
-            possible_sensitive_attributes=possible_sensitive_attributes,
-            possible_targets=possible_targets,
-            train_parameters=self.train_parameters,
-            real_targets=y_true,
-        )
+        # (
+        #     _,
+        #     counters_error_rate,
+        # ) = ErrorRateRegularizationLoss.compute_probabilities(
+        #     predictions=predictions,
+        #     sensitive_attribute_list=sensitive_attributes,
+        #     device=self.train_parameters.device,
+        #     possible_sensitive_attributes=possible_sensitive_attributes,
+        #     possible_targets=possible_targets,
+        #     train_parameters=self.train_parameters,
+        #     real_targets=y_true,
+        # )
 
         self.net.to("cpu")
         gc.collect()
@@ -506,7 +512,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
-                "counters_error_rate": counters_error_rate,
+                # "counters_error_rate": counters_error_rate,
                 "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
@@ -518,7 +524,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
-                "counters_error_rate": counters_error_rate,
+                # "counters_error_rate": counters_error_rate,
                 "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
@@ -590,7 +596,7 @@ class FlowerClient(fl.client.NumPyClient):
             module=model_noise,
             optimizer=optimizer_noise,
             data_loader=dataset,
-            epochs=self.train_parameters.sampling_frequency
+            epochs=self.sampling_frequency
             * self.train_parameters.epochs,
             target_epsilon=self.train_parameters.epsilon
             if target_epsilon is None

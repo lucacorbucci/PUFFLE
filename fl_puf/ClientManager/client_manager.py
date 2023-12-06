@@ -40,6 +40,11 @@ class SimpleClientManager(ClientManager):
         num_validation_nodes: int,
         num_test_nodes: int,
         fed_dir: str,
+        fraction_fit: float = 0.1,
+        fraction_evaluate: float = 0.1,
+        fraction_test: int = 1,
+        ratio_unfair_nodes: float = 0.0,
+        fl_rounds: int = 0,
     ) -> None:
         """Creates a SimpleClientManager.
 
@@ -79,6 +84,14 @@ class SimpleClientManager(ClientManager):
         self.num_test_nodes = num_test_nodes
         self.node_shuffle_seed = node_shuffle_seed
         self.fed_dir = fed_dir
+        self.ratio_unfair_nodes = ratio_unfair_nodes
+        self.fl_rounds = fl_rounds
+        self.fraction_train = fraction_fit
+        self.fraction_validation = fraction_evaluate
+        self.fraction_test = fraction_test
+        self.num_round_train = 0
+        self.num_round_validation = 0
+        self.num_round_test = 0
 
     def __len__(self) -> int:
         return len(self.clients)
@@ -121,6 +134,32 @@ class SimpleClientManager(ClientManager):
                 lambda: len(self.clients) >= num_clients, timeout=timeout
             )
 
+    def pre_sample_clients(self, fraction, ratio_unfair, unfair_group, fair_group, client_list):
+        sampled_nodes = {}
+        for fl_round in range(self.fl_rounds):
+            # number of nodes we have to select in each round
+            nodes_to_sample = int(fraction * len(client_list))
+            num_fair_nodes_sampled = int(nodes_to_sample*(1-ratio_unfair))
+            num_unfair_nodes_sampled = int(nodes_to_sample*ratio_unfair)
+            start = fl_round*num_fair_nodes_sampled % len(fair_group)
+            end = (fl_round*num_fair_nodes_sampled + num_fair_nodes_sampled) % len(fair_group)
+
+            if start < end:
+                fair_nodes_sampled = fair_group[start:end]
+            else:
+                fair_nodes_sampled = fair_group[start:] + fair_group[:end]
+
+            start = fl_round*num_unfair_nodes_sampled % len(unfair_group)
+            end = (fl_round*num_unfair_nodes_sampled + num_unfair_nodes_sampled) % len(unfair_group)
+
+            if start < end:
+                unfair_nodes_sampled = unfair_group[start:end]
+            else:
+                unfair_nodes_sampled = unfair_group[start:] + unfair_group[:end]
+
+            sampled_nodes[fl_round] = fair_nodes_sampled + unfair_nodes_sampled
+        return sampled_nodes
+
     def register(self, client: ClientProxy) -> bool:
         """Register Flower ClientProxy instance.
 
@@ -144,38 +183,84 @@ class SimpleClientManager(ClientManager):
 
         if self.num_clients == len(self.clients_list) and self.sort_clients:
             random.seed(self.seed)
-            self.clients_list = sorted(self.clients_list)
-            random.shuffle(self.clients_list)
+            self.clients_list = [str(client_id) for client_id in sorted([int(client_id) for client_id in self.clients_list])]
+            print("Clients list: ", self.clients_list)
 
-            # We want to be sure that the nodes in the test set are always the same
-            # so we shuffle the list of nodes and then we split the list into two parts
-            # one part is the one of the nodes that will be used for training and
-            # validation and the other one is the one of the nodes that
-            #  will be used for testing.
-            for node in self.clients_list[: self.num_test_nodes]:
-                self.test_clients_list.append(node)
-            self.remaining_nodes = self.clients_list[self.num_test_nodes :]
+            # I want to be sure that in the test set we have always the same nodes
+            # and that the distribution of the disparities of the nodes is the same
+            # as the ones in the training set. 
+
+            fair_group_size = int(len(self.clients_list)*(1-self.ratio_unfair_nodes))
+            unfair_group = self.clients_list[fair_group_size:]
+            fair_group = self.clients_list[:fair_group_size]
+
+
+            fair_test_nodes = int(self.num_test_nodes * (1-self.ratio_unfair_nodes))
+            unfair_test_nodes = int(self.num_test_nodes * self.ratio_unfair_nodes)
+
+            self.fair_test_clients = fair_group[:fair_test_nodes]
+            self.unfair_test_clients = unfair_group[:unfair_test_nodes]
+            self.test_clients_list  = fair_group[:fair_test_nodes] + unfair_group[:unfair_test_nodes]
+
+            sampled_nodes_test = self.pre_sample_clients(fraction=self.fraction_test, ratio_unfair=self.ratio_unfair_nodes, unfair_group=self.unfair_test_clients, fair_group=self.fair_test_clients, client_list=self.test_clients_list)
+
+            with open(f"{self.fed_dir}/test_nodes.pkl", "wb") as f:
+                dill.dump(sampled_nodes_test, f)
+
+            self.remaining_fair = fair_group[fair_test_nodes:]
+            self.remaining_unfair = unfair_group[unfair_test_nodes:]
+
             print("Nodes in the test set: ", self.test_clients_list)
+            print("Fair Test Nodes: ", len(self.fair_test_clients))
+            print("Unfair Test Nodes: ", len(self.unfair_test_clients))
 
-            # Since we want to split the clients into training, validation and test
-            # set and we want to be sure that the nodes are selected the same
-            # amount of times during the training, we split the list of nodes
-            # into three parts. Then when we have to select the nodes, we make sure
-            # that the nodes from the different sets are selected in a round robin
-            # fashion. It is not the most elegant approach but given our requirements
-            # it is probably the best one (and maybe the simplest and fastest way).
-
-            # We shuffle the list of nodes and then we split the list into two parts
             random.seed(self.node_shuffle_seed)
-            random.shuffle(self.remaining_nodes)
+            random.shuffle(self.remaining_fair)
+            random.shuffle(self.remaining_unfair)
 
-            for node in self.remaining_nodes[: self.num_training_nodes]:
-                self.training_clients_list.append(node)
+            fair_train_nodes = int(self.num_training_nodes * (1-self.ratio_unfair_nodes))
+            unfair_train_nodes = int(self.num_training_nodes * self.ratio_unfair_nodes)
+            self.fair_training_clients = self.remaining_fair[:fair_train_nodes]
+            self.unfair_training_clients = self.remaining_unfair[:unfair_train_nodes]
+            self.training_clients_list = self.remaining_fair[:fair_train_nodes] + self.remaining_unfair[:unfair_train_nodes]
+
+            sampled_nodes_train = self.pre_sample_clients(fraction=self.fraction_train, ratio_unfair=self.ratio_unfair_nodes, unfair_group=self.unfair_training_clients, fair_group=self.fair_training_clients, client_list=self.training_clients_list)
+            with open(f"{self.fed_dir}/train_nodes.pkl", "wb") as f:
+                dill.dump(sampled_nodes_train, f)
+
+            counter_sampling = {}
+            for sample_list in sampled_nodes_train.values():
+                for node in sample_list:
+                    if node not in counter_sampling:
+                        counter_sampling[str(node)] = 0
+                    counter_sampling[str(node)] += 1
+
+            with open(f"{self.fed_dir}/counter_sampling.pkl", "wb") as f:
+                dill.dump(counter_sampling, f)
+
+
+            print(sampled_nodes_train)
+
             print("Nodes in the training set: ", self.training_clients_list)
-            for node in self.remaining_nodes[self.num_training_nodes :]:
-                self.validation_clients_list.append(node)
-            print("Nodes in the validation set: ", self.validation_clients_list)
+            print("Fair Training Nodes: ", len(self.fair_training_clients))
+            print("Unfair Training Nodes: ", len(self.unfair_training_clients))
+
+            self.fair_validation_clients = self.remaining_fair[fair_train_nodes:]
+            self.unfair_validation_clients = self.remaining_unfair[unfair_train_nodes:]
+            self.validation_clients_list = self.fair_validation_clients + self.unfair_validation_clients
+            # I want to be sure that in self.validation_clients_list we have an alternation of
+            # fair and unfair nodes
+
+            sampled_nodes_validation = self.pre_sample_clients(fraction=self.fraction_validation, ratio_unfair=self.ratio_unfair_nodes, unfair_group=self.unfair_validation_clients, fair_group=self.fair_validation_clients, client_list=self.validation_clients_list)
+            with open(f"{self.fed_dir}/validation_nodes.pkl", "wb") as f:
+                dill.dump(sampled_nodes_validation, f)
+
             random.seed(self.seed)
+
+            print("Nodes in the validation set: ", self.validation_clients_list)
+            print("Fair Validation Nodes: ", len(self.fair_validation_clients))
+            print("Unfair Validation Nodes: ", len(self.unfair_validation_clients))
+            print("Total number of nodes: ", len(self.test_clients_list)+len(self.training_clients_list)+len(self.validation_clients_list))
 
         with self._cv:
             self._cv.notify_all()
@@ -217,101 +302,35 @@ class SimpleClientManager(ClientManager):
         # Sample clients which meet the criterion
 
         if phase == "training":
-            sampled_clients = self.sample_clients(
-                sampling_list=self.training_clients_list,
-                current_index=self.current_index_training,
-                num_clients=num_clients,
-                criterion=criterion,
-            )
-            self.current_index_training += num_clients
+            with open(f"{self.fed_dir}/train_nodes.pkl", "rb") as f:
+                train_nodes = dill.load(f)
 
-            if os.path.exists(f"{self.fed_dir}/clients_last_round.pkl"):
-                os.remove(f"{self.fed_dir}/clients_last_round.pkl")
-
-            with open(f"{self.fed_dir}/clients_last_round.pkl", "wb") as f:
-                dill.dump([client.cid for client in sampled_clients], f)
+            print("SAMPLING")
+            sampled_clients = [self.clients[str(node)] for node in train_nodes[self.num_round_train]]
+            self.num_round_train += 1
 
             print(
                 "===>>>> Sampled for training: ",
                 [client.cid for client in sampled_clients],
             )
         elif phase == "validation":
-            sampled_clients = self.sample_clients(
-                sampling_list=self.validation_clients_list,
-                current_index=self.current_index_validation,
-                num_clients=num_clients,
-                criterion=criterion,
-            )
-            self.current_index_validation += num_clients
+            with open(f"{self.fed_dir}/validation_nodes.pkl", "rb") as f:
+                validation_nodes = dill.load(f)
+
+            sampled_clients = [self.clients[str(node)] for node in validation_nodes[self.num_round_validation]]
+            self.num_round_validation += 1
             print(
                 "===>>>> Sampled for validation: ",
                 [client.cid for client in sampled_clients],
             )
         else:
-            sampled_clients = self.sample_clients(
-                sampling_list=self.test_clients_list,
-                current_index=self.current_index_test,
-                num_clients=num_clients,
-                criterion=criterion,
-            )
-            self.current_index_test += num_clients
+            with open(f"{self.fed_dir}/test_nodes.pkl", "rb") as f:
+                test_nodes = dill.load(f)
+
+            sampled_clients = [self.clients[str(node)] for node in test_nodes[self.num_round_test]]
+            self.num_round_test += 1
+
             print(
                 "===>>>> Sampled for test: ", [client.cid for client in sampled_clients]
             )
         return sampled_clients
-
-    def sample_clients(
-        self,
-        sampling_list: List[str],
-        current_index: int,
-        num_clients: int,
-        criterion: Optional[Criterion] = None,
-    ) -> List[ClientProxy]:
-        """Sample a number of Flower ClientProxy instances considering the
-        group of nodes to sample from.
-
-        Parameters
-        ----------
-        sampling_list : list[str]
-            The list of nodes to sample from.
-        current_index : int
-            The current index of the node to sample.
-        num_clients : int
-            The number of nodes to sample.
-        criterion : Criterion
-            The criterion to use for sampling.
-
-        Returns
-        -------
-        sampled_clients : list[ClientProxy]
-            The list of sampled nodes.
-        """
-        available_cids = sampling_list
-        if criterion is not None:
-            available_cids = [
-                cid for cid in available_cids if criterion.select(self.clients[cid])
-            ]
-
-        if num_clients > len(available_cids):
-            log(
-                INFO,
-                "Sampling failed: number of available clients"
-                " (%s) is less than number of requested clients (%s).",
-                len(available_cids),
-                num_clients,
-            )
-            return []
-
-        # If we are training, we want to sample the nodes
-        # from the training set of nodes.
-        # We also want to be sure that we sample the clients
-        # the same amount of times during the training.
-        start = current_index % len(available_cids)
-        end = (current_index + num_clients) % len(available_cids)
-
-        if end > start:
-            sampled_cids = available_cids[start:end]
-        else:
-            sampled_cids = available_cids[start:] + available_cids[:end]
-
-        return [self.clients[cid] for cid in sampled_cids]
