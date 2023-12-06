@@ -19,7 +19,8 @@ run_sweep_and_agent () {
 }
 
 # run_sweep_and_agent "baseline"
-run_sweep_and_agent "fixed_private"
-run_sweep_and_agent "tunable_private"
+run_sweep_and_agent "baseline_private"
+# run_sweep_and_agent "fixed_private"
+# run_sweep_and_agent "tunable_private"
 # run_sweep_and_agent "02_fixed"
 # run_sweep_and_agent "02_tunable"

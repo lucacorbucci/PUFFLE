@@ -88,7 +88,7 @@ command:
   - --update_lambda 
   - True
   - --target 
-  - 0.1
+  - 0.05
   - --epsilon_lambda 
   - 1.0
   - --epsilon
