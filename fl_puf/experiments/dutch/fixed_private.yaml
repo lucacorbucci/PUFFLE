@@ -5,7 +5,7 @@ metric:
   goal: maximize
 early_terminate:
   type: hyperband
-  min_iter: 5
+  min_iter: 3
 parameters:
   epochs:
     min: 1
@@ -26,7 +26,7 @@ parameters:
     max: 0.9
   clipping:
     min: 1.0
-    max: 10.0
+    max: 20.0
 
 command:
   - ${env}
@@ -95,6 +95,6 @@ command:
   - --approach
   - representative
   - --epsilon
-  - 6
+  - 1.0
   - --epsilon_statistics
   - 1.0

@@ -89,3 +89,5 @@ command:
   - representative
   - --epsilon
   - 1.0
+  - --epsilon_statistics
+  - 1.0
