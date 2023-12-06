@@ -1,4 +1,13 @@
-wandb: Creating sweep from: tunable_private.yaml
-wandb: Created sweep with ID: hhxnriea
-wandb: View sweep at: https://wandb.ai/lucacorbucci/FL_PUF_Sweep/sweeps/hhxnriea
-wandb: Run sweep agent with: wandb agent lucacorbucci/FL_PUF_Sweep/hhxnriea
+Traceback (most recent call last):
+  File "/home/lcorbucci/fl_privacy_utility_fairness/.venv/bin/wandb", line 5, in <module>
+    from wandb.cli.cli import cli
+  File "/home/lcorbucci/fl_privacy_utility_fairness/.venv/lib/python3.8/site-packages/wandb/__init__.py", line 78, in <module>
+    from wandb.wandb_agent import agent
+  File "/home/lcorbucci/fl_privacy_utility_fairness/.venv/lib/python3.8/site-packages/wandb/wandb_agent.py", line 20, in <module>
+    from wandb.agents.pyagent import pyagent
+  File "<frozen importlib._bootstrap>", line 991, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 975, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 657, in _load_unlocked
+  File "<frozen importlib._bootstrap>", line 556, in module_from_spec
+  File "<frozen importlib._bootstrap_external>", line 839, in create_module
+KeyboardInterrupt

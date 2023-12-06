@@ -11,7 +11,7 @@ parameters:
     min: 1
     max: 5
   batch_size:
-    min: 128
+    min: 32
     max: 512
   lr:
     min: 0.0001
@@ -23,7 +23,7 @@ parameters:
     max: 1000000000
   clipping:
     min: 1.0
-    max: 10.0
+    max: 20.0
 
 command:
   - ${env}
@@ -88,6 +88,4 @@ command:
   - --approach
   - representative
   - --epsilon
-  - 1.0
-  - --epsilon_statistics
   - 1.0

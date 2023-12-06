@@ -9,12 +9,12 @@ import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
-from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
-from torch import nn
 from Utils.train_parameters import TrainParameters
+from flwr.common.typing import Scalar
+from opacus import PrivacyEngine
+from torch import nn
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -865,6 +865,11 @@ if __name__ == "__main__":
         num_test_nodes=num_test_nodes,
         node_shuffle_seed=args.node_shuffle_seed,
         fed_dir=fed_dir,
+        ratio_unfair_nodes=args.ratio_unfair_nodes,
+        fl_rounds=args.num_rounds,
+        fraction_fit=args.sampled_clients,
+        fraction_evaluate=args.sampled_clients_validation,
+        fraction_test=args.sampled_clients_test,
     )
     server = Server(client_manager=client_manager, strategy=strategy)
 

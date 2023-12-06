@@ -86,7 +86,7 @@ command:
   - --dataset_path 
   - ../../../data/Tabular/dutch/
   - --target 
-  - 0.05
+  - 0.1
   - --group_to_reduce
   - 0 
   - 1
