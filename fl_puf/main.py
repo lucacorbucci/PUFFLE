@@ -9,12 +9,12 @@ import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
-from Server.server import Server
-from Strategy.fed_avg import FedAvg
-from Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
+from Server.server import Server
+from Strategy.fed_avg import FedAvg
 from torch import nn
+from Utils.train_parameters import TrainParameters
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     num_test_nodes = int(args.pool_size * args.test_nodes)
 
     # how many times a node is selected for training during the entire FL process
-    sampling_frequency = args.pool_size // num_training_nodes
+    # sampling_frequency = args.pool_size // num_training_nodes
     print(f"Private model with {args.epsilon} - {args.noise_multiplier} - {args.clipping}")
 
     train_parameters = TrainParameters(
@@ -319,7 +319,7 @@ if __name__ == "__main__":
         update_lambda=args.update_lambda,
         unbalanced_ratio=args.unbalanced_ratio,
         tabular_data=args.tabular_data,
-        sampling_frequency=sampling_frequency,
+        # sampling_frequency=sampling_frequency,
         fl_round=args.num_rounds,
         epsilon_lambda=args.epsilon_lambda,
         epsilon_statistics=args.epsilon_statistics,

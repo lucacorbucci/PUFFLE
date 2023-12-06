@@ -106,5 +106,3 @@ command:
   - 1.0
   - --epsilon
   - 10
-  - --sampling_frequency
-  - 13
