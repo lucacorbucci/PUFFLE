@@ -3,18 +3,20 @@ import logging
 import os
 import random
 import warnings
+from logging import DEBUG, INFO
 from typing import Dict
 
 import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
-from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
-from torch import nn
 from Utils.train_parameters import TrainParameters
+from flwr.common.logger import log
+from flwr.common.typing import Scalar
+from opacus import PrivacyEngine
+from torch import nn
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -257,7 +259,7 @@ if __name__ == "__main__":
         train_set, test_set = DatasetUtils.download_dataset(
             dataset_name,
             train_csv=args.train_csv,
-            debug=args.debug,
+            debug=False,
             base_path=args.dataset_path,
         )
         train_path = Utils.prepare_dataset_for_FL(
@@ -289,9 +291,6 @@ if __name__ == "__main__":
     num_validation_nodes = int(args.pool_size * args.validation_nodes)
     num_test_nodes = int(args.pool_size * args.test_nodes)
 
-    # how many times a node is selected for training during the entire FL process
-    # sampling_frequency = args.pool_size // num_training_nodes
-    print(f"Private model with {args.epsilon} - {args.noise_multiplier} - {args.clipping}")
 
     train_parameters = TrainParameters(
         epochs=args.epochs,
@@ -348,7 +347,6 @@ if __name__ == "__main__":
             ratio_unfairness=tuple(args.ratio_unfairness),
         )
 
-        print(fed_dir)
         test = os.listdir(fed_dir)
 
         for item in test:
@@ -737,7 +735,6 @@ if __name__ == "__main__":
                     to_be_logged,
                 )
             
-            print(f"Node {node_metrics['cid']} - Epsilon {node_metrics['epsilon']} - Delta {node_metrics['delta']}")
 
         # weighted average of the disparity of the different nodes
         max_disparity_weighted_average = (
@@ -786,9 +783,7 @@ if __name__ == "__main__":
                 }
             )
 
-        print(
-            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}"
-        )
+     
         current_max_epsilon = max(current_max_epsilon, *epsilon_list)
         agg_metrics = {
             "Train Loss": sum(losses) / total_examples,
@@ -812,9 +807,7 @@ if __name__ == "__main__":
 
         return agg_metrics
 
-    print(
-        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
-    )
+    
     strategy = FedAvg(
         fraction_fit=args.sampled_clients,
         fraction_evaluate=args.sampled_clients_validation,
@@ -847,10 +840,6 @@ if __name__ == "__main__":
         "logging_level": logging.ERROR,
         "log_to_driver": True,
     }
-
-    print(args.training_nodes, args.validation_nodes, args.test_nodes)
-    print(num_training_nodes, num_validation_nodes, num_test_nodes)
-
     if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
         raise Exception(
             "The sum of training, validation and test nodes must be equal to the pool size"

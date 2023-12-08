@@ -16,9 +16,9 @@ from opacus.accountants.rdp import RDPAccountant
 from opacus.accountants.utils import get_noise_multiplier
 
 from DPL.ErrorRateRegularizationLoss import ErrorRateRegularizationLoss
+from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.learning import Learning
 from fl_puf.Utils.train_parameters import TrainParameters
 from fl_puf.Utils.utils import Utils
 
