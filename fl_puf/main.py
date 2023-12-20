@@ -10,14 +10,14 @@ import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
+from flwr.common.logger import log
+from flwr.common.typing import Scalar
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from Strategy.weighted_fed_avg import WeightedFedAvg
 from Strategy.weighted_fed_avg_Lambda import WeightedFedAvgLambda
-from Utils.train_parameters import TrainParameters
-from flwr.common.logger import log
-from flwr.common.typing import Scalar
 from torch import nn
+from Utils.train_parameters import TrainParameters
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -203,6 +203,9 @@ parser.add_argument(
     "--strategy", type=str, default="fedavg"
 )  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
+parser.add_argument(
+    "--one_group_nodes", type=bool, default=False
+)  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
 # --------------------------------------------------------------------------------------
 
@@ -258,7 +261,7 @@ if __name__ == "__main__":
             opposite_ratio_unfairness=tuple(args.opposite_ratio_unfairness)
             if args.opposite_ratio_unfairness
             else None,
-            ratio_one_group_nodes=1.0,
+            one_group_nodes=args.one_group_nodes,
         )
     else:
         # If we are not using a tabular dataset we have a different way to load and
@@ -347,6 +350,7 @@ if __name__ == "__main__":
             number_of_samples_per_node=args.number_of_samples_per_node,
             ratio_unfair_nodes=args.ratio_unfair_nodes,
             ratio_unfairness=tuple(args.ratio_unfairness),
+            one_group_nodes=args.one_group_nodes,
         )
         path_to_remove = os.listdir(fed_dir)
         for item in path_to_remove:

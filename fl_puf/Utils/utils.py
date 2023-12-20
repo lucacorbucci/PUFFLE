@@ -311,6 +311,7 @@ class Utils:
         number_of_samples_per_node=None,
         ratio_unfair_nodes=None,
         ratio_unfairness=None,
+        one_group_nodes: bool = False,
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -435,6 +436,7 @@ class Utils:
                 number_of_samples_per_node=number_of_samples_per_node,
                 ratio_unfair_nodes=ratio_unfair_nodes,
                 ratio_unfairness=ratio_unfairness,
+                one_group_nodes=one_group_nodes,
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=partitions_index_list,

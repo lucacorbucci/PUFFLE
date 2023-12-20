@@ -975,7 +975,7 @@ def get_tabular_data(
     opposite_group_to_reduce: tuple = None,
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
-    ratio_one_group_nodes: float = None,
+    one_group_nodes: bool = False,
 ):
     X, z, y = get_tabular_numpy_dataset(
         dataset_name=dataset_name,
@@ -1001,7 +1001,7 @@ def get_tabular_data(
         opposite_group_to_reduce=opposite_group_to_reduce,
         opposite_group_to_increment=opposite_group_to_increment,
         opposite_ratio_unfairness=opposite_ratio_unfairness,
-        ratio_one_group_nodes=ratio_one_group_nodes,
+        one_group_nodes=one_group_nodes,
     )
     disparities = Utils.compute_disparities_debug(client_data)
     plot_bar_plot(
@@ -1237,7 +1237,7 @@ def generate_clients_biased_data_mod(
     opposite_group_to_reduce: tuple = None,
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
-    ratio_one_group_nodes: float = None,  # the ratio of nodes that will have only one group
+    one_group_nodes: bool = False,
 ):
     """
     This function generates the data for the clients.
@@ -1324,19 +1324,19 @@ def generate_clients_biased_data_mod(
             group_to_increment=group_to_increment,
             ratio_unfairness=ratio_unfairness,
         )
-        # create the nodes that only have one group
-        # fair_nodes, unfair_nodes = create_one_group_nodes(
-        #     fair_nodes, unfair_nodes, ratio_one_group_nodes, ratio_unfair_nodes
-        # )
+
+        if one_group_nodes:
+            # create the nodes that only have one group
+            fair_nodes, unfair_nodes = create_one_group_nodes(
+                fair_nodes, unfair_nodes, ratio_unfair_nodes
+            )
         return (
             fair_nodes + unfair_nodes,
             [0] * number_fair_nodes + [1] * number_fair_nodes,
         )
 
 
-def create_one_group_nodes(
-    fair_nodes, unfair_nodes, ratio_one_group_nodes, ratio_unfair_nodes
-):
+def create_one_group_nodes(fair_nodes, unfair_nodes, ratio_unfair_nodes):
     # num_one_group_nodes = int(
     #     (len(fair_nodes) + len(unfair_nodes)) * ratio_one_group_nodes
     # )
@@ -1746,7 +1746,7 @@ def prepare_tabular_data(
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
     do_iid_split: bool = False,
-    ratio_one_group_nodes: float = None,
+    one_group_nodes: bool = False,
 ):
     if dataset_name == "income":
         for client_name in range(num_nodes):
@@ -1795,7 +1795,7 @@ def prepare_tabular_data(
             opposite_group_to_reduce=opposite_group_to_reduce,
             opposite_group_to_increment=opposite_group_to_increment,
             opposite_ratio_unfairness=opposite_ratio_unfairness,
-            ratio_one_group_nodes=ratio_one_group_nodes,
+            one_group_nodes=one_group_nodes,
         )
 
         # transform client data so that they are compatiblw with the
