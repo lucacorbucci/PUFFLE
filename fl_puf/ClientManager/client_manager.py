@@ -283,15 +283,16 @@ class SimpleClientManager(ClientManager):
             # I want to be sure that in self.validation_clients_list we have an alternation of
             # fair and unfair nodes
 
-            sampled_nodes_validation = self.pre_sample_clients(
-                fraction=self.fraction_validation,
-                ratio_unfair=self.ratio_unfair_nodes,
-                unfair_group=self.unfair_validation_clients,
-                fair_group=self.fair_validation_clients,
-                client_list=self.validation_clients_list,
-            )
-            with open(f"{self.fed_dir}/validation_nodes.pkl", "wb") as f:
-                dill.dump(sampled_nodes_validation, f)
+            if self.fraction_validation > 0:
+                sampled_nodes_validation = self.pre_sample_clients(
+                    fraction=self.fraction_validation,
+                    ratio_unfair=self.ratio_unfair_nodes,
+                    unfair_group=self.unfair_validation_clients,
+                    fair_group=self.fair_validation_clients,
+                    client_list=self.validation_clients_list,
+                )
+                with open(f"{self.fed_dir}/validation_nodes.pkl", "wb") as f:
+                    dill.dump(sampled_nodes_validation, f)
 
             random.seed(self.seed)
 
