@@ -8,18 +8,18 @@ import flwr as fl
 import numpy as np
 import torch
 import wandb
-from PIL import Image
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
 from opacus.optimizers import DPOptimizer
+from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
+from DPL.learning import Learning
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
-from DPL.learning import Learning
 from fl_puf.FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
     BalancedAndUnbalanced,
 )
@@ -27,6 +27,7 @@ from fl_puf.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
 from fl_puf.FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
     NonIIDPartitionWithSensitiveFeature,
 )
+from fl_puf.FederatedDataset.PartitionTypes.representative import Representative
 from fl_puf.FederatedDataset.PartitionTypes.unbalanced_partition import (
     UnbalancedPartition,
 )
@@ -42,10 +43,34 @@ from fl_puf.Utils.train_parameters import TrainParameters
 
 class Utils:
     @staticmethod
+    def get_noise(
+        mechanism_type: str,
+        epsilon: float = None,
+        sensitivity: float = None,
+        sigma: float = None,
+    ):
+        if mechanism_type == "laplace":
+            return np.random.laplace(loc=0, scale=sensitivity / epsilon, size=1)
+        elif mechanism_type == "geometric":
+            p = 1 - np.exp(-epsilon / sensitivity)
+            return (
+                np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1)
+            )[0]
+        elif mechanism_type == "gaussian":
+            return np.random.normal(loc=0, scale=sigma, size=1)[0]
+        else:
+            raise ValueError(
+                "The mechanism type must be either laplace, geometric or gaussian"
+            )
+
+    @staticmethod
     def setup_wandb(args, train_parameters):
-        if train_parameters.noise_multiplier > 0:
+        if (
+            train_parameters.noise_multiplier is not None
+            and train_parameters.noise_multiplier > 0
+        ):
             noise_multiplier = train_parameters.noise_multiplier
-        elif args.noise_multiplier > 0:
+        elif args.noise_multiplier is not None and args.noise_multiplier > 0:
             noise_multiplier = args.noise_multiplier
         else:
             noise_multiplier = 0
@@ -68,7 +93,7 @@ class Utils:
                 "private": args.private,
                 "epsilon": args.epsilon if args.private else None,
                 "gradnorm": args.clipping,
-                "delta": args.delta if args.private else 0,
+                # "delta": args.delta if args.private else 0,
                 "noise_multiplier": noise_multiplier,
                 "probability_estimation": args.probability_estimation,
                 "perfect_probability_estimation": args.perfect_probability_estimation,
@@ -281,6 +306,12 @@ class Utils:
         alpha: float = 1,
         train_parameters: TrainParameters = None,
         partition: str = "train",
+        group_to_reduce=None,
+        group_to_increment=None,
+        number_of_samples_per_node=None,
+        ratio_unfair_nodes=None,
+        ratio_unfairness=None,
+        one_group_nodes: bool = False,
     ):
         """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
@@ -389,6 +420,23 @@ class Utils:
                 alpha=alpha,
                 percentage_unbalanced_nodes=train_parameters.percentage_unbalanced_nodes,
                 unbalanced_ratio=train_parameters.unbalanced_ratio,
+            )
+            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
+                splitted_indexes=partitions_index_list,
+                dataset=dataset,
+            )
+        elif partition_type == "representative":
+            partitions_index_list, metadata = Representative.do_partitioning(
+                labels=labels,
+                sensitive_features=sensitive_attribute,
+                num_partitions=pool_size,
+                total_num_classes=2,
+                group_to_reduce=group_to_reduce,
+                group_to_increment=group_to_increment,
+                number_of_samples_per_node=number_of_samples_per_node,
+                ratio_unfair_nodes=ratio_unfair_nodes,
+                ratio_unfairness=ratio_unfairness,
+                one_group_nodes=one_group_nodes,
             )
             partitions = PartitionUtils.create_splitted_dataset_from_tuple(
                 splitted_indexes=partitions_index_list,
@@ -592,7 +640,7 @@ class Utils:
                 max_grad_norm=MAX_GRAD_NORM,
             )
         else:
-            print("Create private model with noise multiplier")
+            print(f"Create private model with noise multiplier {noise_multiplier}")
             private_model, optimizer, train_loader = privacy_engine.make_private(
                 module=model,
                 optimizer=original_optimizer,
@@ -600,6 +648,7 @@ class Utils:
                 noise_multiplier=noise_multiplier,
                 max_grad_norm=MAX_GRAD_NORM,
             )
+            print(f"Created private model with noise {optimizer.noise_multiplier}")
 
         return private_model, optimizer, train_loader, privacy_engine
 

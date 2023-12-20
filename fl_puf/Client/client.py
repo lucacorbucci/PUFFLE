@@ -12,6 +12,7 @@ import ray
 import torch
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
+from opacus.accountants.utils import get_noise_multiplier
 
 from DPL.RegularizationLoss import RegularizationLoss
 from DPL.Utils.model_utils import ModelUtils
@@ -27,7 +28,6 @@ class FlowerClient(fl.client.NumPyClient):
         fed_dir_data: str,
         dataset_name: str,
         clipping: float,
-        delta: float,
         lr: float,
         train_parameters: TrainParameters,
     ):
@@ -39,7 +39,6 @@ class FlowerClient(fl.client.NumPyClient):
         self.properties: dict[str, Scalar] = {"tensor_type": "numpy.ndarray"}
         self.dataset_name = dataset_name
         self.clipping = clipping
-        self.delta = delta
         self.lr = lr
 
         self.net = ModelUtils.get_model(
@@ -79,7 +78,15 @@ class FlowerClient(fl.client.NumPyClient):
         return Utils.get_params(self.net)
 
     def fit(self, parameters, config, average_probabilities=None):
+        if os.path.exists(f"{self.fed_dir}/avg_proba.pkl"):
+            with open(f"{self.fed_dir}/avg_proba.pkl", "rb") as file:
+                average_probabilities = dill.load(file)
+
         Utils.set_params(self.net, parameters)
+
+        with open(f"{self.fed_dir}/counter_sampling.pkl", "rb") as f:
+            counter_sampling = dill.load(f)
+            self.sampling_frequency = counter_sampling[str(self.cid)]
 
         # Load data for this client and get trainloader
         num_workers = int(ray.get_runtime_context().get_assigned_resources()["CPU"])
@@ -92,6 +99,28 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
+        self.delta = (1 / len(train_loader.dataset)) / 3
+
+        if self.train_parameters.epsilon_lambda is not None:
+            # this is the sigma that we will use to compute the noise
+            # that will be added to the Lambda
+            sampling_ratio = 1 / len(train_loader)
+
+            iterations = (
+                self.sampling_frequency
+                * self.train_parameters.epochs
+                * len(train_loader)
+            )
+            sigma_update_lambda = get_noise_multiplier(
+                target_epsilon=self.train_parameters.epsilon_lambda,
+                target_delta=self.delta,
+                sample_rate=sampling_ratio,
+                steps=iterations,
+                accountant="rdp",
+            )
+        else:
+            sigma_update_lambda = None
+
         loaded_privacy_engine = None
         loaded_privacy_engine_regularization = None
         first_round = False
@@ -99,17 +128,17 @@ class FlowerClient(fl.client.NumPyClient):
         # If we already used this client we need to load the state regarding
         # the privacy engine both for the classic model and for the model
         # used for the regularization
-        if os.path.exists(
-            f"{self.fed_dir}/privacy_engine_{self.cid}.pkl"
-        ) and os.path.exists(
-            f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
-        ):
+        if os.path.exists(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl"):
             with open(f"{self.fed_dir}/privacy_engine_{self.cid}.pkl", "rb") as file:
                 loaded_privacy_engine = dill.load(file)
-            with open(
-                f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
-            ) as file:
-                loaded_privacy_engine_regularization = dill.load(file)
+
+            if os.path.exists(
+                f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl"
+            ):
+                with open(
+                    f"{self.fed_dir}/privacy_engine_regularization_{self.cid}.pkl", "rb"
+                ) as file:
+                    loaded_privacy_engine_regularization = dill.load(file)
         else:
             # If it is the first time that we use this client we use a Lambda = 0
             # because in the first round the model will be random and so the predictions
@@ -139,14 +168,21 @@ class FlowerClient(fl.client.NumPyClient):
 
         if self.train_parameters.noise_multiplier is not None:
             noise = self.train_parameters.noise_multiplier
+            self.original_epsilon = 0
         else:
             if os.path.exists(f"{self.fed_dir}/noise_level_{self.cid}.pkl"):
                 with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "rb") as file:
                     self.train_parameters.noise_multiplier = dill.load(file)
+                    noise = self.train_parameters.noise_multiplier
+                    self.original_epsilon = self.train_parameters.epsilon
+                    self.train_parameters.epsilon = None
             else:
                 noise = self.get_noise(dataset=train_loader)
                 with open(f"{self.fed_dir}/noise_level_{self.cid}.pkl", "wb") as file:
                     dill.dump(noise, file)
+                self.train_parameters.noise_multiplier = noise
+                self.original_epsilon = self.train_parameters.epsilon
+                self.train_parameters.epsilon = None
 
         (
             private_net,
@@ -174,9 +210,10 @@ class FlowerClient(fl.client.NumPyClient):
         # before the local training
         max_disparity_train_before_local_epoch = (
             RegularizationLoss().violation_with_dataset(
-                private_net,
-                train_loader,
-                self.train_parameters.device,
+                model=private_net,
+                dataset=train_loader,
+                device=self.train_parameters.device,
+                average_probabilities=average_probabilities,
             )
         )
 
@@ -243,6 +280,7 @@ class FlowerClient(fl.client.NumPyClient):
                 current_epoch=epoch,
                 node_id=self.cid,
                 average_probabilities=average_probabilities,
+                sigma_update_lambda=sigma_update_lambda,
             )
 
             metrics[
@@ -272,19 +310,64 @@ class FlowerClient(fl.client.NumPyClient):
             sensitive_attributes,
             possible_targets,
             possible_sensitive_attributes,
+            y_true,
         ) = Learning.test_prediction(
             model=private_net,
             test_loader=train_loader,
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        probabilities, counters = RegularizationLoss.compute_probabilities(
+        (probabilities, counters) = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
             device=self.train_parameters.device,
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
+            train_parameters=self.train_parameters,
         )
+
+        counters_no_noise = copy.deepcopy(counters)
+
+        # compute the noise that I have to add to the counters to ensure we
+        # guarantee train_parameters.epsilon_statistics
+        if self.train_parameters.epsilon_statistics is not None:
+            sampling_ratio = 1
+            iterations = (
+                self.sampling_frequency * 2
+            )  # we multiply by 2 because every time we send two values
+            noise_statistics = get_noise_multiplier(
+                target_epsilon=self.train_parameters.epsilon_statistics,
+                target_delta=self.delta,
+                sample_rate=sampling_ratio,
+                steps=iterations,
+                accountant="rdp",
+            )
+
+            for key in counters.keys():
+                if len(key) > 1:
+                    counters[key] += Utils.get_noise(
+                        mechanism_type="gaussian", sigma=noise_statistics
+                    )
+        else:
+            noise_statistics = None
+
+        # Compute the final epsilon by summing the three epsilons
+        # that we can have in the methodology. We can do this because
+        # all the epsilon are RDP
+        final_epsilon = (
+            self.original_epsilon
+            + (
+                self.train_parameters.epsilon_lambda
+                if self.train_parameters.epsilon_lambda is not None
+                else 0
+            )
+            + (
+                self.train_parameters.epsilon_statistics
+                if self.train_parameters.epsilon_statistics is not None
+                else 0
+            )
+        )
+        final_delta = self.delta * 3
 
         del private_net
         if private_model_regularization:
@@ -302,7 +385,9 @@ class FlowerClient(fl.client.NumPyClient):
                     "Train Loss + Regularizaion"
                 ],
                 "train_accuracy": all_metrics[-1]["Train Accuracy"],
-                "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
+                # "epsilon": privacy_engine.accountant.get_epsilon(self.delta),
+                "epsilon": final_epsilon,
+                "delta": final_delta,
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "targets": possible_targets,
@@ -310,6 +395,8 @@ class FlowerClient(fl.client.NumPyClient):
                 "Disparity Train": all_metrics[-1]["Max Disparity Train"],
                 "Lambda": self.train_parameters.DPL_lambda,
                 "counters": counters,
+                # "counters_error_rate": counters_error_rate,
+                "counters_no_noise": counters_no_noise,
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
                 ],
@@ -319,6 +406,11 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
     def evaluate(self, parameters, config):
+        if os.path.exists(f"{self.fed_dir}/avg_proba.pkl"):
+            with open(f"{self.fed_dir}/avg_proba.pkl", "rb") as file:
+                average_probabilities = dill.load(file)
+        else:
+            average_probabilities = None
         Utils.set_params(self.net, parameters)
 
         # Load data for this client and get trainloader
@@ -363,6 +455,7 @@ class FlowerClient(fl.client.NumPyClient):
             test_loader=dataset,
             train_parameters=self.train_parameters,
             current_epoch=None,
+            average_probabilities=average_probabilities,
         )
 
         (
@@ -370,18 +463,23 @@ class FlowerClient(fl.client.NumPyClient):
             sensitive_attributes,
             possible_targets,
             possible_sensitive_attributes,
+            y_true,
         ) = Learning.test_prediction(
             model=self.net,
             test_loader=dataset,
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
-        probabilities, counters = RegularizationLoss.compute_probabilities(
+        (
+            probabilities,
+            counters,
+        ) = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
             device=self.train_parameters.device,
             possible_sensitive_attributes=possible_sensitive_attributes,
             possible_targets=possible_targets,
+            train_parameters=self.train_parameters,
         )
 
         self.net.to("cpu")
@@ -461,7 +559,7 @@ class FlowerClient(fl.client.NumPyClient):
                 new_max=1,
             )
 
-    def get_noise(self, dataset):
+    def get_noise(self, dataset, target_epsilon=None):
         model_noise = ModelUtils.get_model(
             self.dataset_name, device=self.train_parameters.device
         )
@@ -477,14 +575,12 @@ class FlowerClient(fl.client.NumPyClient):
             module=model_noise,
             optimizer=optimizer_noise,
             data_loader=dataset,
-            epochs=self.train_parameters.sampling_frequency
-            * self.train_parameters.epochs,
-            target_epsilon=self.train_parameters.epsilon,
+            epochs=self.sampling_frequency * self.train_parameters.epochs,
+            target_epsilon=self.train_parameters.epsilon
+            if target_epsilon is None
+            else target_epsilon,
             target_delta=self.delta,
             max_grad_norm=self.clipping,
-        )
-        print(
-            f"NOISE COMPUTE ON NODE {self.cid} is {private_optimizer.noise_multiplier}"
         )
 
         return private_optimizer.noise_multiplier

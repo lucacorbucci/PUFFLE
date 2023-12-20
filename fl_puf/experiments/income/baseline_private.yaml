@@ -1,0 +1,78 @@
+program: ../../main.py
+method: random
+metric:
+  name: Custom_metric
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  epochs:
+    min: 1
+    max: 5
+  batch_size:
+    min: 32
+    max: 512
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd"]
+  node_shuffle_seed:
+    min: 1
+    max: 1000000000
+  clipping:
+    min: 1.0
+    max: 10.0
+
+command:
+  - ${env}
+  - poetry 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --dataset
+  - income
+  - --num_rounds
+  - 10
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0.1
+  - --pool_size
+  - 51
+  - --sampled_clients 
+  - 1.0
+  - --sampled_clients_test 
+  - 1.0
+  - --sampled_clients_validation 
+  - 1.0
+  - --debug
+  - True 
+  - --base_path
+  - ../../../data/Tabular
+  - --private 
+  - True  
+  - --seed 
+  - 41 
+  - --wandb 
+  - True 
+  - --sweep
+  - True
+  - --training_nodes 
+  - 0.61
+  - --validation_nodes 
+  - 0.20
+  - --test_nodes 
+  - 0.20
+  - --starting_lambda_mode 
+  - no_tuning
+  - --tabular_data 
+  - True
+  - --dataset_path 
+  - ../../../data/Tabular/income/
+  - --epsilon
+  - 1.0
+  - --epsilon_statistics
+  - 1.0

@@ -3,17 +3,21 @@ import logging
 import os
 import random
 import warnings
+from logging import DEBUG, INFO
 from typing import Dict
 
+import dill
 import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
+from Strategy.weighted_fed_avg import WeightedFedAvg
+from Strategy.weighted_fed_avg_Lambda import WeightedFedAvgLambda
 from Utils.train_parameters import TrainParameters
+from flwr.common.logger import log
 from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
 from torch import nn
 
 from DPL.Utils.dataset_utils import DatasetUtils
@@ -63,15 +67,21 @@ parser.add_argument("--perfect_probability_estimation", type=bool, default=False
 parser.add_argument(
     "--DPL", type=bool, default=False
 )  # If we want to use DPL Regularization
-parser.add_argument("--private", type=bool, default=False)  # If we want to use DP-SGD
+parser.add_argument("--private", type=bool, default=True)  # If we want to use DP-SGD
 parser.add_argument("--epsilon", type=float, default=None)  # Target Epsilon for DP-SGD
 parser.add_argument(
-    "--noise_multiplier", type=float, default=0
+    "--epsilon_lambda", type=float, default=None
+)  # Target Epsilon for Lambda computation
+parser.add_argument(
+    "--epsilon_statistics", type=float, default=None
+)  # Target Epsilon for statistics sharing
+parser.add_argument(
+    "--noise_multiplier", type=float, default=None
 )  # Noise multiplier for DP-SGD
 parser.add_argument(
     "--clipping", type=float, default=1000000000
 )  # Clipping value for DP-SGD
-parser.add_argument("--delta", type=float, default=None)
+# parser.add_argument("--delta", type=float, default=None)
 
 # ----------------------
 # Dataset/Distribution Settings
@@ -180,7 +190,7 @@ parser.add_argument(
 )  # percentage of samples removed from group_to_reduce on the unfair nodes
 parser.add_argument(
     "--opposite_ratio_unfairness", type=float, default=None, nargs="+"
-)  # percentage of samples removed from group_to_reduce on the unfair nodes when opposite_direction is true
+)  # percentage of samples removed from group_to_reduce one the unfair nodes when opposite_direction is true
 parser.add_argument(
     "--ratio_unfair_nodes", type=float, default=None
 )  # percentage of nodes that will be unbalanced (unfair nodes)
@@ -190,16 +200,19 @@ parser.add_argument(
 parser.add_argument(
     "--approach", type=str, default=""
 )  # The approach we want to use to generate the dataset, can be egalitarian or representative
+parser.add_argument(
+    "--strategy", type=str, default="fedavg"
+)  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
 parser.add_argument(
-    "--sampling_frequency", type=int, default=None
-)  # The number of times that each node will be sampled
-
+    "--one_group_nodes", type=bool, default=False
+)  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
 # --------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # parse input arguments
+    # remove files in tmp/ray
+    # os.system("rm -rf /tmp/ray/*")
     args = parser.parse_args()
     dataset_name = args.dataset
     torch.manual_seed(args.seed)
@@ -218,6 +231,8 @@ if __name__ == "__main__":
     }
 
     if args.tabular_data:
+        # If we are using a tabular dataset we have a different way to load and
+        # split the dataset into clients
         fed_dir, _ = prepare_tabular_data(
             dataset_path=args.dataset_path,
             dataset_name=dataset_name,
@@ -247,13 +262,15 @@ if __name__ == "__main__":
             opposite_ratio_unfairness=tuple(args.opposite_ratio_unfairness)
             if args.opposite_ratio_unfairness
             else None,
+            one_group_nodes=args.one_group_nodes,
         )
-
     else:
+        # If we are not using a tabular dataset we have a different way to load and
+        # split the dataset into clients
         train_set, test_set = DatasetUtils.download_dataset(
             dataset_name,
             train_csv=args.train_csv,
-            debug=args.debug,
+            debug=False,
             base_path=args.dataset_path,
         )
         train_path = Utils.prepare_dataset_for_FL(
@@ -263,6 +280,8 @@ if __name__ == "__main__":
         )
 
     DPL_value = None
+
+    # We check if we pass parameters that are not compatible with each other
     if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
         raise Exception("Starting lambda value must be specified when using fixed mode")
     if args.starting_lambda_mode == "no_tuning":
@@ -270,7 +289,6 @@ if __name__ == "__main__":
         args.starting_lambda_value = 0
     elif args.starting_lambda_mode == "fixed" and args.starting_lambda_value:
         DPL_value = args.starting_lambda_value
-
     if (
         args.starting_lambda_mode != "fixed"
         and args.starting_lambda_mode != "avg"
@@ -280,6 +298,12 @@ if __name__ == "__main__":
         raise Exception(
             f"Starting lambda mode not recognized, your value is {args.starting_lambda_mode}"
         )
+
+    num_training_nodes = int(args.pool_size * args.training_nodes)
+    num_validation_nodes = int(args.pool_size * args.validation_nodes)
+    num_test_nodes = int(args.pool_size * args.test_nodes)
+
+    # We create the train parameters object that will be passed to the clients
     train_parameters = TrainParameters(
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -287,7 +311,7 @@ if __name__ == "__main__":
         wandb_run=None,
         batch_size=args.batch_size,
         seed=args.seed,
-        epsilon=args.epsilon if args.private else None,
+        epsilon=args.epsilon,
         DPL_lambda=DPL_value,
         private=args.private,
         DPL=args.DPL,
@@ -306,14 +330,11 @@ if __name__ == "__main__":
         update_lambda=args.update_lambda,
         unbalanced_ratio=args.unbalanced_ratio,
         tabular_data=args.tabular_data,
-        sampling_frequency=args.sampling_frequency,
+        # sampling_frequency=sampling_frequency,
+        fl_round=args.num_rounds,
+        epsilon_lambda=args.epsilon_lambda,
+        epsilon_statistics=args.epsilon_statistics,
     )
-
-    # partition dataset (use a large `alpha` to make it IID;
-    # a small value (e.g. 1) will make it non-IID)
-    # This will create a new directory called "federated": in the directory where
-    # CIFAR-10 lives. Inside it, there will be N=pool_size sub-directories each with
-    # its own train/set split.
 
     if not args.tabular_data:
         # Partitioning the training dataset
@@ -325,62 +346,17 @@ if __name__ == "__main__":
             partition_type=args.partition_type,
             alpha=args.alpha,
             train_parameters=train_parameters,
+            group_to_reduce=tuple(args.group_to_reduce),
+            group_to_increment=tuple(args.group_to_increment),
+            number_of_samples_per_node=args.number_of_samples_per_node,
+            ratio_unfair_nodes=args.ratio_unfair_nodes,
+            ratio_unfairness=tuple(args.ratio_unfairness),
+            one_group_nodes=args.one_group_nodes,
         )
-
-        print(fed_dir)
-        test = os.listdir(fed_dir)
-
-        for item in test:
+        path_to_remove = os.listdir(fed_dir)
+        for item in path_to_remove:
             if item.endswith(".pkl"):
                 os.remove(os.path.join(fed_dir, item))
-
-    # if args.epsilon:
-    #     # We need to understand the noise that we need to add based
-    #     # on the epsilon that we want to guarantee
-    #     max_noise = 0
-    #     for i in range(args.pool_size):
-    #         model_noise = ModelUtils.get_model(
-    #             dataset_name, device=train_parameters.device
-    #         )
-    #         # get the training dataset of one of the clients
-    #         train_loader_client_0 = Utils.get_dataloader(
-    #             fed_dir,
-    #             str(i),
-    #             batch_size=train_parameters.batch_size,
-    #             workers=0,
-    #             dataset=dataset_name,
-    #             partition="train",
-    #         )
-    #         privacy_engine = PrivacyEngine(accountant="rdp")
-    #         optimizer_noise = Utils.get_optimizer(
-    #             model_noise, train_parameters, args.lr
-    #         )
-    #         (
-    #             _,
-    #             private_optimizer,
-    #             _,
-    #         ) = privacy_engine.make_private_with_epsilon(
-    #             module=model_noise,
-    #             optimizer=optimizer_noise,
-    #             data_loader=train_loader_client_0,
-    #             epochs=args.sampling_frequency * args.epochs,
-    #             target_epsilon=train_parameters.epsilon,
-    #             target_delta=args.delta,
-    #             max_grad_norm=args.clipping,
-    #         )
-    #         max_noise = max(max_noise, private_optimizer.noise_multiplier)
-    #         print(
-    #             f"Node {i} - {args.sampling_frequency * args.epochs} -- {private_optimizer.noise_multiplier}"
-    #         )
-
-    #     train_parameters.noise_multiplier = max_noise
-    #     train_parameters.epsilon = None
-    #     print(
-    #         f">>>>> FINALE {args.sampling_frequency * args.epochs} -- {train_parameters.noise_multiplier}"
-    #     )
-    # else:
-    #     train_parameters.noise_multiplier = args.noise_multiplier
-    #     train_parameters.epsilon = None
 
     wandb_run = Utils.setup_wandb(args, train_parameters) if args.wandb else None
 
@@ -392,7 +368,7 @@ if __name__ == "__main__":
             fed_dir_data=fed_dir,
             dataset_name=dataset_name,
             clipping=args.clipping,
-            delta=args.delta,
+            # delta=args.delta,
             lr=args.lr,
         )
 
@@ -406,6 +382,7 @@ if __name__ == "__main__":
             "epochs": args.epochs,  # number of local epochs
             "batch_size": args.batch_size,
             "dataset": args.dataset,
+            "server_round": server_round,
         }
         return config
 
@@ -417,6 +394,105 @@ if __name__ == "__main__":
             "dataset": args.dataset,
         }
         return config
+
+    def handle_counters(metrics, key):
+        combinations = ["1|0", "1|1"]
+        all_combinations = ["0|0", "0|1", "1|0", "1|1"]
+        missing_combinations = [("0|0", "1|0"), ("0|1", "1|1")]
+        targets = ["0", "1"]
+        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
+        sum_targets = {"0": 0, "1": 0}
+
+        for _, metric in metrics:
+            metric = metric[key]
+            for combination in combinations:
+                try:
+                    sum_counters[combination] += metric[combination]
+                except:
+                    continue
+
+            for target in targets:
+                try:
+                    sum_targets[target] += metric[target]
+                except:
+                    continue
+
+        for non_existing, existing in missing_combinations:
+            sum_counters[non_existing] = (
+                sum_targets[existing[-1]] - sum_counters[existing]
+                if sum_targets[existing[-1]] - sum_counters[existing] > 0
+                else 0
+            )
+        average_probabilities = {}
+        for combination in all_combinations:
+            try:
+                proba = sum_counters[combination] / sum_targets[combination[2]]
+                if proba > 1:
+                    proba = 1
+                if proba < 0:
+                    proba = 0
+                average_probabilities[combination] = proba
+            except:
+                continue
+        max_disparity_statistics = max(
+            [
+                sum_counters["0|0"] / sum_targets["0"]
+                - sum_counters["0|1"] / sum_targets["1"],
+                sum_counters["0|1"] / sum_targets["1"]
+                - sum_counters["0|0"] / sum_targets["0"],
+                sum_counters["1|0"] / sum_targets["0"]
+                - sum_counters["1|1"] / sum_targets["1"],
+                sum_counters["1|1"] / sum_targets["1"]
+                - sum_counters["1|0"] / sum_targets["0"],
+            ]
+        )
+        return (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        )
+
+    # def handle_counters_error_ratio(metrics):
+    #     sum_counters = {
+    #         "fp_0|0": 0,
+    #         "fp_0|1": 0,
+    #         "fp_1|0": 0,
+    #         "fp_1|1": 0,
+    #         "fn_0|0": 0,
+    #         "fn_0|1": 0,
+    #         "fn_1|0": 0,
+    #         "fn_1|1": 0,
+    #     }
+    #     dataset_size = {"len_0|0": 0, "len_0|1": 0, "len_1|0": 0, "len_1|1": 0}
+    #     combinations = sum_counters.keys()
+    #     targets = dataset_size.keys()
+
+    #     for _, metric in metrics:
+    #         metric = metric["counters_error_rate"]
+    #         for combination in combinations:
+    #             sum_counters[combination] += metric[combination]
+    #         for target in targets:
+    #             dataset_size[target] += metric[target]
+
+    #     priv_unpriv = [
+    #         ("0|0", "0|1"),
+    #         ("1|0", "1|1"),
+    #         ("0|1", "0|0"),
+    #         ("1|1", "1|0"),
+    #     ]
+    #     ratios = []
+    #     for priv, unpriv in priv_unpriv:
+    #         error_rate_priv = (
+    #             sum_counters[f"fp_{priv}"] + sum_counters[f"fn_{priv}"]
+    #         ) / (dataset_size[f"len_{priv}"])
+    #         error_rate_unpriv = (
+    #             sum_counters[f"fp_{unpriv}"] + sum_counters[f"fn_{unpriv}"]
+    #         ) / (dataset_size[f"len_{unpriv}"])
+    #         error_ratio = error_rate_priv / error_rate_unpriv
+    #         ratios.append(error_ratio)
+
+    #     return max(ratios)
 
     def agg_metrics_test(metrics: list, server_round: int) -> dict:
         total_examples = sum([n_examples for n_examples, _ in metrics])
@@ -498,30 +574,16 @@ if __name__ == "__main__":
             if wandb_run:
                 wandb_run.log(agg_metrics)
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
 
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ],
-        )
+        # write avg probabilities to file
+        with open(f"{fed_dir}/avg_proba.pkl", "wb") as file:
+            dill.dump(average_probabilities, file)
 
         agg_metrics = {
             "Test Loss": loss_test,
@@ -602,35 +664,17 @@ if __name__ == "__main__":
             / total_examples
         )
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
-
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
 
         custom_metric = accuracy_evaluation
         if args.target:
             distance = args.target - max_disparity_statistics
-            distance = 0 if distance >= 0 else distance
+            distance = 0 if distance >= 0 else float("-inf")  # distance
 
             # custom_metric will be -inf when the disparity is above the target
             # otherwise we will have a positive value that depends on the distance
@@ -647,7 +691,6 @@ if __name__ == "__main__":
             "FL Round": server_round,
             "Validation Counter 0|0": sum_counters["0|0"],
             "Validation Counter 0|1": sum_counters["0|1"],
-            "Validation Counter 1|0": sum_counters["1|0"],
             "Validation Counter 1|0": sum_counters["1|0"],
             "Validation Counter 1|1": sum_counters["1|1"],
             "Validation Target 0": sum_targets["0"],
@@ -689,12 +732,6 @@ if __name__ == "__main__":
                 "Max Disparity Train Before Local Epoch"
             ]
 
-            # Load the lambda for the client
-            # fed_dir = Path(fed_dir)
-            # if os.path.exists(f"{fed_dir}/privacy_engine_{client_id}.pkl"):
-            #     with open(f"{fed_dir}/DPL_lambda_{client_id}.pkl", "rb") as file:
-            #         lambda_client = dill.load(file)
-
             DPL_lambda = node_metrics["DPL_lambda"]
 
             # Create the dictionary we want to log. For some metrics we want to log
@@ -714,23 +751,9 @@ if __name__ == "__main__":
                     to_be_logged,
                 )
 
-        combinations = ["0|0", "0|1", "1|0", "1|1"]
-        targets = ["0", "1"]
-
-        sum_counters = {"0|0": 0, "0|1": 0, "1|0": 0, "1|1": 0}
-        sum_targets = {"0": 0, "1": 0}
-
-        for _, metric in metrics:
-            metric = metric["counters"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                sum_targets[target] += metric[target]
-
-        average_probabilities = {}
-        for combination in combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
+            log(
+                INFO,
+                f"Node {node_metrics['cid']} - Epsilon {node_metrics['epsilon']} - Delta {node_metrics['delta']}",
             )
 
         # weighted average of the disparity of the different nodes
@@ -744,35 +767,42 @@ if __name__ == "__main__":
             / total_examples
         )
 
-        max_disparity_statistics = max(
-            [
-                sum_counters["0|0"] / sum_targets["0"]
-                - sum_counters["0|1"] / sum_targets["1"],
-                sum_counters["0|1"] / sum_targets["1"]
-                - sum_counters["0|0"] / sum_targets["0"],
-                sum_counters["1|0"] / sum_targets["0"]
-                - sum_counters["1|1"] / sum_targets["1"],
-                sum_counters["1|1"] / sum_targets["1"]
-                - sum_counters["1|0"] / sum_targets["0"],
-            ]
-        )
+        (
+            sum_counters,
+            sum_targets,
+            average_probabilities,
+            max_disparity_statistics,
+        ) = handle_counters(metrics, "counters")
+
+        (
+            sum_counters_no_noise,
+            sum_targets_no_noise,
+            _,
+            max_disparity_statistics_no_noise,
+        ) = handle_counters(metrics, "counters_no_noise")
 
         if wandb_run:
             wandb_run.log(
                 {
                     "Training Disparity with statistics": max_disparity_statistics,
+                    "Training Disparity with statistics no noise": max_disparity_statistics_no_noise,
                     "FL Round": server_round,
                     "Training Counter 0|0": sum_counters["0|0"],
                     "Training Counter 0|1": sum_counters["0|1"],
                     "Training Counter 1|0": sum_counters["1|0"],
                     "Training Counter 1|1": sum_counters["1|1"],
+                    "Training Counter 0|0 no noise": sum_counters_no_noise["0|0"],
+                    "Training Counter 0|1 no noise": sum_counters_no_noise["0|1"],
+                    "Training Counter 1|0 no noise": sum_counters_no_noise["1|0"],
+                    "Training Counter 1|1 no noise": sum_counters_no_noise["1|1"],
                     "Training Target 0": sum_targets["0"],
                     "Training Target 1": sum_targets["1"],
                 }
             )
 
-        print(
-            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}"
+        log(
+            INFO,
+            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}",
         )
         current_max_epsilon = max(current_max_epsilon, *epsilon_list)
         agg_metrics = {
@@ -796,28 +826,66 @@ if __name__ == "__main__":
 
         return agg_metrics
 
-    print(
-        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
+    log(
+        INFO,
+        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}",
     )
-    strategy = FedAvg(
-        fraction_fit=args.sampled_clients,
-        fraction_evaluate=args.sampled_clients_validation,
-        fraction_test=args.sampled_clients_test,
-        min_fit_clients=args.sampled_clients,
-        min_evaluate_clients=0,
-        min_available_clients=args.sampled_clients,
-        on_fit_config_fn=fit_config,
-        on_evaluate_config_fn=evaluate_config,
-        initial_parameters=initial_parameters,
-        fit_metrics_aggregation_fn=agg_metrics_train,
-        evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
-        test_metrics_aggregation_fn=agg_metrics_test,
-        current_max_epsilon=current_max_epsilon,
-        fed_dir=fed_dir,
-    )
+    if args.strategy == "fedavg":
+        strategy = FedAvg(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
+    elif args.strategy == "weighted_1_lambda":
+        strategy = WeightedFedAvg(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
+    elif args.strategy == "weighted_lambda":
+        strategy = WeightedFedAvgLambda(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
 
-    ray_num_cpus = 20
-    ray_num_gpus = 3
+    # these parameters are used to configure Ray and they are dependent on
+    # the machine we want to use to run the experiments
+    ray_num_cpus = 40
+    ray_num_gpus = 2
     ram_memory = 16_000 * 1024 * 1024 * 2
 
     # (optional) specify Ray config
@@ -832,18 +900,6 @@ if __name__ == "__main__":
         "log_to_driver": True,
     }
 
-    num_training_nodes = int(args.pool_size * args.training_nodes)
-    num_validation_nodes = int(args.pool_size * args.validation_nodes)
-    num_test_nodes = int(args.pool_size * args.test_nodes)
-
-    print(args.training_nodes, args.validation_nodes, args.test_nodes)
-    print(num_training_nodes, num_validation_nodes, num_test_nodes)
-
-    if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
-        raise Exception(
-            "The sum of training, validation and test nodes must be equal to the pool size"
-        )
-
     client_manager = SimpleClientManager(
         seed=args.seed,
         num_clients=pool_size,
@@ -853,10 +909,14 @@ if __name__ == "__main__":
         num_test_nodes=num_test_nodes,
         node_shuffle_seed=args.node_shuffle_seed,
         fed_dir=fed_dir,
+        ratio_unfair_nodes=args.ratio_unfair_nodes,
+        fl_rounds=args.num_rounds,
+        fraction_fit=args.sampled_clients,
+        fraction_evaluate=args.sampled_clients_validation,
+        fraction_test=args.sampled_clients_test,
     )
     server = Server(client_manager=client_manager, strategy=strategy)
 
-    # start simulation
     fl.simulation.start_simulation(
         client_fn=client_fn,
         num_clients=pool_size,
