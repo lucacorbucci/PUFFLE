@@ -645,7 +645,7 @@ category = "main"
 optional = false
 python-versions = ">=3.8,<4.0"
 files = [
-    {file = "dpl-0.1.0.post44-py3-none-any.whl", hash = "sha256:f940e44c8c481cb99fd3f9a257da085699e68027e8e6c0b7748f1430e60192fb"},
+    {file = "dpl-0.1.0.post44-py3-none-any.whl", hash = "sha256:3f5fecc1b4e984a7d740d6bd55f3ef7c26a84f44379cad8017d6fbca5f7e7ef3"},
 ]
 
 [package.dependencies]
