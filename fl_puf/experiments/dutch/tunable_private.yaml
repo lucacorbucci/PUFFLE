@@ -103,8 +103,8 @@ command:
   - --approach
   - representative
   - --epsilon_lambda 
-  - 1.0
+  - 0.25
   - --epsilon
-  - 1.0
+  - 0.5
   - --epsilon_statistics
-  - 1.0
+  - 0.25

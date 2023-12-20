@@ -975,6 +975,7 @@ def get_tabular_data(
     opposite_group_to_reduce: tuple = None,
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
+    ratio_one_group_nodes: float = None,
 ):
     X, z, y = get_tabular_numpy_dataset(
         dataset_name=dataset_name,
@@ -1000,6 +1001,7 @@ def get_tabular_data(
         opposite_group_to_reduce=opposite_group_to_reduce,
         opposite_group_to_increment=opposite_group_to_increment,
         opposite_ratio_unfairness=opposite_ratio_unfairness,
+        ratio_one_group_nodes=ratio_one_group_nodes,
     )
     disparities = Utils.compute_disparities_debug(client_data)
     plot_bar_plot(
@@ -1235,6 +1237,7 @@ def generate_clients_biased_data_mod(
     opposite_group_to_reduce: tuple = None,
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
+    ratio_one_group_nodes: float = None,  # the ratio of nodes that will have only one group
 ):
     """
     This function generates the data for the clients.
@@ -1321,10 +1324,117 @@ def generate_clients_biased_data_mod(
             group_to_increment=group_to_increment,
             ratio_unfairness=ratio_unfairness,
         )
+        # create the nodes that only have one group
+        # fair_nodes, unfair_nodes = create_one_group_nodes(
+        #     fair_nodes, unfair_nodes, ratio_one_group_nodes, ratio_unfair_nodes
+        # )
         return (
             fair_nodes + unfair_nodes,
             [0] * number_fair_nodes + [1] * number_fair_nodes,
         )
+
+
+def create_one_group_nodes(
+    fair_nodes, unfair_nodes, ratio_one_group_nodes, ratio_unfair_nodes
+):
+    # num_one_group_nodes = int(
+    #     (len(fair_nodes) + len(unfair_nodes)) * ratio_one_group_nodes
+    # )
+    num_one_group_nodes_fair = len(
+        fair_nodes
+    )  # int(num_one_group_nodes * (1 - ratio_unfair_nodes))
+    # if num_one_group_nodes_fair % 2 != 0:
+    #     num_one_group_nodes_fair = num_one_group_nodes_fair - 1
+    num_one_group_nodes_unfair = len(
+        unfair_nodes
+    )  # num_one_group_nodes - num_one_group_nodes_fair
+    # if num_one_group_nodes_unfair % 2 != 0:
+    #     num_one_group_nodes_unfair = num_one_group_nodes_unfair - 1
+
+    # modified_nodes = []
+    removed_samples = {"0": [], "1": []}
+    number_removed_samples = {}
+
+    # Remove samples from the fair nodes and from the unfair nodes
+
+    tmp_fair_nodes = []
+    for node_id, node in enumerate(fair_nodes[:num_one_group_nodes_fair]):
+        tmp_removed_samples = []
+        tmp_samples = []
+        for sample in node:
+            # if node_id % 2 == 0:
+            #     if sample["z"] == 0:
+            #         tmp_removed_samples.append(sample)
+            #     else:
+            #         tmp_samples.append(sample)
+            # else:
+            if sample["z"] == 1 and node_id % 2 == 0:
+                tmp_removed_samples.append(sample)
+            else:
+                tmp_samples.append(sample)
+
+        tmp_fair_nodes.append(tmp_samples)
+        removed_samples[str(node_id % 2)].extend(tmp_removed_samples)
+        number_removed_samples[node_id] = len(tmp_removed_samples)
+
+    # merge the each 2 nodes of the tmp_fair group in one
+    # new_fair_nodes = []
+    # fair_nodes_even = tmp_fair_nodes[::2]
+    # fair_nodes_odd = tmp_fair_nodes[1::2]
+
+    # for even, odd in zip(fair_nodes_even, fair_nodes_odd):
+    #     new_fair_nodes.append(even + odd)
+
+    # tmp_unfair_nodes = []
+    # for node_id, node in enumerate(unfair_nodes[:num_one_group_nodes_unfair]):
+    #     tmp_removed_samples = []
+    #     tmp_samples = []
+    #     for sample in node:
+    #         if node_id % 2 == 0:
+    #             if sample["z"] == 0:
+    #                 tmp_removed_samples.append(sample)
+    #             else:
+    #                 tmp_samples.append(sample)
+    #         else:
+    #             if sample["z"] == 1:
+    #                 tmp_removed_samples.append(sample)
+    #             else:
+    #                 tmp_samples.append(sample)
+
+    #     tmp_unfair_nodes.append(tmp_samples)
+    #     removed_samples[str(node_id % 2)].extend(tmp_removed_samples)
+    #     number_removed_samples[node_id] = len(tmp_removed_samples)
+
+    # Now we can add the removed samples to the nodes so that they have only one group
+    # new_fair_nodes = []
+    # for node_id, node in enumerate(tmp_fair_nodes):
+    #     if node_id % 2 == 0:
+    #         node.extend(removed_samples["1"][: number_removed_samples[node_id]])
+    #         removed_samples["1"] = removed_samples["1"][
+    #             number_removed_samples[node_id] :
+    #         ]
+    #     else:
+    #         node.extend(removed_samples["0"][: number_removed_samples[node_id]])
+    #         removed_samples["0"] = removed_samples["0"][
+    #             number_removed_samples[node_id] :
+    #         ]
+    #     new_fair_nodes.append(node)
+
+    # new_unfair_nodes = []
+    # for node_id, node in enumerate(tmp_unfair_nodes):
+    #     if node_id % 2 == 0:
+    #         node.extend(removed_samples["1"][: number_removed_samples[node_id]])
+    #         removed_samples["1"] = removed_samples["1"][
+    #             number_removed_samples[node_id] :
+    #         ]
+    #     else:
+    #         node.extend(removed_samples["0"][: number_removed_samples[node_id]])
+    #         removed_samples["0"] = removed_samples["0"][
+    #             number_removed_samples[node_id] :
+    #         ]
+    #     new_unfair_nodes.append(node)
+
+    return tmp_fair_nodes, unfair_nodes
 
 
 # def generate_clients_biased_data(
@@ -1636,6 +1746,7 @@ def prepare_tabular_data(
     opposite_group_to_increment: tuple = None,
     opposite_ratio_unfairness: tuple = None,
     do_iid_split: bool = False,
+    ratio_one_group_nodes: float = None,
 ):
     if dataset_name == "income":
         for client_name in range(num_nodes):
@@ -1684,6 +1795,7 @@ def prepare_tabular_data(
             opposite_group_to_reduce=opposite_group_to_reduce,
             opposite_group_to_increment=opposite_group_to_increment,
             opposite_ratio_unfairness=opposite_ratio_unfairness,
+            ratio_one_group_nodes=ratio_one_group_nodes,
         )
 
         # transform client data so that they are compatiblw with the

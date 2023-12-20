@@ -3,18 +3,21 @@ import logging
 import os
 import random
 import warnings
+from logging import DEBUG, INFO
 from typing import Dict
 
 import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
-from flwr.common.typing import Scalar
-from opacus import PrivacyEngine
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
-from torch import nn
+from Strategy.weighted_fed_avg import WeightedFedAvg
+from Strategy.weighted_fed_avg_Lambda import WeightedFedAvgLambda
 from Utils.train_parameters import TrainParameters
+from flwr.common.logger import log
+from flwr.common.typing import Scalar
+from torch import nn
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -196,14 +199,16 @@ parser.add_argument(
 parser.add_argument(
     "--approach", type=str, default=""
 )  # The approach we want to use to generate the dataset, can be egalitarian or representative
+parser.add_argument(
+    "--strategy", type=str, default="fedavg"
+)  # The approach we want to use to generate the dataset, can be egalitarian or representative
 
 
 # --------------------------------------------------------------------------------------
 
 if __name__ == "__main__":
     # remove files in tmp/ray
-    os.system("rm -rf /tmp/ray/*")
-    # parse input arguments
+    # os.system("rm -rf /tmp/ray/*")
     args = parser.parse_args()
     dataset_name = args.dataset
     torch.manual_seed(args.seed)
@@ -222,6 +227,8 @@ if __name__ == "__main__":
     }
 
     if args.tabular_data:
+        # If we are using a tabular dataset we have a different way to load and
+        # split the dataset into clients
         fed_dir, _ = prepare_tabular_data(
             dataset_path=args.dataset_path,
             dataset_name=dataset_name,
@@ -251,9 +258,11 @@ if __name__ == "__main__":
             opposite_ratio_unfairness=tuple(args.opposite_ratio_unfairness)
             if args.opposite_ratio_unfairness
             else None,
+            ratio_one_group_nodes=1.0,
         )
-
     else:
+        # If we are not using a tabular dataset we have a different way to load and
+        # split the dataset into clients
         train_set, test_set = DatasetUtils.download_dataset(
             dataset_name,
             train_csv=args.train_csv,
@@ -267,6 +276,8 @@ if __name__ == "__main__":
         )
 
     DPL_value = None
+
+    # We check if we pass parameters that are not compatible with each other
     if args.starting_lambda_mode == "fixed" and args.starting_lambda_value is None:
         raise Exception("Starting lambda value must be specified when using fixed mode")
     if args.starting_lambda_mode == "no_tuning":
@@ -274,7 +285,6 @@ if __name__ == "__main__":
         args.starting_lambda_value = 0
     elif args.starting_lambda_mode == "fixed" and args.starting_lambda_value:
         DPL_value = args.starting_lambda_value
-
     if (
         args.starting_lambda_mode != "fixed"
         and args.starting_lambda_mode != "avg"
@@ -289,10 +299,7 @@ if __name__ == "__main__":
     num_validation_nodes = int(args.pool_size * args.validation_nodes)
     num_test_nodes = int(args.pool_size * args.test_nodes)
 
-    # how many times a node is selected for training during the entire FL process
-    # sampling_frequency = args.pool_size // num_training_nodes
-    print(f"Private model with {args.epsilon} - {args.noise_multiplier} - {args.clipping}")
-
+    # We create the train parameters object that will be passed to the clients
     train_parameters = TrainParameters(
         epochs=args.epochs,
         device="cuda" if torch.cuda.is_available() else "cpu",
@@ -325,12 +332,6 @@ if __name__ == "__main__":
         epsilon_statistics=args.epsilon_statistics,
     )
 
-    # partition dataset (use a large `alpha` to make it IID;
-    # a small value (e.g. 1) will make it non-IID)
-    # This will create a new directory called "federated": in the directory where
-    # CIFAR-10 lives. Igrnside it, there will be N=pool_size sub-directories each with
-    # its own train/set split.
-
     if not args.tabular_data:
         # Partitioning the training dataset
         fed_dir = Utils.do_fl_partitioning(
@@ -347,11 +348,8 @@ if __name__ == "__main__":
             ratio_unfair_nodes=args.ratio_unfair_nodes,
             ratio_unfairness=tuple(args.ratio_unfairness),
         )
-
-        print(fed_dir)
-        test = os.listdir(fed_dir)
-
-        for item in test:
+        path_to_remove = os.listdir(fed_dir)
+        for item in path_to_remove:
             if item.endswith(".pkl"):
                 os.remove(os.path.join(fed_dir, item))
 
@@ -403,9 +401,16 @@ if __name__ == "__main__":
         for _, metric in metrics:
             metric = metric[key]
             for combination in combinations:
-                sum_counters[combination] += metric[combination]
+                try:
+                    sum_counters[combination] += metric[combination]
+                except:
+                    continue
+
             for target in targets:
-                sum_targets[target] += metric[target]
+                try:
+                    sum_targets[target] += metric[target]
+                except:
+                    continue
 
         for non_existing, existing in missing_combinations:
             sum_counters[non_existing] = (
@@ -415,9 +420,15 @@ if __name__ == "__main__":
             )
         average_probabilities = {}
         for combination in all_combinations:
-            average_probabilities[combination] = (
-                sum_counters[combination] / sum_targets[combination[2]]
-            )
+            try:
+                proba = sum_counters[combination] / sum_targets[combination[2]]
+                if proba > 1:
+                    proba = 1
+                if proba < 0:
+                    proba = 0
+                average_probabilities[combination] = proba
+            except:
+                continue
         max_disparity_statistics = max(
             [
                 sum_counters["0|0"] / sum_targets["0"]
@@ -437,46 +448,46 @@ if __name__ == "__main__":
             max_disparity_statistics,
         )
 
-    def handle_counters_error_ratio(metrics):
-        sum_counters = {
-            "fp_0|0": 0,
-            "fp_0|1": 0,
-            "fp_1|0": 0,
-            "fp_1|1": 0,
-            "fn_0|0": 0,
-            "fn_0|1": 0,
-            "fn_1|0": 0,
-            "fn_1|1": 0,
-        }
-        dataset_size = {"len_0|0": 0, "len_0|1": 0, "len_1|0": 0, "len_1|1": 0}
-        combinations = sum_counters.keys()
-        targets = dataset_size.keys()
+    # def handle_counters_error_ratio(metrics):
+    #     sum_counters = {
+    #         "fp_0|0": 0,
+    #         "fp_0|1": 0,
+    #         "fp_1|0": 0,
+    #         "fp_1|1": 0,
+    #         "fn_0|0": 0,
+    #         "fn_0|1": 0,
+    #         "fn_1|0": 0,
+    #         "fn_1|1": 0,
+    #     }
+    #     dataset_size = {"len_0|0": 0, "len_0|1": 0, "len_1|0": 0, "len_1|1": 0}
+    #     combinations = sum_counters.keys()
+    #     targets = dataset_size.keys()
 
-        for _, metric in metrics:
-            metric = metric["counters_error_rate"]
-            for combination in combinations:
-                sum_counters[combination] += metric[combination]
-            for target in targets:
-                dataset_size[target] += metric[target]
+    #     for _, metric in metrics:
+    #         metric = metric["counters_error_rate"]
+    #         for combination in combinations:
+    #             sum_counters[combination] += metric[combination]
+    #         for target in targets:
+    #             dataset_size[target] += metric[target]
 
-        priv_unpriv = [
-            ("0|0", "0|1"),
-            ("1|0", "1|1"),
-            ("0|1", "0|0"),
-            ("1|1", "1|0"),
-        ]
-        ratios = []
-        for priv, unpriv in priv_unpriv:
-            error_rate_priv = (
-                sum_counters[f"fp_{priv}"] + sum_counters[f"fn_{priv}"]
-            ) / (dataset_size[f"len_{priv}"])
-            error_rate_unpriv = (
-                sum_counters[f"fp_{unpriv}"] + sum_counters[f"fn_{unpriv}"]
-            ) / (dataset_size[f"len_{unpriv}"])
-            error_ratio = error_rate_priv / error_rate_unpriv
-            ratios.append(error_ratio)
+    #     priv_unpriv = [
+    #         ("0|0", "0|1"),
+    #         ("1|0", "1|1"),
+    #         ("0|1", "0|0"),
+    #         ("1|1", "1|0"),
+    #     ]
+    #     ratios = []
+    #     for priv, unpriv in priv_unpriv:
+    #         error_rate_priv = (
+    #             sum_counters[f"fp_{priv}"] + sum_counters[f"fn_{priv}"]
+    #         ) / (dataset_size[f"len_{priv}"])
+    #         error_rate_unpriv = (
+    #             sum_counters[f"fp_{unpriv}"] + sum_counters[f"fn_{unpriv}"]
+    #         ) / (dataset_size[f"len_{unpriv}"])
+    #         error_ratio = error_rate_priv / error_rate_unpriv
+    #         ratios.append(error_ratio)
 
-        return max(ratios)
+    #     return max(ratios)
 
     def agg_metrics_test(metrics: list, server_round: int) -> dict:
         total_examples = sum([n_examples for n_examples, _ in metrics])
@@ -565,15 +576,12 @@ if __name__ == "__main__":
             max_disparity_statistics,
         ) = handle_counters(metrics, "counters")
 
-        # error_ratio = handle_counters_error_ratio(metrics)
-
         agg_metrics = {
             "Test Loss": loss_test,
             "Test Accuracy": accuracy_test,
             "Test Disparity with average": max_disparity_average,
             "Test Disparity with weighted average": max_disparity_weighted_average,
             "Test Disparity with statistics": max_disparity_statistics,
-            # "Test Error Ratio": error_ratio,
             "FL Round": server_round,
             "Test Counter 0|0": sum_counters["0|0"],
             "Test Counter 0|1": sum_counters["0|1"],
@@ -654,8 +662,6 @@ if __name__ == "__main__":
             max_disparity_statistics,
         ) = handle_counters(metrics, "counters")
 
-        # error_ratio = handle_counters_error_ratio(metrics)
-
         custom_metric = accuracy_evaluation
         if args.target:
             distance = args.target - max_disparity_statistics
@@ -672,7 +678,6 @@ if __name__ == "__main__":
             "Validation Disparity with average": max_disparity_average,
             "Validation Disparity with weighted average": max_disparity_weighted_average,
             "Validation Disparity with statistics": max_disparity_statistics,
-            # "Validation Error Ratio": error_ratio,
             "Custom_metric": custom_metric,
             "FL Round": server_round,
             "Validation Counter 0|0": sum_counters["0|0"],
@@ -736,8 +741,11 @@ if __name__ == "__main__":
                 wandb_run.log(
                     to_be_logged,
                 )
-            
-            print(f"Node {node_metrics['cid']} - Epsilon {node_metrics['epsilon']} - Delta {node_metrics['delta']}")
+
+            log(
+                INFO,
+                f"Node {node_metrics['cid']} - Epsilon {node_metrics['epsilon']} - Delta {node_metrics['delta']}",
+            )
 
         # weighted average of the disparity of the different nodes
         max_disparity_weighted_average = (
@@ -764,8 +772,6 @@ if __name__ == "__main__":
             max_disparity_statistics_no_noise,
         ) = handle_counters(metrics, "counters_no_noise")
 
-        # error_ratio = handle_counters_error_ratio(metrics)
-
         if wandb_run:
             wandb_run.log(
                 {
@@ -782,12 +788,12 @@ if __name__ == "__main__":
                     "Training Counter 1|1 no noise": sum_counters_no_noise["1|1"],
                     "Training Target 0": sum_targets["0"],
                     "Training Target 1": sum_targets["1"],
-                    # "Train Error ratio": error_ratio,
                 }
             )
 
-        print(
-            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}"
+        log(
+            INFO,
+            f"LOSS WITH REGULARIZATION {sum(losses_with_regularization) / total_examples}",
         )
         current_max_epsilon = max(current_max_epsilon, *epsilon_list)
         agg_metrics = {
@@ -804,7 +810,6 @@ if __name__ == "__main__":
             "FL Round": server_round,
         }
 
-
         if wandb_run:
             wandb_run.log(
                 agg_metrics,
@@ -812,28 +817,66 @@ if __name__ == "__main__":
 
         return agg_metrics
 
-    print(
-        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}"
+    log(
+        INFO,
+        f"CLIENT SAMPLED: {args.sampled_clients}, {args.sampled_clients_validation}, {args.sampled_clients_test}",
     )
-    strategy = FedAvg(
-        fraction_fit=args.sampled_clients,
-        fraction_evaluate=args.sampled_clients_validation,
-        fraction_test=args.sampled_clients_test,
-        min_fit_clients=args.sampled_clients,
-        min_evaluate_clients=0,
-        min_available_clients=args.sampled_clients,
-        on_fit_config_fn=fit_config,
-        on_evaluate_config_fn=evaluate_config,
-        initial_parameters=initial_parameters,
-        fit_metrics_aggregation_fn=agg_metrics_train,
-        evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
-        test_metrics_aggregation_fn=agg_metrics_test,
-        current_max_epsilon=current_max_epsilon,
-        fed_dir=fed_dir,
-    )
+    if args.strategy == "fedavg":
+        strategy = FedAvg(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
+    elif args.strategy == "weighted_1_lambda":
+        strategy = WeightedFedAvg(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
+    elif args.strategy == "weighted_lambda":
+        strategy = WeightedFedAvgLambda(
+            fraction_fit=args.sampled_clients,
+            fraction_evaluate=args.sampled_clients_validation,
+            fraction_test=args.sampled_clients_test,
+            min_fit_clients=args.sampled_clients,
+            min_evaluate_clients=0,
+            min_available_clients=args.sampled_clients,
+            on_fit_config_fn=fit_config,
+            on_evaluate_config_fn=evaluate_config,
+            initial_parameters=initial_parameters,
+            fit_metrics_aggregation_fn=agg_metrics_train,
+            evaluate_metrics_aggregation_fn=agg_metrics_evaluation,
+            test_metrics_aggregation_fn=agg_metrics_test,
+            current_max_epsilon=current_max_epsilon,
+            fed_dir=fed_dir,
+        )
 
+    # these parameters are used to configure Ray and they are dependent on
+    # the machine we want to use to run the experiments
     ray_num_cpus = 40
-    ray_num_gpus = 1
+    ray_num_gpus = 2
     ram_memory = 16_000 * 1024 * 1024 * 2
 
     # (optional) specify Ray config
@@ -847,14 +890,6 @@ if __name__ == "__main__":
         "logging_level": logging.ERROR,
         "log_to_driver": True,
     }
-
-    print(args.training_nodes, args.validation_nodes, args.test_nodes)
-    print(num_training_nodes, num_validation_nodes, num_test_nodes)
-
-    if num_training_nodes + num_validation_nodes + num_test_nodes != pool_size:
-        raise Exception(
-            "The sum of training, validation and test nodes must be equal to the pool size"
-        )
 
     client_manager = SimpleClientManager(
         seed=args.seed,
@@ -870,11 +905,9 @@ if __name__ == "__main__":
         fraction_fit=args.sampled_clients,
         fraction_evaluate=args.sampled_clients_validation,
         fraction_test=args.sampled_clients_test,
-        dataset_path=args.dataset_path,
     )
     server = Server(client_manager=client_manager, strategy=strategy)
 
-    # start simulation
     fl.simulation.start_simulation(
         client_fn=client_fn,
         num_clients=pool_size,

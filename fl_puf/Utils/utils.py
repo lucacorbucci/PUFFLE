@@ -646,9 +646,7 @@ class Utils:
                 noise_multiplier=noise_multiplier,
                 max_grad_norm=MAX_GRAD_NORM,
             )
-            print(
-                f"Created private model with noise {optimizer.noise_multiplier}"
-            )
+            print(f"Created private model with noise {optimizer.noise_multiplier}")
 
         return private_model, optimizer, train_loader, privacy_engine
 
