@@ -89,3 +89,5 @@ command:
   - representative
   - --epsilon
   - 1.0
+  - --one_group_nodes
+  - True
