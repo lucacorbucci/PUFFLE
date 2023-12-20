@@ -6,18 +6,19 @@ import warnings
 from logging import DEBUG, INFO
 from typing import Dict
 
+import dill
 import flwr as fl
 import numpy as np
 import torch
 from ClientManager.client_manager import SimpleClientManager
-from flwr.common.logger import log
-from flwr.common.typing import Scalar
 from Server.server import Server
 from Strategy.fed_avg import FedAvg
 from Strategy.weighted_fed_avg import WeightedFedAvg
 from Strategy.weighted_fed_avg_Lambda import WeightedFedAvgLambda
-from torch import nn
 from Utils.train_parameters import TrainParameters
+from flwr.common.logger import log
+from flwr.common.typing import Scalar
+from torch import nn
 
 from DPL.Utils.dataset_utils import DatasetUtils
 from DPL.Utils.model_utils import ModelUtils
@@ -579,6 +580,10 @@ if __name__ == "__main__":
             average_probabilities,
             max_disparity_statistics,
         ) = handle_counters(metrics, "counters")
+
+        # write avg probabilities to file
+        with open(f"{fed_dir}/avg_proba.pkl", "wb") as file:
+            dill.dump(average_probabilities, file)
 
         agg_metrics = {
             "Test Loss": loss_test,
