@@ -54,7 +54,7 @@ command:
   - --debug
   - True 
   - --base_path
-  - ../../../data/Tabular
+  - ../../../../data/Tabular
   - --DPL 
   - True 
   - --private 
@@ -76,7 +76,7 @@ command:
   - --tabular_data 
   - True
   - --dataset_path 
-  - ../../../data/Tabular/dutch/
+  - ../../../../data/Tabular/dutch/
   - --target 
   - 0.075
   - --group_to_reduce

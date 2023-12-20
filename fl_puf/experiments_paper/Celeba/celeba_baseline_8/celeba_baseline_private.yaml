@@ -53,7 +53,7 @@ command:
   - --debug
   - False
   - --base_path
-  - ../../../data 
+  - ../../../../data 
   - --dataset_path 
   - ../../../data/celeba
   - --private 
