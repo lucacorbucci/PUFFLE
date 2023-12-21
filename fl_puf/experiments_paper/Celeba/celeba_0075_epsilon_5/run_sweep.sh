@@ -14,7 +14,7 @@ run_sweep_and_agent () {
 #   rm temp_output.txt
   
   # Run the wandb agent command
-  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 15
+  poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
 }
 
 run_sweep_and_agent "celeba_tunable_private"

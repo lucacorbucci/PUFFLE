@@ -62,9 +62,10 @@ command:
   - --debug
   - False
   - --base_path
+  - --base_path
   - ../../../../data 
   - --dataset_path 
-  - ../../../data/celeba
+  - ../../../../data/celeba
   - --private 
   - True 
   - --DPL 
