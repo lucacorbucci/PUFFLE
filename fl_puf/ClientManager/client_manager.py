@@ -84,7 +84,7 @@ class SimpleClientManager(ClientManager):
         self.num_test_nodes = num_test_nodes
         self.node_shuffle_seed = node_shuffle_seed
         self.fed_dir = fed_dir
-        self.ratio_unfair_nodes = ratio_unfair_nodes
+        self.ratio_unfair_nodes = ratio_unfair_nodes if ratio_unfair_nodes else 0
         self.fl_rounds = fl_rounds
         self.fraction_train = fraction_fit
         self.fraction_validation = fraction_evaluate
@@ -153,17 +153,21 @@ class SimpleClientManager(ClientManager):
             else:
                 fair_nodes_sampled = fair_group[start:] + fair_group[:end]
 
-            start = fl_round * num_unfair_nodes_sampled % len(unfair_group)
-            end = (
-                fl_round * num_unfair_nodes_sampled + num_unfair_nodes_sampled
-            ) % len(unfair_group)
+            if len(unfair_group) > 0:
+                start = fl_round * num_unfair_nodes_sampled % len(unfair_group)
+                end = (
+                    fl_round * num_unfair_nodes_sampled + num_unfair_nodes_sampled
+                ) % len(unfair_group)
 
-            if start < end:
-                unfair_nodes_sampled = unfair_group[start:end]
+                if start < end:
+                    unfair_nodes_sampled = unfair_group[start:end]
+                else:
+                    unfair_nodes_sampled = unfair_group[start:] + unfair_group[:end]
+
+                sampled_nodes[fl_round] = fair_nodes_sampled + unfair_nodes_sampled
             else:
-                unfair_nodes_sampled = unfair_group[start:] + unfair_group[:end]
-
-            sampled_nodes[fl_round] = fair_nodes_sampled + unfair_nodes_sampled
+                sampled_nodes[fl_round] = fair_nodes_sampled 
+            
         return sampled_nodes
 
     def register(self, client: ClientProxy) -> bool:
