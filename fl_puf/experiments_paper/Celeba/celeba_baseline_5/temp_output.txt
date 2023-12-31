@@ -1,4 +1,4 @@
 wandb: Creating sweep from: celeba_baseline_private.yaml
-wandb: Created sweep with ID: j24h35ss
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_sweep_Baseline_5/sweeps/j24h35ss
-wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_sweep_Baseline_5/j24h35ss
+wandb: Created sweep with ID: qm20aawb
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_sweep_Baseline_5/sweeps/qm20aawb
+wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_sweep_Baseline_5/qm20aawb

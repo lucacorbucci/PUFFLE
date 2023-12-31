@@ -153,18 +153,19 @@ class FlowerClient(fl.client.NumPyClient):
             )
 
         # compute the maximum disparity of the training dataset
-        max_disparity_dataset = np.max(
-            [
-                RegularizationLoss().compute_violation_with_argmax(
-                    predictions_argmax=train_loader.dataset.targets,
-                    sensitive_attribute_list=train_loader.dataset.sensitive_features,
-                    current_target=target,
-                    current_sensitive_feature=sv,
-                )
-                for target in range(0, 1)
-                for sv in range(0, 1)
-            ]
-        )
+        # max_disparity_dataset = np.max(
+        #     [
+        #         RegularizationLoss().compute_violation_with_argmax(
+        #             predictions_argmax=train_loader.dataset.targets,
+        #             sensitive_attribute_list=train_loader.dataset.sensitive_features,
+        #             current_target=target,
+        #             current_sensitive_feature=sv,
+        #         )
+        #         for target in range(0, 1)
+        #         for sv in range(0, 1)
+        #     ]
+        # )
+        max_disparity_dataset = 0
 
         if self.train_parameters.noise_multiplier is not None:
             noise = self.train_parameters.noise_multiplier
