@@ -78,10 +78,10 @@ command:
   - --dataset_path 
   - ../../../../data/Tabular/income/
   - --target 
-  - 0.075
+  - 0.1
   - --epsilon
-  - 0.40
+  - 1.60
   - --epsilon_statistics
-  - 0.10
+  - 0.40
   - --one_group_nodes
   - True

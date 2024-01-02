@@ -1,5 +1,5 @@
 program: ../../../main.py
-method: bayes
+method: random
 metric:
   name: Custom_metric
   goal: maximize
@@ -21,12 +21,9 @@ parameters:
   node_shuffle_seed:
     min: 1
     max: 1000000000
-  starting_lambda_value:
-    min: 0.1
-    max: 0.9
   clipping:
     min: 1.0
-    max: 20.0
+    max: 10.0
 
 command:
   - ${env}
@@ -55,10 +52,8 @@ command:
   - True 
   - --base_path
   - ../../../../data/Tabular
-  - --DPL 
-  - True 
   - --private 
-  - True 
+  - True  
   - --seed 
   - 41 
   - --wandb 
@@ -72,16 +67,10 @@ command:
   - --test_nodes 
   - 0.20
   - --starting_lambda_mode 
-  - fixed
+  - no_tuning
   - --tabular_data 
   - True
   - --dataset_path 
   - ../../../../data/Tabular/income/
-  - --target 
-  - 0.1
   - --epsilon
-  - 0.40
-  - --epsilon_statistics
-  - 0.10
-  - --one_group_nodes
-  - True
+  - 2

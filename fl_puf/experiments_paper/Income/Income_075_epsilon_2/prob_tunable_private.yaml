@@ -88,8 +88,8 @@ command:
   - --target 
   - 0.075
   - --epsilon_lambda 
-  - 0.10
+  - 0.20
   - --epsilon
-  - 0.3
+  - 1.60
   - --epsilon_statistics
-  - 0.10
+  - 0.20

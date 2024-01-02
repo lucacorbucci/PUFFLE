@@ -1,4 +1,4 @@
-PROJECT_NAME="Income_01_epsilon_05" # swap out globally
+PROJECT_NAME="Income_005_epsilon_2" # swap out globally
 
 run_sweep_and_agent () {
   # Set the SWEEP_NAME variable

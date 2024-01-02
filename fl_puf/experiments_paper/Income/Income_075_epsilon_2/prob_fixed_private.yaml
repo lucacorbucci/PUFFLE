@@ -18,18 +18,12 @@ parameters:
     max: 0.1
   optimizer:
     values: ["adam", "sgd"]
-  alpha_target_lambda:
-    min: 0.1
-    max: 4.0
-  momentum:
-    min: 0.0
-    max: 0.9
   node_shuffle_seed:
     min: 1
     max: 1000000000
-  weight_decay_lambda:
-    min: 0.001
-    max: 1.0
+  starting_lambda_value:
+    min: 0.1
+    max: 0.9
   clipping:
     min: 1.0
     max: 20.0
@@ -78,18 +72,16 @@ command:
   - --test_nodes 
   - 0.20
   - --starting_lambda_mode 
-  - disparity
-  - --update_lambda 
-  - True
+  - fixed
   - --tabular_data 
   - True
   - --dataset_path 
   - ../../../../data/Tabular/income/
   - --target 
-  - 0.05
-  - --epsilon_lambda 
-  - 0.10
+  - 0.075
   - --epsilon
-  - 0.3
+  - 1.60
   - --epsilon_statistics
-  - 0.10
+  - 0.40
+  - --one_group_nodes
+  - True
