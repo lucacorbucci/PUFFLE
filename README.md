@@ -10,7 +10,7 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 Then, we can add all the dependencies:
 
-- git submodule add https://github.com/lucacorbucci/DPL.git
+- git submodule add anonymous_repo
 - cd DPL
 - poetry build 
 - cd ..
