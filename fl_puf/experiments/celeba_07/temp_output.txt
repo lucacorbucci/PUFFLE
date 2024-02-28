@@ -1,4 +1,0 @@
-wandb: Creating sweep from: fixed_private.yaml
-wandb: Created sweep with ID: sqnhj397
-wandb: View sweep at: https://wandb.ai/lucacorbucci/FL_PUF_Sweep/sweeps/sqnhj397
-wandb: Run sweep agent with: wandb agent lucacorbucci/FL_PUF_Sweep/sqnhj397

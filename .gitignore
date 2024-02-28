@@ -5,6 +5,7 @@
 *.pkl 
 *.csv
 .vector_cache
+.vscode/
 data
 old
 .env

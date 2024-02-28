@@ -528,7 +528,7 @@ def get_accuracy_and_disparity(best_runs, accuracy_column_name, disparity_column
 def download_data(project_name):
     # project_name = "Dutch_Baseline_1"
     # check if we don't want to download the data again
-    if not os.path.exists(f"./plots_data/data_{project_name}.pkl"):
+    if not os.path.exists(f"/mnt/disk1/home/lcorbucci/plots_data/data_{project_name}.pkl"):
         # plot(project_name)
         project = wandb.Api().project(project_name).sweeps()
         sweeps = get_sweeps(project)
@@ -537,10 +537,10 @@ def download_data(project_name):
             run_links,
             project_name,
         )
-        with open(f"./plots_data/data_{project_name}.pkl", "wb") as f:
+        with open(f"/mnt/disk1/home/lcorbucci/plots_data/data_{project_name}.pkl", "wb") as f:
             dill.dump(data, f)
     else:
-        with open(f"./plots_data/data_{project_name}.pkl", "rb") as f:
+        with open(f"/mnt/disk1/home/lcorbucci/plots_data/data_{project_name}.pkl", "rb") as f:
             data = dill.load(f)
     return data
 
