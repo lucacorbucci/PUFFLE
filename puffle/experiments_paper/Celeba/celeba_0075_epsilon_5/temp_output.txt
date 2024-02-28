@@ -1,0 +1,4 @@
+wandb: Creating sweep from: celeba_fixed_private.yaml
+wandb: Created sweep with ID: ac6z4z8u
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_sweep_0075_5/sweeps/ac6z4z8u
+wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_sweep_0075_5/ac6z4z8u
