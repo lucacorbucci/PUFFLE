@@ -876,7 +876,7 @@ if __name__ == "__main__":
     # these parameters are used to configure Ray and they are dependent on
     # the machine we want to use to run the experiments
     ray_num_cpus = 20
-    ray_num_gpus = 3
+    ray_num_gpus = 1
     ram_memory = 16_000 * 1024 * 1024 * 2
 
     # (optional) specify Ray config
