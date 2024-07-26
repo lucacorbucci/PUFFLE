@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from Utils.celeba import CelebaDataset
 from Utils.dutch import TabularDataset
-from Utils.tabular_datasets_utils import dataset_to_numpy, load_dutch
+from Utils.tabular_data_loader import dataset_to_numpy, load_dutch
 from torchvision import transforms
 
 
