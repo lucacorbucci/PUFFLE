@@ -21,7 +21,7 @@ Then, we can install all the dependencies:
 In the paper we used three datasets to evaluate the performance of PUFFLE: Dutch, Celeba and ACS Income.
 
 - The Dutch Dataset can be found [here](https://raw.githubusercontent.com/tailequy/fairness_dataset/main/Dutch_census/dutch_census_2001.arff). Once you download it, it is enough to put into the folder /data/Tabular/dutch (creaate the folder before if it does not exist). If you prefer to put it into a different folder, you can do it. Remember that you'll have to change the path in the configurations file to run the hyperparameter tuning. 
-- The Celeba dataset can be found [here](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html), we used the img_align_dataset. Once you download it, it is enough to put into the folder /data/celeba (creaate the folder before if it does not exist). If you prefer to put it into a different folder, you can do it. Remember that you'll have to change the path in the configurations file to run the hyperparameter tuning.
+- The Celeba dataset can be found [here](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html), we used the img_align_dataset. Once you download it, it is enough to put into the folder /data/celeba (creaate the folder before if it does not exist). If you prefer to put it into a different folder, you can do it. Remember that you'll have to change the path in the configurations file to run the hyperparameter tuning. For this dataset, we need to use a csv file with the metadata of the images. You can find the csv file in [experiments/data_for_celeba/](/experiments/data_for_celeba/original_merged.csv).
 - For the Income Dataset, please refer to the [paper](https://arxiv.org/abs/2108.04884).
 
 
