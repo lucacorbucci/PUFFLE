@@ -3,7 +3,6 @@
 !*.*
 *.png 
 *.pkl 
-*.csv
 .vector_cache
 .vscode/
 data
