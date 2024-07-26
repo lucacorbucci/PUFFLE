@@ -1,4 +1,0 @@
-wandb: Creating sweep from: tunable_dp_5_t_0.06.yaml
-wandb: Created sweep with ID: jwp1cv44
-wandb: View sweep at: https://wandb.ai/lucacorbucci/PUFFLE_Celeba/sweeps/jwp1cv44
-wandb: Run sweep agent with: wandb agent lucacorbucci/PUFFLE_Celeba/jwp1cv44
