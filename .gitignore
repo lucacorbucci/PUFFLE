@@ -1,7 +1,6 @@
 *
 !*/
 !*.*
-*.png 
 *.pkl 
 .vector_cache
 .vscode/

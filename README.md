@@ -1,8 +1,12 @@
 # PUFFLE: Balancing Privacy, Utility, and Fairness in Federated Learning 
 
+
+
 This repository contains the implementation of the paper "PUFFLE: Balancing Privacy, Utility, and Fairness in Federated Learning" accepted at the European Conference of Artificial Intelligence (ECAI) 2024. The preprint of the paper can be found [**here**](https://arxiv.org/abs/2407.15224).
 
 **Abstract**: Training and deploying Machine Learning models that simultaneously adhere to principles of fairness and privacy while ensuring good utility poses a significant challenge. The interplay between these three factors of trustworthiness is frequently underestimated and remains insufficiently explored. Consequently, many efforts focus on ensuring only two of these factors, neglecting one in the process. The decentralization of the datasets and the variations in distributions among the clients exacerbate the complexity of achieving this ethical trade-off in the context of Federated Learning (FL). For the first time in FL literature, we address these three factors of trustworthiness. We introduce PUFFLE, a high-level parameterised approach that can help in the exploration of the balance between utility, privacy, and fairness in FL scenarios. We prove that PUFFLE can be effective across diverse datasets, models, and data distributions, reducing the model unfairness up to 75%, with a maximum reduction in the utility of 17% in the worst-case scenario, while maintaining strict privacy guarantees during the FL training.
+
+![PUFFLE Logo - generated with Adobe Firefly](/puffle_logo.png)
 
 ## How to install the dependencies
 
