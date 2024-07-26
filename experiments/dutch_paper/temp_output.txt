@@ -1,0 +1,34 @@
+
+Aborted!
+Traceback (most recent call last):
+  File "/usr/lib/python3.8/runpy.py", line 194, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/usr/lib/python3.8/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/__main__.py", line 3, in <module>
+    cli.cli(prog_name="python -m wandb")
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/click/core.py", line 1157, in __call__
+    return self.main(*args, **kwargs)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/click/core.py", line 1078, in main
+    rv = self.invoke(ctx)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/click/core.py", line 1688, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/click/core.py", line 1434, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/click/core.py", line 783, in invoke
+    return __callback(*args, **kwargs)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/cli/cli.py", line 104, in wrapper
+    return func(*args, **kwargs)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/cli/cli.py", line 289, in service
+    server.serve()
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/sdk/service/server.py", line 139, in serve
+    self._inform_used_ports(grpc_port=grpc_port, sock_port=sock_port)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/sdk/service/server.py", line 67, in _inform_used_ports
+    pf.write(self._port_fname)
+  File "/home/lcorbucci/PUFFLE/.venv/lib/python3.8/site-packages/wandb/sdk/service/port_file.py", line 26, in write
+    f = tempfile.NamedTemporaryFile(prefix=bname, dir=dname, mode="w", delete=False)
+  File "/usr/lib/python3.8/tempfile.py", line 695, in NamedTemporaryFile
+    (fd, name) = _mkstemp_inner(dir, prefix, suffix, flags, output_type)
+  File "/usr/lib/python3.8/tempfile.py", line 389, in _mkstemp_inner
+    fd = _os.open(file, flags, 0o600)
+FileNotFoundError: [Errno 2] No such file or directory: '/tmp/tmpaalg5bey/port-1095144.txtm7m2qa2k'

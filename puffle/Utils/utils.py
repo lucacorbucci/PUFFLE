@@ -7,13 +7,19 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import flwr as fl
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import wandb
-from FederatedDataset.PartitionTypes.balanced_and_unbalanced import (
-    BalancedAndUnbalanced,
+from FederatedDataset.PartitionTypes.iid_partition import IIDPartition
+from FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
+    NonIIDPartitionWithSensitiveFeature,
 )
+from FederatedDataset.PartitionTypes.representative import Representative
+from FederatedDataset.Utils.utils import PartitionUtils
 from PIL import Image
+from Utils.model_utils import ModelUtils
+from Utils.train_parameters import TrainParameters
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
@@ -22,28 +28,27 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import VisionDataset
 
-from puffle.DPL.DPL.Learning.learning import Learning
-from puffle.DPL.DPL.Regularization.RegularizationLoss import RegularizationLoss
-from puffle.FederatedDataset.PartitionTypes.iid_partition import IIDPartition
-from puffle.FederatedDataset.PartitionTypes.non_iid_partition_with_sensitive_feature import (
-    NonIIDPartitionWithSensitiveFeature,
-)
-from puffle.FederatedDataset.PartitionTypes.representative import Representative
-from puffle.FederatedDataset.PartitionTypes.unbalanced_partition import (
-    UnbalancedPartition,
-)
-from puffle.FederatedDataset.PartitionTypes.unbalanced_partition_one_class import (
-    UnbalancedPartitionOneClass,
-)
-from puffle.FederatedDataset.PartitionTypes.underrepresented_partition import (
-    UnderrepresentedPartition,
-)
-from puffle.FederatedDataset.Utils.utils import PartitionUtils
-from puffle.Utils.model_utils import ModelUtils
-from puffle.Utils.train_parameters import TrainParameters
+from DPL.Learning.learning import Learning
+from DPL.Regularization.RegularizationLoss import RegularizationLoss
 
 
 class Utils:
+    # plot the bar plot of the disparities
+    @staticmethod
+    def plot_bar_plot(title: str, disparities: list, nodes: list):
+        plt.figure(figsize=(20, 8))
+        plt.bar(range(len(disparities)), disparities)
+        plt.xticks(range(len(nodes)), nodes)
+        plt.title(title)
+        # add a vertical line on xtick=75
+        plt.axvline(x=75, color="r", linestyle="--")
+        plt.xticks(rotation=90)
+        # plt.show()
+        # font size x axis
+        plt.rcParams.update({"font.size": 10})
+        plt.savefig(f"./{title}.png")
+        plt.tight_layout()
+
     @staticmethod
     def get_noise(
         mechanism_type: str,
@@ -78,15 +83,8 @@ class Utils:
 
     @staticmethod
     def setup_wandb(args, train_parameters):
-        if (
-            train_parameters.noise_multiplier is not None
-            and train_parameters.noise_multiplier > 0
-        ):
-            noise_multiplier = train_parameters.noise_multiplier
-        elif args.noise_multiplier is not None and args.noise_multiplier > 0:
-            noise_multiplier = args.noise_multiplier
-        else:
-            noise_multiplier = 0
+        private = False if args.epsilon is None else True
+
         if not args.sweep:
             name = "experiment" if not args.run_name else args.run_name
             wandb_run = wandb.init(
@@ -107,11 +105,9 @@ class Utils:
                     "pool_size": args.pool_size,
                     "sampled_clients": args.sampled_clients,
                     "epochs": args.epochs,
-                    "private": args.private,
-                    "epsilon": args.epsilon if args.private else None,
+                    "private": private,
+                    "epsilon": args.epsilon,
                     "gradnorm": args.clipping,
-                    # "delta": args.delta if args.private else 0,
-                    "noise_multiplier": noise_multiplier,
                     "probability_estimation": args.probability_estimation,
                     "perfect_probability_estimation": args.perfect_probability_estimation,
                     "alpha": args.alpha,
@@ -145,11 +141,11 @@ class Utils:
                     "pool_size": args.pool_size,
                     "sampled_clients": args.sampled_clients,
                     "epochs": args.epochs,
-                    "private": args.private,
-                    "epsilon": args.epsilon if args.private else None,
+                    "private": private,
+                    "epsilon": args.epsilon,
                     "gradnorm": args.clipping,
                     # "delta": args.delta if args.private else 0,
-                    "noise_multiplier": noise_multiplier,
+                    # "noise_multiplier": noise_multiplier,
                     "probability_estimation": args.probability_estimation,
                     "perfect_probability_estimation": args.perfect_probability_estimation,
                     "alpha": args.alpha,
@@ -192,26 +188,44 @@ class Utils:
 
     # DEBUG
     def compute_disparities_debug(nodes):
+        possible_clients = []
+        for client in nodes:
+            possible_z = np.array([])
+            possible_y = np.array([])
+            tmp_y = []
+            tmp_z = []
+            for sample in client:
+                tmp_y.append(sample["y"])
+                tmp_z.append(sample["z"])
+
+            unique_z = np.unique(np.array(tmp_z))
+            unique_y = np.unique(np.array(tmp_y))
+            possible_z = np.unique(np.concatenate((possible_z, unique_z)))
+            possible_y = np.unique(np.concatenate((possible_y, unique_y)))
+            possible_clients.append((possible_y, possible_z))
+
         disparities = []
-        for node in nodes:
+        for node, possible_client in zip(nodes, possible_clients):
+            possible_z = possible_client[1]
+            possible_y = possible_client[0]
             max_disparity = np.max(
                 [
                     RegularizationLoss().compute_violation_with_argmax(
                         predictions_argmax=(
-                            [sample["y"] for sample in node]
+                            np.array([sample["y"] for sample in node])
                             if isinstance(node, list)
-                            else node["y"]
+                            else np.array(node["y"])
                         ),
                         sensitive_attribute_list=(
-                            [sample["z"] for sample in node]
+                            np.array([sample["z"] for sample in node])
                             if isinstance(node, list)
-                            else node["z"]
+                            else np.array(node["z"])
                         ),
-                        current_target=target,
-                        current_sensitive_feature=sv,
+                        current_target=int(target),
+                        current_sensitive_feature=int(sv),
                     )
-                    for target in range(0, 1)
-                    for sv in range(0, 1)
+                    for target in possible_y
+                    for sv in possible_z
                 ]
             )
             disparities.append(max_disparity)
@@ -321,12 +335,6 @@ class Utils:
         path_to_data = path_to_data / cid / (partition + ".pt")
         if dataset == "dutch":
             return torch.load(path_to_data)
-        elif dataset == "adult":
-            return torch.load(path_to_data)
-        elif dataset == "german":
-            return torch.load(path_to_data)
-        elif dataset == "compas":
-            return torch.load(path_to_data)
         elif dataset == "income":
             return torch.load(path_to_data)
         else:
@@ -373,14 +381,22 @@ class Utils:
         one_group_nodes: bool = False,
         splitted_data_dir: str = None,
     ):
-        """Torchvision (e.g. CIFAR-10) datasets using LDA."""
         print("Partitioning the dataset")
 
         images, sensitive_attribute, labels = torch.load(path_to_dataset)
-        mapping = {-1: 0, 1: 1}
-        sensitive_attribute = torch.tensor(
-            [mapping[item] for item in sensitive_attribute]
-        )
+        mapping = {-1: 0, 1: 1, 0: 0}
+        if (
+            train_parameters.metric == "disparity"
+            or train_parameters.metric == "equalised_odds"
+        ):
+            sensitive_attribute = torch.tensor(
+                [
+                    mapping[item] if item in mapping else item
+                    for item in sensitive_attribute
+                ]
+            )
+        else:
+            sensitive_attribute = torch.tensor([item for item in sensitive_attribute])
 
         idx = torch.tensor(list(range(len(images))))
         dataset = [idx, sensitive_attribute, labels]
@@ -414,78 +430,10 @@ class Utils:
                 splitted_indexes=partitions_index_list,
                 dataset=dataset,
             )
-        elif partition_type == "unbalanced":
-            # This is the partition type where we assign to each node only
-            # a subset of the classes. For instance, if we have 2 classes and
-            # 2 sensitive attributes (male and female) like in Celeba, we would assign
-            # only the female samples to a node and only the male samples to another node.
-            ratio = train_parameters.percentage_unbalanced_nodes
-            ratio_list = [ratio, 1 - ratio]
-            partitions_index_list = UnbalancedPartition.do_partitioning(
-                labels=labels,
-                sensitive_features=sensitive_attribute,
-                num_partitions=pool_size,
-                total_num_classes=2,
-                alpha=alpha,
-                ratio_list=ratio_list,
-            )
-            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
-                splitted_indexes=partitions_index_list,
-                dataset=dataset,
-            )
-        elif partition_type == "unbalanced_one_class":
-            # This partition type allows us to assign to some nodes
-            # only 3 out of 4 groups. For instances, if we have 2 classes
-            # and 2 sensitive attributes, we want that some nodes have
-            # all the possible combinations of classes and sensitive attributes
-            # except for some other nodes that will only have 3 out of 4.
 
-            # Ratio is the percentage of nodes that will not have all the possible
-            # combinations of classes and sensitive attributes.
-            ratio = train_parameters.percentage_unbalanced_nodes
-
-            partitions_index_list = UnbalancedPartitionOneClass.do_partitioning(
-                labels=labels,
-                sensitive_features=sensitive_attribute,
-                num_partitions=pool_size,
-                total_num_classes=2,
-                alpha=alpha,
-                ratio=ratio,
-            )
-            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
-                splitted_indexes=partitions_index_list,
-                dataset=dataset,
-            )
-        elif partition_type == "underrepresented":
-            ratio = train_parameters.percentage_unbalanced_nodes
-
-            partitions_index_list = UnderrepresentedPartition.do_partitioning(
-                labels=labels,
-                sensitive_features=sensitive_attribute,
-                num_partitions=pool_size,
-                total_num_classes=2,
-                alpha=alpha,
-                ratio=ratio,
-            )
-            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
-                splitted_indexes=partitions_index_list,
-                dataset=dataset,
-            )
-        elif partition_type == "balanced_and_unbalanced":
-            partitions_index_list, metadata = BalancedAndUnbalanced.do_partitioning(
-                labels=labels,
-                sensitive_features=sensitive_attribute,
-                num_partitions=pool_size,
-                total_num_classes=2,
-                alpha=alpha,
-                percentage_unbalanced_nodes=train_parameters.percentage_unbalanced_nodes,
-                unbalanced_ratio=train_parameters.unbalanced_ratio,
-            )
-            partitions = PartitionUtils.create_splitted_dataset_from_tuple(
-                splitted_indexes=partitions_index_list,
-                dataset=dataset,
-            )
         elif partition_type == "representative":
+            print("SPLITTING THE DATASET USING the representative partitioning")
+
             partitions_index_list, metadata = Representative.do_partitioning(
                 labels=labels,
                 sensitive_features=sensitive_attribute,
@@ -505,37 +453,6 @@ class Utils:
         else:
             raise ValueError(f"Unknown partition type: {partition_type}")
 
-        for p in range(pool_size):
-            partition_zero = partitions[p][2]
-            hist, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
-            print(
-                f"Class histogram for {p}-th partition, {num_classes} classes): {hist}"
-            )
-
-            partition_zero = partitions[p][1]
-
-            hist_sv, _ = np.histogram(partition_zero, bins=list(range(num_classes + 1)))
-            print(
-                f"Sensitive Value histogram for {p}-th partition, {num_classes} classes): {hist_sv}"
-            )
-            assert sum(hist) == sum(hist_sv)
-
-            labels_and_sensitive = zip(
-                [
-                    item.item() if isinstance(item, torch.Tensor) else item
-                    for item in partitions[p][2]
-                ],
-                [
-                    item.item() if isinstance(item, torch.Tensor) else item
-                    for item in partitions[p][1]
-                ],
-            )
-            counter = Counter(labels_and_sensitive)
-            print(
-                f"Node has {sum(counter.values())} - ",
-                counter,
-            )
-
         # now save partitioned dataset to disk
         # first delete dir containing splits (if exists), then create it
         splits_dir = path_to_dataset.parent / splitted_data_dir
@@ -545,6 +462,8 @@ class Utils:
 
         nodes = []
         datasets = []
+        possible_z = np.array([])
+        possible_y = np.array([])
         for p in range(pool_size):
             labels = partitions[p][2]
             sensitive_features = partitions[p][1]
@@ -556,22 +475,11 @@ class Utils:
             if not (splits_dir / str(p)).exists():
                 Path.mkdir(splits_dir / str(p))
 
-            # if val_ratio > 0.0:
-            #     # split data according to val_ratio
-            #     train_idx, val_idx = Utils.get_random_id_splits(len(labels), val_ratio)
-            #     val_imgs = [imgs[val_id] for val_id in val_idx]
-            #     val_labels = labels[val_idx]
-            #     val_sensitive = sensitive_features[val_idx]
-
-            #     with open(splits_dir / str(p) / "val.pt", "wb") as f:
-            #         torch.save([val_imgs, val_sensitive, val_labels], f)
-
-            #     a = torch.load(splits_dir / str(p) / "val.pt")
-
-            #     imgs = [imgs[train_id] for train_id in train_idx]
-            #     labels = labels[train_idx]
-            #     sensitive_features = sensitive_features[train_idx]
             nodes.append({"y": labels, "z": sensitive_features})
+            unique_z = np.unique(np.array(sensitive_features))
+            unique_y = np.unique(np.array(labels))
+            possible_z = np.unique(np.concatenate((possible_z, unique_z)))
+            possible_y = np.unique(np.concatenate((possible_y, unique_y)))
             with open(
                 splits_dir
                 / str(p)
@@ -580,20 +488,121 @@ class Utils:
             ) as f:
                 torch.save([imgs, sensitive_features, labels], f)
 
-        disparities = Utils.compute_disparities_debug(nodes)
-
-        # store statistics about the dataset in the same folder
-        statistics = Utils.get_dataset_statistics_with_lists(
-            nodes, disparities, metadata
+        # convert nodes into the format expected by compute_disparities_debug
+        tmp_nodes = []
+        predictions = []
+        sensitive_features = []
+        for node in nodes:
+            predictions.append([int(item) for item in node["y"]])
+            sensitive_features.append([int(item) for item in node["z"]])
+            current_node = []
+            for y, z in zip(node["y"], node["z"]):
+                current_node.append({"y": int(y), "z": int(z)})
+            if current_node:
+                tmp_nodes.append(current_node)
+        disparities = Utils.compute_disparities_debug(tmp_nodes)
+        Utils.plot_bar_plot(
+            title="Distribution Disparities",
+            disparities=disparities,
+            nodes=[f"{i}" for i in range(len(nodes))],
         )
-        for statistic, p in zip(statistics, range(pool_size)):
-            with open(
-                splits_dir / str(p) / ("metadata.json"),
-                "w",
-            ) as outfile:
-                json_object = json.dumps(statistic, indent=4)
-                outfile.write(json_object)
+        possible_y = [str(int(item)) for item in possible_y.tolist()]
+        possible_z = [str(int(item)) for item in possible_z.tolist()]
+        # we are still assuming a binary target
+        # however, we can have a non binary sensitive value
+        missing_combinations = []
+        all_combinations = []
+        sent_disparity_combinations = [f"1|{sensitive}" for sensitive in possible_z]
+        for combination in sent_disparity_combinations:
+            missing_combinations.append(("0" + combination[1:], combination))
+            all_combinations.append(combination)
+            all_combinations.append("0" + combination[1:])
+
+        json_file = {
+            "possible_z": possible_z,
+            "possible_y": possible_y,
+            "missing_combinations": missing_combinations,
+            "all_combinations": all_combinations,
+            "combinations": sent_disparity_combinations,
+        }
+        with open(f"{splits_dir}/metadata.json", "w") as outfile:
+            json_object = json.dumps(json_file, indent=4)
+            outfile.write(json_object)
+
+        counter_distribution_nodes = Utils.compute_distribution_debug(
+            predictions=predictions, sensitive_features=sensitive_features
+        )
+        Utils.plot_distributions(
+            title="Distribution of the nodes",
+            counter_groups=counter_distribution_nodes,
+            nodes=[f"{i}" for i in range(len(counter_distribution_nodes))],
+            all_combinations=all_combinations,
+        )
+
         return splits_dir
+
+    @staticmethod
+    def plot_distributions(
+        title: str, counter_groups: list, nodes: list, all_combinations: list
+    ):
+        plt.figure(figsize=(20, 8))
+        previous_sum = []
+        for combination in all_combinations:
+            counter = [
+                counter[(int(combination[0]), int(combination[-1]))]
+                for counter in counter_groups
+            ]
+            print(counter)
+            if previous_sum:
+                plt.bar(range(len(counter)), counter, bottom=previous_sum)
+            else:
+                plt.bar(range(len(counter)), counter)
+                previous_sum = [0 for _ in counter]
+
+            previous_sum = [sum(x) for x in zip(previous_sum, counter)]
+
+        # counter_group_0_0 = [counter[(0, 0)] for counter in counter_groups]
+        # counter_group_0_1 = [counter[(0, 1)] for counter in counter_groups]
+        # counter_group_1_0 = [counter[(1, 0)] for counter in counter_groups]
+        # counter_group_1_1 = [counter[(1, 1)] for counter in counter_groups]
+
+        # plot a barplot with counter_group_0_0, counter_group_0_1, counter_group_1_0, counter_group_1_1
+        # for each client in the same plot
+
+        # plt.bar(range(len(counter_group_0_0)), counter_group_0_0)
+        # plt.bar(range(len(counter_group_0_1)), counter_group_0_1, bottom=counter_group_0_0)
+        # plt.bar(
+        #     range(len(counter_group_1_0)),
+        #     counter_group_1_0,
+        #     bottom=[sum(x) for x in zip(counter_group_0_0, counter_group_0_1)],
+        # )
+        # plt.bar(
+        #     range(len(counter_group_1_1)),
+        #     counter_group_1_1,
+        #     bottom=[
+        #         sum(x) for x in zip(counter_group_0_0, counter_group_0_1, counter_group_1_0)
+        #     ],
+        # )
+
+        plt.xlabel("Client")
+        plt.ylabel("Amount of samples")
+        plt.title("Samples for each group (target/sensitive Value) per client")
+        plt.legend(all_combinations)
+        # font size 20
+        plt.rcParams.update({"font.size": 20})
+        plt.rcParams.update({"font.size": 10})
+        plt.savefig(f"./{title}.png")
+        plt.tight_layout()
+
+    @staticmethod
+    def compute_distribution_debug(predictions, sensitive_features):
+        counter_nodes = []
+        for prediction, sensitive_feature in zip(predictions, sensitive_features):
+            counter_node = []
+            for pred, sf in zip(prediction, sensitive_feature):
+                counter_node.append((pred, sf))
+            counter_nodes.append(Counter(counter_node))
+        return counter_nodes
 
     @staticmethod
     def prepare_dataset_for_FL(
@@ -615,7 +624,7 @@ class Utils:
             train_path,
         )
 
-        print("Data Correctly downloaded")
+        print("Data Correctly Loaded")
 
         return train_path
 
@@ -684,6 +693,7 @@ class Utils:
         # provide a target epsilon and a target delta. In this
         # case you don't need to specify a noise multiplier.
         if epsilon:
+            print(f"Creating private model using epsilon {epsilon}")
             (
                 private_model,
                 optimizer,
@@ -696,6 +706,7 @@ class Utils:
                 target_epsilon=epsilon,
                 target_delta=delta,
                 max_grad_norm=MAX_GRAD_NORM,
+                # poisson_sampling=False,
             )
         else:
             # print(f"Create private model with noise multiplier {noise_multiplier}")
@@ -705,6 +716,7 @@ class Utils:
                 data_loader=train_loader,
                 noise_multiplier=noise_multiplier,
                 max_grad_norm=MAX_GRAD_NORM,
+                # poisson_sampling=False,
             )
             # print(f"Created private model with noise {optimizer.noise_multiplier}")
 

@@ -215,10 +215,8 @@ class SimpleClientManager(ClientManager):
             unfair_test_nodes = int(self.num_test_nodes * self.ratio_unfair_nodes)
 
             self.fair_test_clients = fair_group[:fair_test_nodes]
-            self.unfair_test_clients = unfair_group[:unfair_test_nodes]
-            self.test_clients_list = (
-                fair_group[:fair_test_nodes] + unfair_group[:unfair_test_nodes]
-            )
+            self.unfair_test_clients = random.sample(unfair_group, unfair_test_nodes)
+            self.test_clients_list = self.fair_test_clients + self.unfair_test_clients
 
             sampled_nodes_test = self.pre_sample_clients(
                 fraction=self.fraction_test,
@@ -231,8 +229,13 @@ class SimpleClientManager(ClientManager):
             with open(f"{self.fed_dir}/test_nodes.pkl", "wb") as f:
                 dill.dump(sampled_nodes_test, f)
 
+            # remove from fair_group the nodes that are in the fair_test_clients
             self.remaining_fair = fair_group[fair_test_nodes:]
-            self.remaining_unfair = unfair_group[unfair_test_nodes:]
+            self.remaining_unfair = [
+                client
+                for client in unfair_group
+                if client not in self.unfair_test_clients
+            ]
 
             print("Nodes in the test set: ", self.test_clients_list)
             print("Fair Test Nodes: ", len(self.fair_test_clients))

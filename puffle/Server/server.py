@@ -14,13 +14,16 @@
 # ==============================================================================
 """Flower server."""
 
-
 import concurrent.futures
+import os
 import timeit
 from dataclasses import dataclass
 from logging import DEBUG, INFO
 from typing import Dict, List, Optional, Tuple, Union
 
+import numpy as np
+import torch
+from Utils.dutch import TabularDataset
 from flwr.common import (
     Code,
     DisconnectRes,
@@ -57,7 +60,11 @@ class Server:
     """Flower server."""
 
     def __init__(
-        self, *, client_manager: ClientManager, strategy: Optional[Strategy] = None
+        self,
+        *,
+        client_manager: ClientManager,
+        strategy: Optional[Strategy] = None,
+        args=None,
     ) -> None:
         self._client_manager: ClientManager = client_manager
         self.parameters: Parameters = Parameters(
@@ -65,6 +72,7 @@ class Server:
         )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         self.max_workers: Optional[int] = None
+        self.args = args
 
     def set_max_workers(self, max_workers: Optional[int]) -> None:
         """Set the max_workers used by ThreadPoolExecutor."""
@@ -102,7 +110,47 @@ class Server:
         log(INFO, "FL starting")
         start_time = timeit.default_timer()
         average_probabilities = None
+        last_working_dataset_id = 0
         for current_round in range(1, num_rounds + 1):
+            if self.args.dataset == "continual_income" and self.args.switch_dataset:
+                dataset_id = int(current_round / self.args.switch_dataset)
+                for client_name in range(self.args.pool_size):
+                    if os.path.exists(
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/income_dataframes_{dataset_id}.npy"
+                    ):
+                        last_working_dataset_id = dataset_id
+                    else:
+                        dataset_id = last_working_dataset_id
+                    # open numpy arrays
+                    X = np.load(
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/income_dataframes_{dataset_id}.npy"
+                    )
+                    Y = np.load(
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/income_labels_{dataset_id}.npy"
+                    )
+                    Z = np.load(
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/income_groups_{dataset_id}.npy"
+                    )
+                    custom_dataset = TabularDataset(
+                        x=np.hstack((X, np.ones((X.shape[0], 1)))).astype(np.float32),
+                        z=[item.item() for item in Z],  # .astype(np.float32),
+                        y=[item.item() for item in Y],  # .astype(np.float32),
+                    )
+
+                    # remove the old train.pt
+                    if os.path.exists(
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/train.pt"
+                    ):
+                        os.remove(
+                            f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/train.pt"
+                        )
+
+                    torch.save(
+                        custom_dataset,
+                        f"{self.args.dataset_path}/{self.args.splitted_data_dir}/{client_name}/train.pt",
+                    )
+                print("----> Server update dataset_id", last_working_dataset_id)
+
             # Train model and replace previous global model
             res_fit = self.fit_round(
                 server_round=current_round,

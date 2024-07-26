@@ -17,10 +17,13 @@
 Paper: https://arxiv.org/abs/1602.05629
 """
 
-
+from collections import OrderedDict
 from logging import WARNING
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import flwr as fl
+import numpy as np
+import torch
 from flwr.common import (
     EvaluateIns,
     EvaluateRes,
@@ -76,6 +79,12 @@ class FedAvg(Strategy):
         test_metrics_aggregation_fn: Optional[MetricsAggregationFn] = None,
         current_max_epsilon: float = 0.0,
         fed_dir: str = None,
+        model=None,
+        file_name: str = None,
+        store_model: bool = False,
+        wandb=None,
+        args=None,
+        train_parameters=None,
     ) -> None:
         """Federated Averaging strategy.
 
@@ -138,6 +147,12 @@ class FedAvg(Strategy):
         self.fit_metrics_aggregation_fn = fit_metrics_aggregation_fn
         self.evaluate_metrics_aggregation_fn = evaluate_metrics_aggregation_fn
         self.test_metrics_aggregation_fn = test_metrics_aggregation_fn
+        self.model = model
+        self.store_model = store_model
+        self.file_name = file_name
+        self.wandb_run = wandb
+        self.args = args
+        self.train_parameters = train_parameters
 
     def __repr__(self) -> str:
         rep = f"FedAvg(accept_failures={self.accept_failures})"
@@ -293,10 +308,43 @@ class FedAvg(Strategy):
         if self.fit_metrics_aggregation_fn:
             fit_metrics = [(res.num_examples, res.metrics) for _, res in results]
             metrics_aggregated = self.fit_metrics_aggregation_fn(
-                fit_metrics, server_round, self.current_max_expsilon, self.fed_dir
+                fit_metrics,
+                server_round,
+                self.current_max_expsilon,
+                self.fed_dir,
+                self.wandb_run,
+                self.args,
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No fit_metrics_aggregation_fn provided")
+
+        if (
+            parameters_aggregated is not None
+            and self.model is not None
+            and self.store_model
+            and self.file_name is not None
+        ):
+            print(f"Saving round {server_round} aggregated_parameters...")
+
+            # Convert `Parameters` to `List[np.ndarray]`
+            aggregated_ndarrays: List[np.ndarray] = fl.common.parameters_to_ndarrays(
+                parameters_aggregated
+            )
+
+            # Convert `List[np.ndarray]` to PyTorch`state_dict`
+            params_dict = zip(self.model.state_dict().keys(), aggregated_ndarrays)
+            state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
+            self.model.load_state_dict(state_dict, strict=True)
+
+            # Save the model
+            torch.save(
+                self.model, f"./models/model_round_{server_round}_{self.file_name}.pth"
+            )
+
+            torch.save(
+                self.model.state_dict(),
+                f"./models/model_round_{server_round}_state_dict_{self.file_name}.pth",
+            )
 
         return parameters_aggregated, metrics_aggregated
 
@@ -328,6 +376,10 @@ class FedAvg(Strategy):
             metrics_aggregated = self.evaluate_metrics_aggregation_fn(
                 eval_metrics,
                 server_round,
+                self.train_parameters,
+                self.wandb_run,
+                self.args,
+                self.fed_dir,
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No evaluate_metrics_aggregation_fn provided")
@@ -362,6 +414,10 @@ class FedAvg(Strategy):
             metrics_aggregated = self.test_metrics_aggregation_fn(
                 eval_metrics,
                 server_round,
+                self.train_parameters,
+                self.wandb_run,
+                self.args,
+                self.fed_dir,
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No test_metrics_aggregation_fn provided")

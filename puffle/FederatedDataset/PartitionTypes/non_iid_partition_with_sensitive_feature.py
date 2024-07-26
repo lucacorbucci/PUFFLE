@@ -2,7 +2,6 @@ from collections import Counter
 
 import numpy as np
 import torch
-from puffle.FederatedDataset.Utils.lda import create_lda_partitions
 
 
 class NonIIDPartitionWithSensitiveFeature:
