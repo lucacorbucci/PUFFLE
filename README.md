@@ -8,9 +8,9 @@ This repository contains the implementation of the paper "PUFFLE: Balancing Priv
 
 I used Poetry as dependency manager. If you don't have poetry installed you can run:
 
-"""
+```
 curl -sSL https://install.python-poetry.org | python3 -
-"""
+```
 
 Then, we can install all the dependencies:
 
