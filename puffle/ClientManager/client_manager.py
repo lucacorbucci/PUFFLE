@@ -170,79 +170,6 @@ class SimpleClientManager(ClientManager):
 
         return sampled_nodes
 
-    def pre_sample_clients_different_distribution(
-        self, fraction, ratio_unfair, unfair_group, fair_group, client_list
-    ):
-        sampled_nodes = {}
-        for fl_round in range(self.fl_rounds):
-            # number of nodes we have to select in each round
-            nodes_to_sample = int(fraction * len(client_list))//2
-            num_fair_nodes_sampled = int(nodes_to_sample * 0.8)
-            num_unfair_nodes_sampled = int(nodes_to_sample * 0.2)
-            start = fl_round * num_fair_nodes_sampled % len(fair_group)
-            end = (fl_round * num_fair_nodes_sampled + num_fair_nodes_sampled) % len(
-                fair_group
-            )
-
-            if start < end:
-                fair_nodes_sampled = fair_group[start:end]
-            else:
-                fair_nodes_sampled = fair_group[start:] + fair_group[:end]
-
-            if len(unfair_group) > 0:
-                start = fl_round * num_unfair_nodes_sampled % len(unfair_group)
-                end = (
-                    fl_round * num_unfair_nodes_sampled + num_unfair_nodes_sampled
-                ) % len(unfair_group)
-
-                if start < end:
-                    unfair_nodes_sampled = unfair_group[start:end]
-                else:
-                    unfair_nodes_sampled = unfair_group[start:] + unfair_group[:end]
-
-                sampled_nodes[fl_round] = fair_nodes_sampled + unfair_nodes_sampled
-            else:
-                sampled_nodes[fl_round] = fair_nodes_sampled
-
-        return sampled_nodes
-
-    def pre_sample_clients_different_distribution_train(
-        self, fraction, ratio_unfair, unfair_group, fair_group, client_list
-    ):
-        sampled_nodes = {}
-        for fl_round in range(self.fl_rounds):
-            # number of nodes we have to select in each round
-            nodes_to_sample = int(fraction * len(client_list))
-            f = 0.2 if fl_round < 15 else 0.8
-            num_fair_nodes_sampled = int(nodes_to_sample * f)
-            num_unfair_nodes_sampled = int(nodes_to_sample * f)
-            start = fl_round * num_fair_nodes_sampled % len(fair_group)
-            end = (fl_round * num_fair_nodes_sampled + num_fair_nodes_sampled) % len(
-                fair_group
-            )
-
-            if start < end:
-                fair_nodes_sampled = fair_group[start:end]
-            else:
-                fair_nodes_sampled = fair_group[start:] + fair_group[:end]
-
-            if len(unfair_group) > 0:
-                start = fl_round * num_unfair_nodes_sampled % len(unfair_group)
-                end = (
-                    fl_round * num_unfair_nodes_sampled + num_unfair_nodes_sampled
-                ) % len(unfair_group)
-
-                if start < end:
-                    unfair_nodes_sampled = unfair_group[start:end]
-                else:
-                    unfair_nodes_sampled = unfair_group[start:] + unfair_group[:end]
-
-                sampled_nodes[fl_round] = fair_nodes_sampled + unfair_nodes_sampled
-            else:
-                sampled_nodes[fl_round] = fair_nodes_sampled
-
-        return sampled_nodes
-
     def register(self, client: ClientProxy) -> bool:
         """Register Flower ClientProxy instance.
 
@@ -288,10 +215,8 @@ class SimpleClientManager(ClientManager):
             unfair_test_nodes = int(self.num_test_nodes * self.ratio_unfair_nodes)
 
             self.fair_test_clients = fair_group[:fair_test_nodes]
-            self.unfair_test_clients = unfair_group[:unfair_test_nodes]
-            self.test_clients_list = (
-                fair_group[:fair_test_nodes] + unfair_group[:unfair_test_nodes]
-            )
+            self.unfair_test_clients = random.sample(unfair_group, unfair_test_nodes)
+            self.test_clients_list = self.fair_test_clients + self.unfair_test_clients
 
             sampled_nodes_test = self.pre_sample_clients(
                 fraction=self.fraction_test,
@@ -304,8 +229,13 @@ class SimpleClientManager(ClientManager):
             with open(f"{self.fed_dir}/test_nodes.pkl", "wb") as f:
                 dill.dump(sampled_nodes_test, f)
 
+            # remove from fair_group the nodes that are in the fair_test_clients
             self.remaining_fair = fair_group[fair_test_nodes:]
-            self.remaining_unfair = unfair_group[unfair_test_nodes:]
+            self.remaining_unfair = [
+                client
+                for client in unfair_group
+                if client not in self.unfair_test_clients
+            ]
 
             print("Nodes in the test set: ", self.test_clients_list)
             print("Fair Test Nodes: ", len(self.fair_test_clients))
@@ -326,22 +256,13 @@ class SimpleClientManager(ClientManager):
                 + self.remaining_unfair[:unfair_train_nodes]
             )
 
-            if self.fraction_validation > 0:
-                sampled_nodes_train = self.pre_sample_clients_different_distribution(
-                    fraction=self.fraction_train,
-                    ratio_unfair=self.ratio_unfair_nodes,
-                    unfair_group=self.unfair_training_clients,
-                    fair_group=self.fair_training_clients,
-                    client_list=self.training_clients_list,
-                )
-            else:
-                sampled_nodes_train = self.pre_sample_clients(
-                    fraction=self.fraction_train,
-                    ratio_unfair=self.ratio_unfair_nodes,
-                    unfair_group=self.unfair_training_clients,
-                    fair_group=self.fair_training_clients,
-                    client_list=self.training_clients_list,
-                )
+            sampled_nodes_train = self.pre_sample_clients(
+                fraction=self.fraction_train,
+                ratio_unfair=self.ratio_unfair_nodes,
+                unfair_group=self.unfair_training_clients,
+                fair_group=self.fair_training_clients,
+                client_list=self.training_clients_list,
+            )
             with open(f"{self.fed_dir}/train_nodes.pkl", "wb") as f:
                 dill.dump(sampled_nodes_train, f)
 

@@ -104,3 +104,12 @@ target/
 .ipynb_checkpoints/
 *.pyc
 fl_puf/temp_output.txt
+
+
+
+notebooks/
+old/
+data/
+.vscode/
+.ruff_cache/
+__pycache__/

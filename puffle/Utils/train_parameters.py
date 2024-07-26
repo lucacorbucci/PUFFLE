@@ -37,3 +37,6 @@ class TrainParameters:
     sweep: bool = False
     fl_round: int = None
     noise_multiplier: float = None
+    metric: str = "disparity"
+    privileged_group: int = None
+    unprivileged_group: int = None

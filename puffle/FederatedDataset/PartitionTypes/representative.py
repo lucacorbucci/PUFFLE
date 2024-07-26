@@ -1,7 +1,12 @@
+import itertools
+import random
+from collections import Counter
+
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
-from puffle.DPL.DPL.Regularization.RegularizationLoss import RegularizationLoss
+from DPL.Regularization.RegularizationLoss import RegularizationLoss
 
 
 class Representative:
@@ -44,7 +49,11 @@ class Representative:
                 remaining_data[labels_and_sensitive[index]] = []
             remaining_data[labels_and_sensitive[index]].append(index)
 
-        number_unfair_nodes = int(num_partitions * ratio_unfair_nodes)
+        number_unfair_nodes = (
+            int(num_partitions * ratio_unfair_nodes)
+            if ratio_unfair_nodes is not None
+            else 0
+        )
         number_fair_nodes = num_partitions - number_unfair_nodes
 
         # At the moment this is the only thing that is working, we need
@@ -60,82 +69,6 @@ class Representative:
         )
         # modify the unfair nodes so that they only have samples
         # with sensitive value equal to 1 in half of the unfair nodes
-
-        # removed_data = {"1": [], "0": []}
-        # removed_samples_counter = {}
-        # new_unfair_nodes = []
-        # for node_id, indexes in enumerate(unfair_nodes[:len(unfair_nodes)//4]):
-        #     sensitive_features_list = sensitive_features[indexes]
-        #     tmp_indexes = []
-        #     if node_id % 2 == 0:
-        #         for sf, index in zip(sensitive_features_list, indexes):
-        #             if sf != 1:
-        #                 tmp_indexes.append(index)
-        #             else:
-        #                 removed_data["1"].append(index)
-        #                 if node_id not in removed_samples_counter:
-        #                     removed_samples_counter[node_id] = 0
-        #                 removed_samples_counter[node_id] += 1
-        #         new_unfair_nodes.append(tmp_indexes)
-
-        #     else:
-        #         new_unfair_nodes.append(indexes)
-
-        # removed_data = {"1": [], "0": []}
-        # removed_samples_counter = {}
-        # new_fair_nodes = []
-        # for node_id, indexes in enumerate(fair_nodes[:len(fair_nodes)//3]):
-        #     sensitive_features_list = sensitive_features[indexes]
-        #     tmp_indexes = []
-        #     for sf, index in zip(sensitive_features_list, indexes):
-        #         if sf != 1:
-        #             tmp_indexes.append(index)
-        #         else:
-        #             removed_data["1"].append(index)
-        #             if node_id not in removed_samples_counter:
-        #                 removed_samples_counter[node_id] = 0
-        #             removed_samples_counter[node_id] += 1
-        #     new_fair_nodes.append(tmp_indexes)
-
-        # for node_id, indexes in enumerate(fair_nodes[len(fair_nodes)//3:]):
-        #     new_fair_nodes.append(indexes)
-
-        # removed_zero = 0
-        # for node_id, indexes in enumerate(unfair_nodes[len(unfair_nodes)//2:]):
-        #     sensitive_features_list = sensitive_features[indexes]
-        #     tmp_indexes = []
-        #     if node_id % 2 == 0:
-        #         removed_zero += 1
-        #         for sf, index in zip(sensitive_features_list, indexes):
-        #             if sf != 0:
-        #                 tmp_indexes.append(index)
-        #             else:
-        #                 removed_data["0"].append(index)
-        #                 # if len(removed_data["1"]) > 0:
-        #                 #     tmp_indexes.append(removed_data["1"].pop())
-        #         new_unfair_nodes.append(tmp_indexes)
-        #     else:
-        #         new_unfair_nodes.append(indexes)
-
-        # print(removed_samples_counter)
-        # # tmp_new_unfair = []
-        # to_be_added = len(removed_data["0"]) // len(removed_samples_counter)
-        # for node_id, node in enumerate(new_unfair_nodes[:len(unfair_nodes)//2]):
-        #     if node_id % 2 == 0:
-        #         samples = removed_data["0"][:to_be_added]
-        #         removed_data["0"] = removed_data["0"][to_be_added:]
-        #         node.extend(samples)
-
-        # # tmp_new_unfair = []
-        # to_be_added = len(removed_data["1"]) // removed_zero
-        # print(to_be_added)
-        # for node_id, node in enumerate(new_unfair_nodes[len(unfair_nodes)//2:]):
-        #     if node_id % 2 == 0:
-        #         samples = removed_data["1"][:to_be_added]
-        #         removed_data["1"] = removed_data["1"][to_be_added:]
-        #         node.extend(samples)
-
-        # print(removed_data)
 
         if one_group_nodes:
             new_unfair_nodes = []
@@ -159,37 +92,30 @@ class Representative:
         disparities = Representative.compute_disparities_debug(
             predictions=predictions, sensitive_features=sensitive_features
         )
-        print(disparities)
-        Representative.plot_bar_plot(
-            title="Disparities",
-            disparities=disparities,
-            nodes=[f"{i}" for i in range(len(nodes))],
+        counter_distribution_nodes = Representative.compute_distribution_debug(
+            predictions=predictions, sensitive_features=sensitive_features
         )
-        size_of_each_client_data = [len(client) for client in fair_nodes + unfair_nodes]
-        Representative.plot_bar_plot(
-            title="Client Size",
-            disparities=size_of_each_client_data,
-            nodes=[f"{i}" for i in range(len(nodes))],
-        )
+        # Representative.plot_distributions(
+        #     title="Distribution of the nodes",
+        #     counter_groups=counter_distribution_nodes,
+        #     nodes=[f"{i}" for i in range(len(nodes))],
+        # )
+        # print(disparities)
+        # Representative.plot_bar_plot(
+        #     title="Disparities",
+        #     disparities=disparities,
+        #     nodes=[f"{i}" for i in range(len(nodes))],
+        # )
+        # size_of_each_client_data = [len(client) for client in fair_nodes + unfair_nodes]
+        # Representative.plot_bar_plot(
+        #     title="Client Size",
+        #     disparities=size_of_each_client_data,
+        #     nodes=[f"{i}" for i in range(len(nodes))],
+        # )
         return (
             fair_nodes + unfair_nodes,
             [0] * len(fair_nodes) + [1] * len(unfair_nodes),
         )
-
-    # plot the bar plot of the disparities
-    def plot_bar_plot(title: str, disparities: list, nodes: list):
-        plt.figure(figsize=(20, 8))
-        plt.bar(range(len(disparities)), disparities)
-        plt.xticks(range(len(nodes)), nodes)
-        plt.title(title)
-        # add a vertical line on xtick=75
-        plt.axvline(x=75, color="r", linestyle="--")
-        plt.xticks(rotation=90)
-        # plt.show()
-        # font size x axis
-        plt.rcParams.update({"font.size": 10})
-        plt.savefig(f"./{title}.png")
-        plt.tight_layout()
 
     def compute_disparities_debug(predictions, sensitive_features):
         disparities = []
@@ -209,6 +135,68 @@ class Representative:
             disparities.append(max_disparity)
         print(f"Mean of disparity {np.mean(disparities)} - std {np.std(disparities)}")
         return disparities
+
+    def compute_distribution_debug(predictions, sensitive_features):
+        counter_nodes = []
+        for prediction, sensitive_feature in zip(predictions, sensitive_features):
+            counter_node = []
+            for pred, sf in zip(prediction, sensitive_feature):
+                counter_node.append((pred, sf))
+            counter_nodes.append(Counter(counter_node))
+        return counter_nodes
+
+    def plot_distributions(title: str, counter_groups: list, nodes: list):
+        counter_group_0_0 = [counter[(0, 0)] for counter in counter_groups]
+        counter_group_0_1 = [counter[(0, 1)] for counter in counter_groups]
+        counter_group_1_0 = [counter[(1, 0)] for counter in counter_groups]
+        counter_group_1_1 = [counter[(1, 1)] for counter in counter_groups]
+
+        # plot a barplot with counter_group_0_0, counter_group_0_1, counter_group_1_0, counter_group_1_1
+        # for each client in the same plot
+        plt.figure(figsize=(20, 8))
+
+        plt.bar(range(len(counter_group_0_0)), counter_group_0_0)
+        plt.bar(
+            range(len(counter_group_0_1)), counter_group_0_1, bottom=counter_group_0_0
+        )
+        plt.bar(
+            range(len(counter_group_1_0)),
+            counter_group_1_0,
+            bottom=[sum(x) for x in zip(counter_group_0_0, counter_group_0_1)],
+        )
+        plt.bar(
+            range(len(counter_group_1_1)),
+            counter_group_1_1,
+            bottom=[
+                sum(x)
+                for x in zip(counter_group_0_0, counter_group_0_1, counter_group_1_0)
+            ],
+        )
+
+        plt.xlabel("Client")
+        plt.ylabel("Amount of samples")
+        plt.title("Samples for each group (target/sensitive Value) per client")
+        plt.legend(["0,0", "0,1", "1,0", "1,1"])
+        # font size 20
+        plt.rcParams.update({"font.size": 20})
+        plt.rcParams.update({"font.size": 10})
+        plt.savefig(f"./{title}.png")
+        plt.tight_layout()
+
+    # plot the bar plot of the disparities
+    def plot_bar_plot(title: str, disparities: list, nodes: list):
+        plt.figure(figsize=(20, 8))
+        plt.bar(range(len(disparities)), disparities)
+        plt.xticks(range(len(nodes)), nodes)
+        plt.title(title)
+        # add a vertical line on xtick=75
+        plt.axvline(x=75, color="r", linestyle="--")
+        plt.xticks(rotation=90)
+        # plt.show()
+        # font size x axis
+        plt.rcParams.update({"font.size": 10})
+        plt.savefig(f"./{title}.png")
+        plt.tight_layout()
 
     def create_unfair_nodes(
         fair_nodes: list,

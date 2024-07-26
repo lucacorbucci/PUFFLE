@@ -1,13 +1,12 @@
 from typing import Tuple
 
 import torch
+from Models.celeba_net import CelebaNet
+from Models.logistic_regression_net import LinearClassificationNet
 from opacus import PrivacyEngine
 from opacus.grad_sample import GradSampleModule
 from opacus.optimizers import DPOptimizer
 from torch.utils.data import DataLoader
-
-from puffle.Models.celeba_net import CelebaNet
-from puffle.Models.logistic_regression_net import LinearClassificationNet
 
 
 class ModelUtils:
@@ -97,11 +96,8 @@ class ModelUtils:
             return CelebaNet()
         elif dataset == "dutch":
             return LinearClassificationNet(input_size=11, output_size=2)
-        elif dataset == "german":
-            return LinearClassificationNet(input_size=11, output_size=2)
-        elif dataset == "adult":
-            return LinearClassificationNet(input_size=111, output_size=2)
         elif dataset == "income":
             return LinearClassificationNet(input_size=54, output_size=2)
+
         else:
             raise ValueError(f"Dataset {dataset} not supported")

@@ -1,5 +1,6 @@
 import copy
 import gc
+import json
 import logging
 import os
 import warnings
@@ -10,18 +11,18 @@ import flwr as fl
 import numpy as np
 import ray
 import torch
-from DPL.DPL.Learning.learning import Learning
-from DPL.DPL.Regularization.RegularizationLoss import RegularizationLoss
+from Utils.model_utils import ModelUtils
 from Utils.train_parameters import TrainParameters
 from Utils.utils import Utils
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.accountants.utils import get_noise_multiplier
 
-from puffle.Utils.model_utils import ModelUtils
+from DPL.Learning.learning import Learning
+from DPL.Regularization.RegularizationLoss import RegularizationLoss
 
 
-class FlowerClient(fl.client.NumPyClient):
+class FlowerClientDisparity(fl.client.NumPyClient):
     def __init__(
         self,
         cid: str,
@@ -110,6 +111,8 @@ class FlowerClient(fl.client.NumPyClient):
             partition="train",
         )
 
+        print(f"Client {self.cid} has {len(train_loader.dataset)} samples")
+
         self.delta = (1 / len(train_loader.dataset)) / 3
 
         if self.train_parameters.epsilon_lambda is not None:
@@ -160,7 +163,7 @@ class FlowerClient(fl.client.NumPyClient):
                 self.train_parameters.regularization_lambda = 0
             first_round = True
 
-        max_disparity_dataset = 0
+        # max_disparity_dataset = 0
 
         if self.train_parameters.epsilon is None:
             self.noise_multiplier = 0
@@ -303,6 +306,7 @@ class FlowerClient(fl.client.NumPyClient):
             train_parameters=self.train_parameters,
             current_epoch=None,
         )
+
         (probabilities, counters) = RegularizationLoss.compute_probabilities(
             predictions=predictions,
             sensitive_attribute_list=sensitive_attributes,
@@ -317,9 +321,13 @@ class FlowerClient(fl.client.NumPyClient):
         # compute the noise that I have to add to the counters to ensure we
         # guarantee train_parameters.epsilon_statistics
         if self.train_parameters.epsilon_statistics is not None:
+            if os.path.exists(f"{self.fed_dir}/metadata.json"):
+                with open(f"{self.fed_dir}/metadata.json", "r") as infile:
+                    json_file = json.load(infile)
+            combinations = json_file["combinations"]
             sampling_ratio = 1
-            iterations = (
-                self.sampling_frequency * 2
+            iterations = self.sampling_frequency * len(
+                combinations
             )  # we multiply by 2 because every time we send two values
             noise_statistics = get_noise_multiplier(
                 target_epsilon=self.train_parameters.epsilon_statistics,
@@ -330,7 +338,7 @@ class FlowerClient(fl.client.NumPyClient):
             )
 
             for key in counters.keys():
-                if len(key) > 1:
+                if key in combinations:
                     counters[key] += Utils.get_noise(
                         mechanism_type="gaussian", sigma=noise_statistics
                     )
@@ -364,6 +372,7 @@ class FlowerClient(fl.client.NumPyClient):
             del private_model_regularization
         gc.collect()
 
+        print(f"Client {self.cid} Counter: ", counters)
         # Return local model and statistics
         return (
             Utils.get_params(self.net),
@@ -381,14 +390,14 @@ class FlowerClient(fl.client.NumPyClient):
                 "cid": self.cid,
                 "targets": possible_targets,
                 "sensitive_attributes": possible_sensitive_attributes,
-                "Disparity Train": all_metrics[-1]["Max Disparity Train"],
+                "Disparity Train": all_metrics[-1]["Max Unfairness Train"],
                 "Lambda": self.train_parameters.regularization_lambda,
                 "counters": counters,
                 "counters_no_noise": counters_no_noise,
                 "Max Disparity Train Before Local Epoch": all_metrics[0][
                     "Max Disparity Train Before Local Epoch"
                 ],
-                "Max Disparity Dataset": max_disparity_dataset,
+                # "Max Disparity Dataset": max_disparity_dataset,
                 "history_lambda": history_lambda,
             },
         )
@@ -414,18 +423,18 @@ class FlowerClient(fl.client.NumPyClient):
         )
 
         # compute the maximum disparity of the training dataset
-        max_disparity_dataset = np.max(
-            [
-                RegularizationLoss().compute_violation_with_argmax(
-                    predictions_argmax=dataset.dataset.targets,
-                    sensitive_attribute_list=dataset.dataset.sensitive_features,
-                    current_target=target,
-                    current_sensitive_feature=sv,
-                )
-                for target in range(0, 1)
-                for sv in range(0, 1)
-            ]
-        )
+        # max_disparity_dataset = np.max(
+        #     [
+        #         RegularizationLoss().compute_violation_with_argmax(
+        #             predictions_argmax=dataset.dataset.targets,
+        #             sensitive_attribute_list=dataset.dataset.sensitive_features,
+        #             current_target=target,
+        #             current_sensitive_feature=sv,
+        #         )
+        #         for target in range(0, 1)
+        #         for sv in range(0, 1)
+        #     ]
+        # )
 
         # Send model to device
         self.net.to(self.train_parameters.device)
@@ -438,6 +447,9 @@ class FlowerClient(fl.client.NumPyClient):
             precision,
             recall,
             max_disparity,
+            y_true,
+            y_pred,
+            colors,
         ) = Learning.test(
             model=self.net,
             test_loader=dataset,
@@ -481,7 +493,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
-                "max_disparity_dataset": max_disparity_dataset,
+                # "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
         else:
@@ -492,7 +504,7 @@ class FlowerClient(fl.client.NumPyClient):
                 "probabilities": probabilities,
                 "cid": self.cid,
                 "counters": counters,
-                "max_disparity_dataset": max_disparity_dataset,
+                # "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
 
@@ -577,11 +589,9 @@ class FlowerClient(fl.client.NumPyClient):
             optimizer=optimizer_noise,
             data_loader=dataset,
             epochs=self.sampling_frequency * self.train_parameters.epochs,
-            target_epsilon=(
-                self.train_parameters.epsilon
-                if target_epsilon is None
-                else target_epsilon
-            ),
+            target_epsilon=self.train_parameters.epsilon
+            if target_epsilon is None
+            else target_epsilon,
             target_delta=self.delta,
             max_grad_norm=self.clipping,
         )
