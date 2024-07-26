@@ -34,9 +34,9 @@ For the settings that you can change in the configuration file, please refer to 
 
 Inside each folder, you can also find a run_sweep_1.sh file that you can use to run the hyperparameter search. You can run the experiments by running the following command:
 
-"""
+```
 sh run_sweep_1.sh
-"""
+```
 
 An example of the hyperparameter search for the Celeba Dataset can be found [here](https://wandb.ai/lucacorbucci/PUFFLE_Celeba/sweeps). In the sweep tabs you can find the sweep that we ran for the Baseline and the sweep that we ran for PUFFLE with Tunable Lambda with Epsilon=5 and Target Unfairness set to 0.06
 
