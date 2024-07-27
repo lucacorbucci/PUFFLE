@@ -1,3 +1,12 @@
+"""
+Implementation of the paper "PUFFLE: Balancing Privacy, Utility, and Fairness in
+Federated Learning" by L. Corbucci, M. A. Heikkilä, D.S. Noguero, A. Monreale, N. Kourtellis.
+
+https://arxiv.org/abs/2407.15224
+
+Code developed by L. Corbucci, 2024
+"""
+
 import argparse
 import logging
 import os
