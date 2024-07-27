@@ -18,48 +18,45 @@ run_sweep_and_agent () {
   poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
 }
 
+run_sweep_and_agent "baseline_IID"
+
+run_sweep_and_agent "baseline"
+
+run_sweep_and_agent "baseline_dp_8"
 run_sweep_and_agent "baseline_dp_5"
+
+run_sweep_and_agent "fixed_t_0.04"
+run_sweep_and_agent "fixed_t_0.06"
+run_sweep_and_agent "fixed_t_0.09"
+run_sweep_and_agent "fixed_t_0.12"
+run_sweep_and_agent "fixed_t_0.15"
+
+run_sweep_and_agent "fixed_dp_5_t_0.04"
+run_sweep_and_agent "fixed_dp_5_t_0.06"
+run_sweep_and_agent "fixed_dp_5_t_0.09"
+run_sweep_and_agent "fixed_dp_5_t_0.12"
+run_sweep_and_agent "fixed_dp_5_t_0.15"
+
+run_sweep_and_agent "fixed_dp_8_t_0.04"
+run_sweep_and_agent "fixed_dp_8_t_0.06"
+run_sweep_and_agent "fixed_dp_8_t_0.09"
+run_sweep_and_agent "fixed_dp_8_t_0.12"
+run_sweep_and_agent "fixed_dp_8_t_0.15"
+
+run_sweep_and_agent "tunable_t_0.04"
+run_sweep_and_agent "tunable_t_0.06"
+run_sweep_and_agent "tunable_t_0.09"
+run_sweep_and_agent "tunable_t_0.12"
+run_sweep_and_agent "tunable_t_0.15"
+
+run_sweep_and_agent "tunable_dp_5_t_0.04"
 run_sweep_and_agent "tunable_dp_5_t_0.06"
+run_sweep_and_agent "tunable_dp_5_t_0.09"
+run_sweep_and_agent "tunable_dp_5_t_0.12"
+run_sweep_and_agent "tunable_dp_5_t_0.15"
 
-
-
-# run_sweep_and_agent "baseline"
-
-# run_sweep_and_agent "baseline_dp_8"
-# run_sweep_and_agent "baseline_dp_5"
-
-# run_sweep_and_agent "fixed_t_0.04"
-# run_sweep_and_agent "fixed_t_0.06"
-# run_sweep_and_agent "fixed_t_0.09"
-# run_sweep_and_agent "fixed_t_0.12"
-# run_sweep_and_agent "fixed_t_0.15"
-
-# run_sweep_and_agent "fixed_dp_5_t_0.04"
-# run_sweep_and_agent "fixed_dp_5_t_0.06"
-# run_sweep_and_agent "fixed_dp_5_t_0.09"
-# run_sweep_and_agent "fixed_dp_5_t_0.12"
-# run_sweep_and_agent "fixed_dp_5_t_0.15"
-
-# run_sweep_and_agent "fixed_dp_8_t_0.04"
-# run_sweep_and_agent "fixed_dp_8_t_0.06"
-# run_sweep_and_agent "fixed_dp_8_t_0.09"
-# run_sweep_and_agent "fixed_dp_8_t_0.12"
-# run_sweep_and_agent "fixed_dp_8_t_0.15"
-
-# run_sweep_and_agent "tunable_t_0.04"
-# run_sweep_and_agent "tunable_t_0.06"
-# run_sweep_and_agent "tunable_t_0.09"
-# run_sweep_and_agent "tunable_t_0.12"
-# run_sweep_and_agent "tunable_t_0.15"
-
-# run_sweep_and_agent "tunable_dp_5_t_0.04"
-# run_sweep_and_agent "tunable_dp_5_t_0.06"
-# run_sweep_and_agent "tunable_dp_5_t_0.09"
-# run_sweep_and_agent "tunable_dp_5_t_0.12"
-# run_sweep_and_agent "tunable_dp_5_t_0.15"
-
-# run_sweep_and_agent "tunable_dp_8_t_0.04"
-# run_sweep_and_agent "tunable_dp_8_t_0.06"
-# run_sweep_and_agent "tunable_dp_8_t_0.09"
-# run_sweep_and_agent "tunable_dp_8_t_0.12"
-# run_sweep_and_agent "tunable_dp_8_t_0.15"
+run_sweep_and_agent "tunable_dp_8_t_0.04"
+run_sweep_and_agent "tunable_dp_8_t_0.06"
+run_sweep_and_agent "tunable_dp_8_t_0.09"
+run_sweep_and_agent "tunable_dp_8_t_0.12"
+run_sweep_and_agent "tunable_dp_8_t_0.15"

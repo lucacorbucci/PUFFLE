@@ -18,29 +18,40 @@ run_sweep_and_agent () {
   poetry run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 10
 }
 
-# run_sweep_and_agent "baseline"
-# run_sweep_and_agent "fixed_t_0.06"
-# run_sweep_and_agent "fixed_t_0.09"
-# run_sweep_and_agent "fixed_t_0.12"
-# run_sweep_and_agent "fixed_t_0.17"
-# run_sweep_and_agent "fixed_t_0.20"
+run_sweep_and_agent "baseline"
+run_sweep_and_agent "fixed_t_0.06"
+run_sweep_and_agent "fixed_t_0.09"
+run_sweep_and_agent "fixed_t_0.12"
+run_sweep_and_agent "fixed_t_0.17"
+run_sweep_and_agent "fixed_t_0.20"
 
-# run_sweep_and_agent "fixed_dp_1_t_0.06"
-# run_sweep_and_agent "fixed_dp_1_t_0.09"
-# run_sweep_and_agent "fixed_dp_1_t_0.12"
-# run_sweep_and_agent "fixed_dp_1_t_0.17"
-# run_sweep_and_agent "fixed_dp_1_t_0.20"
+run_sweep_and_agent "fixed_dp_1_t_0.06"
+run_sweep_and_agent "fixed_dp_1_t_0.09"
+run_sweep_and_agent "fixed_dp_1_t_0.12"
+run_sweep_and_agent "fixed_dp_1_t_0.17"
+run_sweep_and_agent "fixed_dp_1_t_0.20"
 
-# run_sweep_and_agent "fixed_dp_2_t_0.06"
-# run_sweep_and_agent "fixed_dp_2_t_0.09"
-# run_sweep_and_agent "fixed_dp_2_t_0.12"
-# run_sweep_and_agent "fixed_dp_2_t_0.17"
-# run_sweep_and_agent "fixed_dp_2_t_0.20"
-
-
+run_sweep_and_agent "fixed_dp_2_t_0.06"
+run_sweep_and_agent "fixed_dp_2_t_0.09"
+run_sweep_and_agent "fixed_dp_2_t_0.12"
+run_sweep_and_agent "fixed_dp_2_t_0.17"
+run_sweep_and_agent "fixed_dp_2_t_0.20"
 
 run_sweep_and_agent "tunable_t_0.06"
 run_sweep_and_agent "tunable_t_0.09"
 run_sweep_and_agent "tunable_t_0.12"
 run_sweep_and_agent "tunable_t_0.17"
 run_sweep_and_agent "tunable_t_0.20"
+
+
+run_sweep_and_agent "tunable_dp_1_t_0.06"
+run_sweep_and_agent "tunable_dp_1_t_0.09"
+run_sweep_and_agent "tunable_dp_1_t_0.12"
+run_sweep_and_agent "tunable_dp_1_t_0.17"
+run_sweep_and_agent "tunable_dp_1_t_0.20"
+
+run_sweep_and_agent "tunable_dp_2_t_0.06"
+run_sweep_and_agent "tunable_dp_2_t_0.09"
+run_sweep_and_agent "tunable_dp_2_t_0.12"
+run_sweep_and_agent "tunable_dp_2_t_0.17"
+run_sweep_and_agent "tunable_dp_2_t_0.20"

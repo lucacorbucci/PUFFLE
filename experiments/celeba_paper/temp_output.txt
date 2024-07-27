@@ -1,4 +1,0 @@
-wandb: Creating sweep from: baseline_dp_5.yaml
-wandb: Created sweep with ID: ocskcg41
-wandb: View sweep at: https://wandb.ai/lucacorbucci/PUFFLE_Celeba/sweeps/ocskcg41
-wandb: Run sweep agent with: wandb agent lucacorbucci/PUFFLE_Celeba/ocskcg41

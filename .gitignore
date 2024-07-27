@@ -1,9 +1,7 @@
 *
 !*/
 !*.*
-*.png 
 *.pkl 
-*.csv
 .vector_cache
 .vscode/
 data
@@ -113,3 +111,7 @@ data/
 .vscode/
 .ruff_cache/
 __pycache__/
+
+temp_output.txt
+*.png
+!puffle_logo.png

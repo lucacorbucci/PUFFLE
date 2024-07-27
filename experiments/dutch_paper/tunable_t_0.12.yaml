@@ -55,7 +55,7 @@ command:
   - --debug
   - True 
   - --base_path
-  - ../../../../data/dutch/
+  - ../../data/Tabular/dutch/
   - --seed 
   - 41 
   - --wandb 
@@ -71,7 +71,7 @@ command:
   - --tabular_data 
   - True
   - --dataset_path 
-  - ../../../../data/dutch/
+  - ../../data/Tabular/dutch/
   - --group_to_reduce
   - 0 
   - 1
