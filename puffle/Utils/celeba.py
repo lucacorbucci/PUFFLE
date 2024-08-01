@@ -7,6 +7,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 
 
+
+
 class CelebaDataset(Dataset):
     """Definition of the dataset used for the Celeba Dataset."""
 
@@ -15,7 +17,7 @@ class CelebaDataset(Dataset):
         csv_path: str,
         image_path: str,
         transform: torchvision.transforms = None,
-        debug: bool = False,
+        debug: bool = True,
     ) -> None:
         """Initialization of the dataset.
 
@@ -31,22 +33,16 @@ class CelebaDataset(Dataset):
 
         smiling_dict = {-1: 0, 1: 1}
         targets = [smiling_dict[item] for item in dataframe["Smiling"].tolist()]
-
         self.targets = targets
-        self.classes = targets
-
+        # self.sensitive_attributes = [smiling_dict[item] for item in dataframe["Gender"].tolist()]
         self.sensitive_attributes = dataframe["Male"].tolist()
-
-        # Initially all the weights are equal to 1 then we will add the weights
-        # if we need them
-        self.weights = np.ones(len(self.targets))
-
-        self.gender = dataframe["Male"].tolist()
         self.samples = list(dataframe["image_id"])
         self.n_samples = len(dataframe)
         self.transform = transform
         self.image_path = image_path
         self.debug = debug
+        self.indexes = range(len(self.samples))
+
         if not self.debug:
             self.images = [
                 Image.open(os.path.join(self.image_path, sample)).convert(
@@ -80,9 +76,8 @@ class CelebaDataset(Dataset):
 
         return (
             img,
-            self.gender[index],
+            self.sensitive_attributes[index],
             self.targets[index],
-            self.weights[index],
         )
 
     def __len__(self) -> int:
