@@ -11,15 +11,14 @@ import flwr as fl
 import numpy as np
 import ray
 import torch
+from DPL.Learning.learning import Learning
+from DPL.Regularization.RegularizationLoss import RegularizationLoss
 from Utils.model_utils import ModelUtils
 from Utils.train_parameters import TrainParameters
 from Utils.utils import Utils
 from flwr.common.typing import Scalar
 from opacus import PrivacyEngine
 from opacus.accountants.utils import get_noise_multiplier
-
-from DPL.Learning.learning import Learning
-from DPL.Regularization.RegularizationLoss import RegularizationLoss
 
 
 class FlowerClientDisparity(fl.client.NumPyClient):
@@ -297,8 +296,10 @@ class FlowerClientDisparity(fl.client.NumPyClient):
         (
             predictions,
             sensitive_attributes,
+            _,
             possible_targets,
             possible_sensitive_attributes,
+            _,
             y_true,
         ) = Learning.test_prediction(
             model=private_net,
@@ -419,22 +420,8 @@ class FlowerClientDisparity(fl.client.NumPyClient):
             batch_size=self.train_parameters.batch_size,
             workers=num_workers,
             dataset=self.dataset_name,
-            partition="train",
+            partition="test" if not self.train_parameters.sweep else "val",
         )
-
-        # compute the maximum disparity of the training dataset
-        # max_disparity_dataset = np.max(
-        #     [
-        #         RegularizationLoss().compute_violation_with_argmax(
-        #             predictions_argmax=dataset.dataset.targets,
-        #             sensitive_attribute_list=dataset.dataset.sensitive_features,
-        #             current_target=target,
-        #             current_sensitive_feature=sv,
-        #         )
-        #         for target in range(0, 1)
-        #         for sv in range(0, 1)
-        #     ]
-        # )
 
         # Send model to device
         self.net.to(self.train_parameters.device)
@@ -459,10 +446,30 @@ class FlowerClientDisparity(fl.client.NumPyClient):
         )
 
         (
+            _,
+            _,
+            _,
+            _,
+            _,
+            max_disparity_second,
+            _,
+            _,
+            _,
+        ) = Learning.test_2(
+            model=self.net,
+            test_loader=dataset,
+            train_parameters=self.train_parameters,
+            current_epoch=None,
+            average_probabilities=average_probabilities,
+        )
+
+        (
             predictions,
             sensitive_attributes,
+            second_sensitive_attributes,
             possible_targets,
             possible_sensitive_attributes,
+            possible_second_sensitive_attributes,
             y_true,
         ) = Learning.test_prediction(
             model=self.net,
@@ -482,6 +489,18 @@ class FlowerClientDisparity(fl.client.NumPyClient):
             # train_parameters=self.train_parameters,
         )
 
+        (
+            second_probabilities,
+            second_counters,
+        ) = RegularizationLoss.compute_probabilities(
+            predictions=predictions,
+            sensitive_attribute_list=second_sensitive_attributes,
+            device=self.train_parameters.device,
+            possible_sensitive_attributes=possible_second_sensitive_attributes,
+            possible_targets=possible_targets,
+            # train_parameters=self.train_parameters,
+        )
+
         self.net.to("cpu")
         gc.collect()
 
@@ -489,10 +508,13 @@ class FlowerClientDisparity(fl.client.NumPyClient):
             metrics = {
                 "validation_accuracy": float(accuracy),
                 "max_disparity_validation": float(max_disparity),
+                "max_disparity_validation_second": float(max_disparity_second),
                 "validation_loss": test_loss,
                 "probabilities": probabilities,
+                "second_probabilities": second_probabilities,
                 "cid": self.cid,
                 "counters": counters,
+                "second_counters": second_counters,
                 # "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }
@@ -500,10 +522,13 @@ class FlowerClientDisparity(fl.client.NumPyClient):
             metrics = {
                 "test_accuracy": float(accuracy),
                 "max_disparity_test": float(max_disparity),
+                "max_disparity_test_second": float(max_disparity_second),
                 "test_loss": test_loss,
                 "probabilities": probabilities,
+                "second_probabilities": second_probabilities,
                 "cid": self.cid,
                 "counters": counters,
+                "second_counters": second_counters,
                 # "max_disparity_dataset": max_disparity_dataset,
                 "f1_score": f1score,
             }

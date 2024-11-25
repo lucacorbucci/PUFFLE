@@ -126,7 +126,7 @@ class Learning:
             max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,
             optimizer=optimizer,
         ) as memory_safe_data_loader:
-            for batch_number, (data, sensitive_feature, target) in enumerate(
+            for batch_number, (data, sensitive_feature, _, target) in enumerate(
                 memory_safe_data_loader, 0
             ):
                 regularization_term = None
@@ -410,7 +410,7 @@ class Learning:
         colors = []
 
         with torch.no_grad():
-            for data, color, target in test_loader:
+            for data, color, _, target in test_loader:
                 target = target.long()
                 data, target = (
                     data.to(train_parameters.device),
@@ -440,6 +440,99 @@ class Learning:
             criterion_regularization = RegularizationLoss()
             # We compute the violation on the entire test set with the current model
             unfairness_test = criterion_regularization.violation_with_dataset(
+                model=model,
+                dataset=test_loader,
+                device=train_parameters.device,
+                average_probabilities=average_probabilities,
+            )
+
+        # if losses is on gpu we need to move it back to cpu
+        losses = [item.item() for item in losses]
+        test_loss = np.mean(losses)
+        accuracy = correct / total
+
+        y_true = [item.item() for item in y_true]
+        y_pred = [item.item() for item in y_pred]
+
+        f1score = f1_score(y_true, y_pred, average="macro")
+        precision = precision_score(y_true, y_pred, average="macro")
+        recall = recall_score(y_true, y_pred, average="macro")
+
+        return (
+            test_loss,
+            accuracy,
+            f1score,
+            precision,
+            recall,
+            unfairness_test,
+            y_true,
+            y_pred,
+            colors,
+        )
+
+    @staticmethod
+    def test_2(
+        model: torch.nn.Module,
+        test_loader: torch.utils.data.DataLoader,
+        train_parameters: RegularizationConfig,
+        current_epoch: int,
+        set_name: str = "Test set",
+        average_probabilities=None,
+    ) -> Tuple[float, float, float, float, float, float]:
+        """Test the model on the test set computing the
+        accuracy and also the maximum disparity of the model.
+
+        Args:
+        Args:
+            model (torch.nn.Module): The model we want to test
+            test_loader (torch.utils.data.DataLoader): the test dataset
+            train_parameters (RegularizationConfig): the parameters used for the training
+            current_epoch (int): the current epoch
+            set_name (str, optional): name of the dataset used for the test.
+                Defaults to "test set".
+        """
+        model.eval()
+        criterion = nn.CrossEntropyLoss()
+        test_loss = 0
+        correct = 0
+        total = 0
+        y_pred = []
+        y_true = []
+        losses = []
+        predictions = []
+        colors = []
+
+        with torch.no_grad():
+            for data, _, color, target in test_loader:
+                target = target.long()
+                data, target = (
+                    data.to(train_parameters.device),
+                    target.to(train_parameters.device),
+                )
+                output = model(data)
+                total += target.size(0)
+                test_loss = criterion(output, target)
+                losses.append(test_loss)
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
+                y_pred.extend(pred)
+                y_true.extend(target)
+                predictions.extend(pred)
+                colors += [item.item() for item in color]
+
+        predictions = [value.item() for item in predictions for value in item]
+
+        counter_predictions = defaultdict(list)
+        counter_true_predictions = defaultdict(list)
+
+        for prediction, color, true_value in zip(predictions, colors, y_true):
+            counter_predictions[color].append(prediction)
+            counter_true_predictions[color].append(true_value.item())
+
+        if train_parameters.metric == "disparity":
+            criterion_regularization = RegularizationLoss()
+            # We compute the violation on the entire test set with the current model
+            unfairness_test = criterion_regularization.violation_with_dataset_2(
                 model=model,
                 dataset=test_loader,
                 device=train_parameters.device,
@@ -549,9 +642,10 @@ class Learning:
         losses = []
         predictions = []
         sensitive_attributes = []
+        second_sensitive_attributes = []
 
         with torch.no_grad():
-            for data, sensitive_attribute, target in test_loader:
+            for data, sensitive_attribute, second_sensitive, target in test_loader:
                 target = target.long()
                 data, target = (
                     data.to(train_parameters.device),
@@ -570,13 +664,18 @@ class Learning:
                 y_true.extend(target)
                 predictions.append(output)
                 sensitive_attributes += [item.item() for item in sensitive_attribute]
+                second_sensitive_attributes += [
+                    item.item() for item in second_sensitive
+                ]
 
         concatenated_predictions = torch.cat(predictions, dim=0)
 
         return (
             concatenated_predictions,
             torch.tensor(sensitive_attributes),
+            torch.tensor(second_sensitive_attributes),
             set([item.item() for item in y_true]),
             set(sensitive_attributes),
+            set(second_sensitive_attributes),
             y_true,
         )

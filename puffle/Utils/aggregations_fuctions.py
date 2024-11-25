@@ -59,6 +59,13 @@ class AggregationFunctions:
                         else "max_disparity_validation"
                     )
                 ]
+                disparity_second = metric[
+                    (
+                        "max_disparity_test_second"
+                        if not train_parameters.sweep
+                        else "max_disparity_validation_second"
+                    )
+                ]
                 accuracy = metric[
                     (
                         "test_accuracy"
@@ -70,6 +77,7 @@ class AggregationFunctions:
                 agg_metrics = {
                     f"Test Node {node_name} - Acc.": accuracy,
                     f"Test Node {node_name} - Disp.": disparity,
+                    f"Test Node {node_name} - Second Disp.": disparity_second,
                     f"Test Node {node_name} - Disp. Dataset": disparity_dataset,
                     "FL Round": server_round,
                 }
@@ -82,6 +90,15 @@ class AggregationFunctions:
                 max_disparity_statistics,
                 disparity_combinations,
             ) = AggregationFunctions.handle_counters(metrics, "counters", fed_dir)
+
+            (
+                _,
+                _,
+                _,
+                max_disparity_statistics_second_value,
+                _,
+            ) = AggregationFunctions.handle_counters(metrics, "second_counters", fed_dir)
+
             if wandb_run:
                 for combination in disparity_combinations:
                     target, sensitive_value, disparity = combination
@@ -99,6 +116,7 @@ class AggregationFunctions:
                 "Test Loss": loss_test,
                 "Test Accuracy": accuracy_test,
                 "Test Disparity with statistics": max_disparity_statistics,
+                "Test Disparity with statistics Second value": max_disparity_statistics_second_value,
                 "FL Round": server_round,
                 "Test F1": f1_test,
             }

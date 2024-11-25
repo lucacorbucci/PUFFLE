@@ -11,6 +11,7 @@ from Utils.dutch import TabularDataset
 from Utils.utils import Utils
 from matplotlib.pyplot import figure
 from scipy.io import arff
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 ##############################################################################################################
@@ -659,6 +660,10 @@ def prepare_tabular_data(
     do_iid_split: bool = False,
     one_group_nodes: bool = False,
     splitted_data_dir: str = None,
+    cross_silo: bool = False,
+    sweep: bool = False,
+    seed: int = 42,
+    validation_seed: int = 42,
 ):
     if dataset_name == "income":
         for client_name in range(num_nodes):
@@ -676,15 +681,84 @@ def prepare_tabular_data(
             Z = np.load(
                 f"{dataset_path}/{splitted_data_dir}/{client_name}/income_groups_{client_name}.npy"
             )
-            custom_dataset = TabularDataset(
-                x=np.hstack((X, np.ones((X.shape[0], 1)))).astype(np.float32),
-                z=[item.item() for item in Z],  # .astype(np.float32),
-                y=[item.item() for item in Y],  # .astype(np.float32),
+            W = np.load(
+                f"{dataset_path}/{splitted_data_dir}/{client_name}/income_second_groups_{client_name}.npy"
             )
-            torch.save(
-                custom_dataset,
-                f"{dataset_path}/{splitted_data_dir}/{client_name}/train.pt",
-            )
+
+            if cross_silo:
+                # split the numpy arrays into train and test
+                X_train, X_test, Y_train, Y_test, Z_train, Z_test, W_train, W_test = (
+                    train_test_split(X, Y, Z, W, test_size=0.2, random_state=seed)
+                )
+                if sweep:
+                    (
+                        X_train,
+                        X_val,
+                        Y_train,
+                        Y_val,
+                        Z_train,
+                        Z_val,
+                        W_train,
+                        W_val,
+                    ) = train_test_split(
+                        X_train,
+                        Y_train,
+                        Z_train,
+                        W_train,
+                        test_size=0.2,
+                        random_state=validation_seed,
+                    )
+
+                    custom_dataset = TabularDataset(
+                        x=np.hstack((X_val, np.ones((X_val.shape[0], 1)))).astype(
+                            np.float32
+                        ),
+                        z=[item.item() for item in Z_val],  # .astype(np.float32),
+                        w=[item.item() for item in W_val],  # .astype(np.float32),
+                        y=[item.item() for item in Y_val],  # .astype(np.float32),
+                    )
+                    torch.save(
+                        custom_dataset,
+                        f"{dataset_path}/{splitted_data_dir}/{client_name}/val.pt",
+                    )
+
+                # save train
+                custom_dataset = TabularDataset(
+                    x=np.hstack((X_train, np.ones((X_train.shape[0], 1)))).astype(
+                        np.float32
+                    ),
+                    z=[item.item() for item in Z_train],  # .astype(np.float32),
+                    w=[item.item() for item in W_train],  # .astype(np.float32),
+                    y=[item.item() for item in Y_train],  # .astype(np.float32),
+                )
+                torch.save(
+                    custom_dataset,
+                    f"{dataset_path}/{splitted_data_dir}/{client_name}/train.pt",
+                )
+                # save test
+                custom_dataset = TabularDataset(
+                    x=np.hstack((X_test, np.ones((X_test.shape[0], 1)))).astype(
+                        np.float32
+                    ),
+                    z=[item.item() for item in Z_test],  # .astype(np.float32),
+                    w=[item.item() for item in W_test],  # .astype(np.float32),
+                    y=[item.item() for item in Y_test],  # .astype(np.float32),
+                )
+                torch.save(
+                    custom_dataset,
+                    f"{dataset_path}/{splitted_data_dir}/{client_name}/test.pt",
+                )
+            else:
+                custom_dataset = TabularDataset(
+                    x=np.hstack((X, np.ones((X.shape[0], 1)))).astype(np.float32),
+                    z=[item.item() for item in Z],  # .astype(np.float32),
+                    w=[item.item() for item in W],  # .astype(np.float32),
+                    y=[item.item() for item in Y],  # .astype(np.float32),
+                )
+                torch.save(
+                    custom_dataset,
+                    f"{dataset_path}/{splitted_data_dir}/{client_name}/train.pt",
+                )
 
         fed_dir = f"{dataset_path}/{splitted_data_dir}"
         return fed_dir, None

@@ -97,7 +97,7 @@ class ModelUtils:
         elif dataset == "dutch":
             return LinearClassificationNet(input_size=11, output_size=2)
         elif dataset == "income":
-            return LinearClassificationNet(input_size=54, output_size=2)
+            return LinearClassificationNet(input_size=49, output_size=2)
 
         else:
             raise ValueError(f"Dataset {dataset} not supported")

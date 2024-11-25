@@ -20,18 +20,18 @@ from typing import Dict
 import flwr as fl
 import numpy as np
 import torch
+from Client.client import FlowerClientDisparity
+from ClientManager.client_manager import SimpleClientManager
+from Server.server import Server
+from Strategy.fed_avg import FedAvg
 from Utils.aggregations_fuctions import AggregationFunctions
 from Utils.dataset_utils import DatasetUtils
 from Utils.model_utils import ModelUtils
 from Utils.tabular_data_loader import prepare_tabular_data
 from Utils.train_parameters import TrainParameters
 from Utils.utils import Utils
-from Client.client import FlowerClientDisparity
-from ClientManager.client_manager import SimpleClientManager
-from Strategy.fed_avg import FedAvg
 from flwr.common.logger import log
 from flwr.common.typing import Scalar
-from Server.server import Server
 
 
 def signal_handler(sig, frame):
@@ -261,10 +261,10 @@ if __name__ == "__main__":
         node_shuffle_seed = int(str(time.time()).split(".")[1]) * args.seed
         args.node_shuffle_seed = node_shuffle_seed
 
-    print(
-        f"Removing files in {args.dataset_path}/celeba-10-batches-py/{args.splitted_data_dir}/*.pkl"
-    )
     if args.dataset == "celeba":
+        print(
+            f"Removing files in {args.dataset_path}/celeba-10-batches-py/{args.splitted_data_dir}/*.pkl"
+        )
         os.system(
             f"rm -rf {args.dataset_path}/celeba-10-batches-py/{args.splitted_data_dir}/*.pkl"
         )
@@ -367,6 +367,10 @@ if __name__ == "__main__":
             ),
             one_group_nodes=args.one_group_nodes,
             splitted_data_dir=args.splitted_data_dir,
+            cross_silo=args.cross_silo,
+            sweep=args.sweep,
+            seed=args.seed,
+            validation_seed=args.node_shuffle_seed,
         )
     else:
         # If we are not using a tabular dataset we have a different way to load and
@@ -519,6 +523,7 @@ if __name__ == "__main__":
         fraction_fit=args.sampled_clients,
         fraction_evaluate=args.sampled_clients_validation,
         fraction_test=args.sampled_clients_test,
+        cross_silo=args.cross_silo,
     )
     server = Server(client_manager=client_manager, strategy=strategy, args=args)
 

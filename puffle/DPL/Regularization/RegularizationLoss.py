@@ -238,7 +238,69 @@ class RegularizationLoss(nn.Module):
         targets = []
         model.eval()
         with torch.no_grad():
-            for images, sensitive_attributes, target in dataset:
+            for images, sensitive_attributes, _, target in dataset:
+                images = images.to(device)
+                target = target.to(device)
+
+                output = model(images)
+
+                predictions = torch.cat((predictions, output), 0)
+                sensitive_attribute_list = torch.cat(
+                    (sensitive_attribute_list, sensitive_attributes.to(device)), 0
+                )
+                targets += target.tolist()
+
+        sensitive_attributes = list({item.item() for item in sensitive_attribute_list})
+        target_list = list(set(targets))
+
+        # now we just call the forward function with the "fake" predictions and the sensitive
+        # attribute list we computed
+        return self.forward(
+            sensitive_attribute_list,
+            device,
+            predictions,
+            sensitive_attributes,
+            target_list,
+            average_probabilities=average_probabilities,
+        )
+
+    def violation_with_dataset_2(
+        self,
+        model: torch.nn.Module,
+        dataset: torch.utils.data.DataLoader,
+        average_probabilities: dict,
+        device: torch.device,
+    ) -> torch.tensor:
+        """
+        When we want to compute the disparity metric on the entire dataset
+        we can't directly use the forward function because we don't have the
+        predictions and the sensitive attribute list for each batch.
+        So in this function we just use the model to compute the predictions for
+        all the samples in the dataset and we aggregate the results in a single
+        final tensor that we pass to the forward function.
+        This is used, for instance, to compute the disparity of the model
+        on the test dataset.
+
+        Args:
+            model (torch.nn.Module): the model we want to evaluate
+            dataset (torch.utils.data.DataLoader): the dataset we want to
+                use during the evaluation
+            average_probabilities (dict): in case of Federated learning, if a client
+                has only a subset of the possible sensitive attributes, we can use the
+                average probabilities of the other clients to estimate the probabilities
+                of the missing sensitive attributes. This is None in centralised learning
+            device (torch.device): the device we're using to train the model
+
+        Returns:
+            float: the disparity metric computed on the dataset
+                passed as parameter
+        """
+        predictions = torch.tensor([]).to(device)
+        sensitive_attribute_list = torch.tensor([]).to(device)
+        targets = []
+        model.eval()
+        with torch.no_grad():
+            for images, _, sensitive_attributes, target in dataset:
                 images = images.to(device)
                 target = target.to(device)
 
