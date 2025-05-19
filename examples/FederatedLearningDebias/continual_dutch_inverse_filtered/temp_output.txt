@@ -1,0 +1,4 @@
+wandb: Creating sweep from: tunable_005_DP_5_1.yaml
+wandb: Created sweep with ID: 2ong0gm4
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Inverse_Shift_filtered/sweeps/2ong0gm4
+wandb: Run sweep agent with: wandb agent lucacorbucci/Inverse_Shift_filtered/2ong0gm4

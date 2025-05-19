@@ -1,0 +1,4 @@
+wandb: Creating sweep from: fixed_DP_3_inverse_2.yaml
+wandb: Created sweep with ID: btgsgawa
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_continual/sweeps/btgsgawa
+wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_continual/btgsgawa

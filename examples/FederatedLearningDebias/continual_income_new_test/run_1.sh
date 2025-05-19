@@ -1,0 +1,5 @@
+# fixed_005_NO_DP
+for i in $(seq 1 4);
+do
+    CUDA_VISIBLE_DEVICES=1 poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_income_new_test/../main.py --run_name Fixed_2_new_test --node_shuffle_seed $i --project_name Continual_Income_Two_switch --batch_size=1403 --epochs=4 --lr=0.0634293951204932 --optimizer=adam --regularization_lambda=0.104729953229881 --dataset continual_income --num_rounds 20 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 150 --sampled_clients 0.18 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_income/ --dataset_path ../../../../data/continual_income/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated_2 --switch_dataset 11 --ratio_unfair_nodes 0.5 --regularization_mode fixed --regularization True --target 0.05
+done

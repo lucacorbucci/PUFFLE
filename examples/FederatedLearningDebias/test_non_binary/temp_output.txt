@@ -1,0 +1,4 @@
+wandb: Creating sweep from: fixed_0.4.yaml
+wandb: Created sweep with ID: 54jogecy
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Dutch_test_non_binary/sweeps/54jogecy
+wandb: Run sweep agent with: wandb agent lucacorbucci/Dutch_test_non_binary/54jogecy

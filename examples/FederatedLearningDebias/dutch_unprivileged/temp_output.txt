@@ -1,0 +1,4 @@
+wandb: Creating sweep from: tunable_0.20_error_rate_50_NO_DP.yaml
+wandb: Created sweep with ID: hfkp8x1c
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Dutch_error_rate_40/sweeps/hfkp8x1c
+wandb: Run sweep agent with: wandb agent lucacorbucci/Dutch_error_rate_40/hfkp8x1c

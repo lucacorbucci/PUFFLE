@@ -1,0 +1,4 @@
+wandb: Creating sweep from: fixed_005_DP_2_1.yaml
+wandb: Created sweep with ID: pbyw8ci4
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Big_shift_sweep/sweeps/pbyw8ci4
+wandb: Run sweep agent with: wandb agent lucacorbucci/Big_shift_sweep/pbyw8ci4

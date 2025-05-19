@@ -1,0 +1,4 @@
+wandb: Creating sweep from: i_1_tunable_DP_2_T_015.yaml
+wandb: Created sweep with ID: 4ikwnkry
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Income_equalised_prova/sweeps/4ikwnkry
+wandb: Run sweep agent with: wandb agent lucacorbucci/Income_equalised_prova/4ikwnkry

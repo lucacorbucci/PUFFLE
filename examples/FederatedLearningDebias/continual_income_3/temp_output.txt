@@ -1,0 +1,4 @@
+wandb: Creating sweep from: i_3_fixed_DP_2_T_005.yaml
+wandb: Created sweep with ID: iejfajfm
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Income_equalised_prova/sweeps/iejfajfm
+wandb: Run sweep agent with: wandb agent lucacorbucci/Income_equalised_prova/iejfajfm

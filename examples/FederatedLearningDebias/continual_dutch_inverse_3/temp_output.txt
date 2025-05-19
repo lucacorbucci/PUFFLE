@@ -1,0 +1,4 @@
+wandb: Creating sweep from: i_3_tunable_005_DP_2_old_grad.yaml
+wandb: Created sweep with ID: whvfelst
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Inverse_Shift_Prova/sweeps/whvfelst
+wandb: Run sweep agent with: wandb agent lucacorbucci/Inverse_Shift_Prova/whvfelst

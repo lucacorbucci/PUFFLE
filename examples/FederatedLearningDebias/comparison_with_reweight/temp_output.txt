@@ -1,0 +1,4 @@
+wandb: Creating sweep from: fixed_disparity.yaml
+wandb: Created sweep with ID: liveptjm
+wandb: View sweep at: https://wandb.ai/lucacorbucci/comparison_reweighting/sweeps/liveptjm
+wandb: Run sweep agent with: wandb agent lucacorbucci/comparison_reweighting/liveptjm

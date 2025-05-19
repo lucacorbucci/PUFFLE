@@ -1,0 +1,5 @@
+wandb: Creating sweep from: fixed_005_NO_DP.yaml
+wandb: Created sweep with ID: 59itoboa
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Sweep_Continual_Income/sweeps/59itoboa
+wandb: Run sweep agent with: wandb agent lucacorbucci/Sweep_Continual_Income/59itoboa
+j

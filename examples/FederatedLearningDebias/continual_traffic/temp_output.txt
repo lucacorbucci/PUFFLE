@@ -1,0 +1,4 @@
+wandb: Creating sweep from: baseline_dp_1.0.yaml
+wandb: Created sweep with ID: 8lddk1m0
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Sweep_Continual_Traffic/sweeps/8lddk1m0
+wandb: Run sweep agent with: wandb agent lucacorbucci/Sweep_Continual_Traffic/8lddk1m0

@@ -1,0 +1,5 @@
+# fixed_dp_5_t_0.15
+for i in $(seq 10 20);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/celeba_new_test_nicolas/../main.py --run_name tunable_dp_5_t_0.15 --project_name Celeba_Shift_nicolas_seeds --node_shuffle_seed $i --batch_size=109 --clipping=5.389152821113988 --epochs=4 --lr=0.01783860980959138 --optimizer=adam --regularization_lambda=0.3436876618659308 --dataset celeba --num_rounds 40 --num_client_cpus 1 --num_client_gpus 0.1 --pool_size 150 --sampled_clients 0.2 --sampled_clients_test 1 --sampled_clients_validation 0 --train_csv original_merged --debug False --base_path ../../../../data/ --dataset_path ../../../../data/celeba/ --seed 41 --wandb True  --training_nodes 0.67 --validation_nodes 0 --test_nodes 0.335 --partition_type representative --group_to_reduce 1 1 --group_to_increment 0 1 --number_of_samples_per_node 1350 --ratio_unfair_nodes 0.5 --ratio_unfairness 0.9 0.9 --one_group_nodes True --splitted_data_dir federated_3 --metric disparity --epsilon 4.5 --epsilon_statistics 0.5 --update_lambda False --regularization_mode fixed --regularization True --target 0.15 --second_target 0.07
+done

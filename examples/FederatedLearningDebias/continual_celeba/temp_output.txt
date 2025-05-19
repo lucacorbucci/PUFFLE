@@ -1,0 +1,4 @@
+wandb: Creating sweep from: fixed_DP_2.yaml
+wandb: Created sweep with ID: cbrpn8dz
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_continual/sweeps/cbrpn8dz
+wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_continual/cbrpn8dz

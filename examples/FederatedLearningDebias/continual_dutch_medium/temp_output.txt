@@ -1,0 +1,4 @@
+wandb: Creating sweep from: tunable_005_DP_5_1.yaml
+wandb: Created sweep with ID: hydmeuyh
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Medium_shift_sweep/sweeps/hydmeuyh
+wandb: Run sweep agent with: wandb agent lucacorbucci/Medium_shift_sweep/hydmeuyh

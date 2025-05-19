@@ -1,0 +1,72 @@
+program: ../main.py
+method: bayes
+metric:
+  name: Custom_metric
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 5
+parameters:
+  epochs:
+    min: 1
+    max: 5
+  batch_size:
+    min: 1000
+    max: 5000
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd"]
+
+command:
+  - ${env}
+  - poetry 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --dataset
+  - continual_income
+  - --num_rounds
+  - 45
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0.05
+  - --pool_size
+  - 150
+  - --sampled_clients 
+  - 0.3
+  - --sampled_clients_test 
+  - 0
+  - --sampled_clients_validation 
+  - 1.0
+  - --debug
+  - False
+  - --base_path
+  - ../../../../data/continual_income/
+  - --dataset_path 
+  - ../../../../data/continual_income/
+  - --seed 
+  - 42
+  - --wandb 
+  - True
+  - --sweep
+  - True
+  - --training_nodes 
+  - 0.40
+  - --validation_nodes 
+  - 0.27
+  - --test_nodes 
+  - 0.335
+  - --tabular_data 
+  - True
+  - --metric
+  - disparity
+  - --splitted_data_dir
+  - federated
+  - --switch_dataset
+  - 5
+  - --ratio_unfair_nodes
+  - 0.5

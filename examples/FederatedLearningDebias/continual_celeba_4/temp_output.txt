@@ -1,0 +1,4 @@
+wandb: Creating sweep from: tunable_DP_4.yaml
+wandb: Created sweep with ID: a45zcho3
+wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_continual/sweeps/a45zcho3
+wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_continual/a45zcho3
