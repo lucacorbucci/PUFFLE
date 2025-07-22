@@ -30,10 +30,10 @@ def compute_demographic_disparity(
     unique_z = torch.unique(z)
     unique_y = torch.unique(y)
 
-    if len(unique_z) == 0 or len(unique_y) == 0:
-        raise ValueError("Input tensors z and y must not be empty.")
-    if len(unique_z) == 1 or len(unique_y) == 1:
-        raise ValueError("Input tensors z and y must have more than one unique value.")
+    # if len(unique_z) == 0 or len(unique_y) == 0:
+    #     raise ValueError("Input tensors z and y must not be empty.")
+    # if len(unique_z) == 1 or len(unique_y) == 1:
+    #     raise ValueError("Input tensors z and y must have more than one unique value.")
 
     max_disparity = 0
 

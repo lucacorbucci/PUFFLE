@@ -1,12 +1,26 @@
+import argparse
+import logging
+import os
+import random
+import warnings
+
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
+import tqdm
+from opacus import PrivacyEngine
 from torch import nn
+from torch.utils.data import Dataset
 
-# from .DPL.DPLUtilsutils import Utils
+from puffle.PUFFLEModel.puffle_model import PUFFLEModel
+from puffle.tabular_datasets_utils import dataset_to_numpy, load_dutch
+
+warnings.filterwarnings("ignore")
 
 
-class RegularizationLoss(nn.Module):
+class DisparityRegularizationLoss(nn.Module):
     """This class defines the regularization loss as proposed in
     https://arxiv.org/abs/2302.09183.
     It uses the definition of demographic parity to compute the
@@ -171,6 +185,8 @@ class RegularizationLoss(nn.Module):
         fairness_violations = torch.stack(fairness_violations)
         mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(device)
         mask[index] = 1
+        mask = mask.to(device)
+        fairness_violations= fairness_violations.to(device)
         res = torch.sum(mask * fairness_violations)
 
         if global_computation:
@@ -396,3 +412,211 @@ class RegularizationLoss(nn.Module):
             counters[f"{z}"] = Z_eq_z
 
         return probabilities, counters
+
+
+def seed_everything():
+    seed = 42
+    torch.manual_seed(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+        torch.cuda.manual_seed(seed)
+        torch.backends.cudnn.deterministic = True
+
+
+class TabularDataset(Dataset):
+    def __init__(self, x, z, y):
+        """
+        Initialize the custom dataset with x (features), z (sensitive values), and y (targets).
+
+        Args:
+        x (list of tensors): List of input feature tensors.
+        z (list): List of sensitive values.
+        y (list): List of target values.
+        """
+        self.samples = x
+        self.sensitive_features = z
+        self.targets = y
+        self.indexes = range(len(self.samples))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        """
+        Get a single data point from the dataset.
+
+        Args:
+        idx (int): Index to retrieve the data point.
+
+        Returns:
+        sample (dict): A dictionary containing 'x', 'z', and 'y'.
+        """
+        x_sample = self.samples[idx]
+        z_sample = self.sensitive_features[idx]
+        y_sample = self.targets[idx]
+
+        return x_sample, z_sample, y_sample, self.indexes[idx], idx
+
+
+def prepare_dutch(base_path):
+    tmp = load_dutch(dataset_path=base_path)
+    tmp = dataset_to_numpy(*tmp, num_sensitive_features=1)
+
+    x = tmp[0]
+    y = tmp[2]
+    z = tmp[1]
+
+    xyz = list(zip(x, y, z))
+    random.shuffle(xyz)
+    x, y, z = zip(*xyz)
+    train_size = int(len(y) * 0.8)
+
+    x_train = np.array(x[:train_size])
+    x_test = np.array(x[train_size:])
+    y_train = np.array(y[:train_size])
+    y_test = np.array(y[train_size:])
+    z_train = np.array(z[:train_size])
+    z_test = np.array(z[train_size:])
+
+    train_dataset = TabularDataset(
+        x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
+        z=z_train.astype(np.float32),
+        y=y_train.astype(np.float32),
+    )
+
+    test_dataset = TabularDataset(
+        x=np.hstack((x_test, np.ones((x_test.shape[0], 1)))).astype(np.float32),
+        z=z_test.astype(np.float32),
+        y=y_test.astype(np.float32),
+    )
+
+    return train_dataset, test_dataset
+
+
+class LinearClassificationNet(nn.Module):
+    """
+    A fully-connected single-layer linear NN for classification.
+    """
+
+    def __init__(self, input_size, output_size):
+        super(LinearClassificationNet, self).__init__()
+        self.layer1 = nn.Linear(input_size, output_size, bias=False)
+
+    def forward(self, x):
+        x = self.layer1(x.float())
+        return x
+
+
+class MixLoss(nn.Module):
+    def __init__(self, weight_cel=1.0, weight_mse=1.0, reduction="mean"):
+        super(MixLoss, self).__init__()
+        self.cel_loss = nn.CrossEntropyLoss()
+        self.cel_loss_2 = DisparityRegularizationLoss()
+        self.weight_cel = weight_cel
+        self.weight_mse = weight_mse
+        self.reduction = reduction
+
+    def forward(self, input, target):
+        """
+        Calculates a mixed loss combining NLLLoss and MSELoss.
+
+        Args:
+            input (torch.Tensor): The output from your model (e.g., m(input)).
+                                  This will be used for both NLLLoss and MSELoss.
+            target_nll (torch.Tensor): The target for NLLLoss (typically class labels).
+            target_mse (torch.Tensor): The target for MSELoss (typically continuous values).
+
+        Returns:
+            torch.Tensor: The weighted sum of CELoss and MSELoss.
+        """
+        model_output = input[0]
+        sensitive_value = input[1]
+        loss_cel = self.cel_loss(model_output, target)
+        loss_cel_2 = self.cel_loss_2(
+            sensitive_attribute_list=sensitive_value,
+            device="cpu",
+            predictions=model_output,
+            possible_sensitive_attributes=[0, 1],
+            possible_targets=[0, 1],
+        )  # You might need to adjust the input for MSE if it's not directly comparable to the NLL input.
+
+        # return loss_cel
+
+        lambda_value = 0.6
+        total_loss = (1-lambda_value) * loss_cel + lambda_value * loss_cel_2
+        return total_loss
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run Puffle with specified configuration.")
+    parser.add_argument("--epsilon", type=str, default=None)
+    parser.add_argument("--noise_multiplier", type=float, default=0)
+    parser.add_argument(
+        "--max_grad_norm", type=float, default=10000000
+    )
+    parser.add_argument("--lr", type=float, required=True)
+    parser.add_argument("--epochs", type=int, required=True)
+
+    args = parser.parse_args()
+
+    seed_everything()
+
+    dutch_train, dutch_test = prepare_dutch("/raid/lcorbucci/data/dutch/")
+
+    BATCH_SIZE = 256
+
+    train_loader = torch.utils.data.DataLoader(
+        dutch_train,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True,
+    )
+
+    test_loader = torch.utils.data.DataLoader(
+        dutch_test,
+        batch_size=BATCH_SIZE,
+        shuffle=False,
+        num_workers=0,
+        pin_memory=True,
+    )
+
+    noise_multiplier = args.noise_multiplier
+    max_grad_norm = args.max_grad_norm
+    lr = args.lr
+    epochs = args.epochs
+    MAX_PHYSICAL_BATCH_SIZE = 1024
+
+    privacy_engine = PrivacyEngine()
+    criterion = MixLoss()
+    model = LinearClassificationNet(input_size=11, output_size=2)
+    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0)
+    model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private( 
+        module=model,
+        optimizer=optimizer,
+        data_loader=train_loader,
+        noise_multiplier=noise_multiplier,
+        max_grad_norm=max_grad_norm,
+        criterion=criterion,
+        grad_sample_mode="ghost",
+        poisson_sampling=False,
+    )
+
+    puffle_model = PUFFLEModel(
+        model=model_gc, 
+        optimizer=optimizer_gc,
+        criterion=criterion_gc,
+        device=torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda")
+    )
+
+    puffle_model.train(
+        train_loader=train_loader_gc,
+        epochs=epochs,
+        val_loader=test_loader,
+        verbose=True,
+        average_probabilities=None,
+        max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,
+    )
