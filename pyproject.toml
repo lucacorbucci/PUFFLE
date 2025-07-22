@@ -15,7 +15,7 @@ dependencies = [
     "google-api-python-client>=2.169.0",
     "ipykernel>=6.29.5",
     "numpy>=2.2.6",
-    "opacus>=1.4.1",
+    "opacus>=1.5.4",
     "pandas>=2.2.3",
     "pytest>=8.3.5",
     "ruff>=0.11.10",
@@ -24,6 +24,7 @@ dependencies = [
     "torch>=2.7.0",
     "torchvision>=0.22.0",
     "tqdm>=4.67.1",
+    "ty>=0.0.1a5",
     "wandb>=0.19.11",
 ]
 

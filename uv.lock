@@ -1545,7 +1545,7 @@ wheels = [
 
 [[package]]
 name = "opacus"
-version = "1.4.1"
+version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
@@ -1553,9 +1553,9 @@ dependencies = [
     { name = "scipy" },
     { name = "torch" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/52/f6/79f7bc192b1129495bf25b9c19a1487e51d96e13e22249e37bedd7bd0e11/opacus-1.4.1.tar.gz", hash = "sha256:e1d453c29bc8457ad7c530f5c56074c913dfebb0fb14d7524677cf03a217cff4", size = 139127 }
+sdist = { url = "https://files.pythonhosted.org/packages/df/de/25e455b62c73f10bf41d3e029016881e414de0c6f3f5af82b42dc10f7ca1/opacus-1.5.4.tar.gz", hash = "sha256:ea700808c0a8c3fb7e565ed55b77b3170d6a54cb30e295b255e3877170edc5ca", size = 151407 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/12/b16095aaaed4a50773383c221a2bdc67b4eb575a28d101f3ae090947fa64/opacus-1.4.1-py3-none-any.whl", hash = "sha256:8c46aff596bbbc6025ce9d169b49d5b3112cb958e3d74f8b77274134e7590890", size = 226652 },
+    { url = "https://files.pythonhosted.org/packages/a7/7e/8c9e798b1789861beec036b456b71a079f83963c7e2814814f1370dea667/opacus-1.5.4-py3-none-any.whl", hash = "sha256:a0ca27974e825d86635c82f08ebb380a373613c121066bc0b8e29e42d9f961a5", size = 254361 },
 ]
 
 [[package]]
@@ -1912,6 +1912,7 @@ dependencies = [
     { name = "torch" },
     { name = "torchvision" },
     { name = "tqdm" },
+    { name = "ty" },
     { name = "wandb" },
 ]
 
@@ -1929,7 +1930,7 @@ requires-dist = [
     { name = "google-api-python-client", specifier = ">=2.169.0" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "numpy", specifier = ">=2.2.6" },
-    { name = "opacus", specifier = ">=1.4.1" },
+    { name = "opacus", specifier = ">=1.5.4" },
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "ruff", specifier = ">=0.11.10" },
@@ -1938,6 +1939,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.7.0" },
     { name = "torchvision", specifier = ">=0.22.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
+    { name = "ty", specifier = ">=0.0.1a5" },
     { name = "wandb", specifier = ">=0.19.11" },
 ]
 
