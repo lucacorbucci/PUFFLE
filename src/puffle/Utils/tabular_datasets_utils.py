@@ -7,8 +7,6 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import Dataset
 
-from puffle.tabular_datasets_utils import dataset_to_numpy, load_dutch
-
 
 class TabularDataset(Dataset):
     def __init__(self, x, z, y):
@@ -45,7 +43,7 @@ class TabularDataset(Dataset):
         return x_sample, z_sample, y_sample, self.indexes[idx], idx
 
 
-def prepare_dutch(base_path, sweep):
+def prepare_dutch(base_path, sweep, validation_seed=None):
     tmp = load_dutch(dataset_path=base_path)
     tmp = dataset_to_numpy(*tmp, num_sensitive_features=1)
 
@@ -66,6 +64,10 @@ def prepare_dutch(base_path, sweep):
     z_test = np.array(z[train_size:])
 
     if sweep:
+        random.seed(validation_seed)
+        # shuffle the data
+        x_train, y_train, z_train = zip(*random.sample(list(zip(x_train, y_train, z_train)), len(x_train)))
+
         val_size = int(len(x_train) * 0.2)
 
         x_val = np.array(x_train[-val_size:])

@@ -1,6 +1,7 @@
 import argparse
 import os
 import random
+import time
 import warnings
 
 import numpy as np
@@ -14,6 +15,7 @@ from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
 from puffle.Utils.models import LinearClassificationNet
+from puffle.Utils.tabular_datasets_utils import prepare_dutch
 from puffle.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
@@ -51,6 +53,8 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, required=True)
     parser.add_argument("--batch_size", type=int, required=True)
     parser.add_argument("--optimizer", type=str, required=True)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--validation_seed", type=int, default=None)
 
     # Wandb parameters
     parser.add_argument("--wandb", type=bool, default=True)
@@ -69,7 +73,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    Utils.seed_everything()
+    
+    
+
+    if args.validation_seed is None:
+        validation_seed = int(str(time.time()).split(".")[1]) * args.seed
+        args.validation_seed = validation_seed
 
     check_input(args)
     private_training = bool(args.noise_multiplier > 0 or args.epsilon is not None)
@@ -82,7 +91,9 @@ if __name__ == "__main__":
         if args.wandb
         else None
     )
-    dutch_train, dutch_test, dutch_val = prepare_dutch("/raid/lcorbucci/data/dutch/", sweep=args.sweep)
+    dutch_train, dutch_test, dutch_val = prepare_dutch("/raid/lcorbucci/data/dutch/", sweep=args.sweep, validation_seed=args.validation_seed)
+
+    Utils.seed_everything(args.seed)
 
     BATCH_SIZE = 256
 
