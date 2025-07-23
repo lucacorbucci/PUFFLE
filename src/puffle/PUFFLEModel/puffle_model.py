@@ -21,6 +21,9 @@ class PUFFLEModel:
         optimizer: torch.optim.Optimizer,
         criterion: nn.Module,
         device: torch.device | None = None,
+        lambda_regularization: float = 0.0,
+        wandb_run: Optional[object] = None,
+        target: Optional[float] = None,
     ):
         """
         Initialize the PUFFLEModel wrapper.
@@ -35,6 +38,9 @@ class PUFFLEModel:
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
+        self.lambda_regularization = lambda_regularization
+        self.wandb_run = wandb_run
+        self.target = target
 
         # Set up device
         if device is None:
@@ -99,6 +105,15 @@ class PUFFLEModel:
                 metrics["train_f1"].append(train_metrics["f1"])
                 metrics["train_disparity"].append(train_metrics["disparity"])
 
+                if self.wandb_run:
+                    self.wandb_run.log({
+                        "train_loss": train_metrics["loss"],
+                        "train_accuracy": train_metrics["accuracy"],
+                        "train_f1": train_metrics["f1"],
+                        "train_disparity": train_metrics["disparity"],
+                        "epoch": epoch + 1,
+                    })
+
                 # Validation if provided
                 if val_loader:
                     val_metrics = self.evaluate(val_loader)
@@ -107,6 +122,24 @@ class PUFFLEModel:
                     metrics["val_accuracy"].append(val_metrics["accuracy"])
                     metrics["val_f1"].append(val_metrics["f1"])
                     metrics["val_disparity"].append(val_metrics["disparity"])
+
+                    if self.wandb_run:
+                        
+
+                        custom_metric = val_metrics["accuracy"]
+                        if self.target:
+                            distance = self.target - val_metrics["disparity"]
+                            penalty = 0 if distance > 0 else -float("inf")
+                            custom_metric += penalty
+
+                        self.wandb_run.log({
+                            "val_loss": val_metrics["loss"],
+                            "val_accuracy": val_metrics["accuracy"],
+                            "val_f1": val_metrics["f1"],
+                            "val_disparity": val_metrics["disparity"],
+                            "epoch": epoch + 1,
+                            "Custom_metric": custom_metric,
+                        })
 
                     if verbose:
                         print(
@@ -129,6 +162,7 @@ class PUFFLEModel:
                             f"Train F1: {train_metrics['f1']:.4f}, "
                             f"Train Disparity: {train_metrics['disparity']:.4f}"
                         )
+                    
 
         return metrics
 
@@ -200,7 +234,7 @@ class PUFFLEModel:
         optimizer.zero_grad()
         outputs = model(x_batch)
         if criterion is not None:
-            loss = criterion((outputs, z_batch), y_batch.long())
+            loss = criterion((outputs, z_batch, self.lambda_regularization), y_batch.long())
         else:
             raise ValueError("Criterion must be provided for training.")
 
@@ -245,7 +279,7 @@ class PUFFLEModel:
 
                 # Forward pass
                 outputs = self.model(x_batch)
-                loss = self.criterion((outputs, z_batch), y_batch.long())
+                loss = self.criterion((outputs, z_batch, self.lambda_regularization), y_batch.long())
 
                 # Calculate metrics
                 total_loss += loss.item()
