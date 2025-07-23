@@ -1,8 +1,10 @@
+import os
+import random
+
 import numpy as np
 import torch
 from opacus.optimizers.optimizer import DPOptimizer
-import random 
-import os
+
 
 class Utils:
     @staticmethod
@@ -10,12 +12,12 @@ class Utils:
         x: torch.Tensor,
         z: torch.Tensor,
         y: torch.Tensor,
-    )
+    ):
         """
         Compute the demographic disparity of a model.
         The demographic disparity is defined as:
         max_{z, y} |P(Y=y|Z=z) - P(Y=y|Z!=z)|
-        where P(Y=y|Z=z) is the probability of the target value y 
+        where P(Y=y|Z=z) is the probability of the target value y
         given the sensitive feature z.
 
         Args:
@@ -44,7 +46,7 @@ class Utils:
 
                 # Update the maximum disparity
                 max_disparity = max(max_disparity, disparity)
-    
+
         return max_disparity
 
     def compute_differentiable_demographic_disparity(
@@ -52,9 +54,8 @@ class Utils:
         z: torch.Tensor,
         y: torch.Tensor,
         softmax_output: torch.Tensor,
-    )
+    ):
         pass
-
 
     @staticmethod
     def get_noise(
@@ -67,15 +68,11 @@ class Utils:
             return np.random.laplace(loc=0, scale=sensitivity / epsilon, size=1)
         elif mechanism_type == "geometric":
             p = 1 - np.exp(-epsilon / sensitivity)
-            return (
-                np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1)
-            )[0]
+            return (np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1))[0]
         elif mechanism_type == "gaussian":
             return np.random.normal(loc=0, scale=sigma, size=1)[0]
         else:
-            raise ValueError(
-                "The mechanism type must be either laplace, geometric or gaussian"
-            )
+            raise ValueError("The mechanism type must be either laplace, geometric or gaussian")
 
     @staticmethod
     def get_summed_grad(model, batch_size):
@@ -115,9 +112,7 @@ class Utils:
 
     @staticmethod
     def compute_max_and_min_per_sample_gradient(optimizer: DPOptimizer):
-        per_param_norms = [
-            g.reshape(len(g), -1).norm(2, dim=-1) for g in optimizer.grad_samples
-        ]
+        per_param_norms = [g.reshape(len(g), -1).norm(2, dim=-1) for g in optimizer.grad_samples]
         per_sample_norms = torch.stack(per_param_norms, dim=1).norm(2, dim=1)
         return (
             min(per_sample_norms),

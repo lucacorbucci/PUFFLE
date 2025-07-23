@@ -84,7 +84,7 @@ class PUFFLEModel:
             "val_f1": [],
             "val_disparity": [],
         }
-        
+
         print(self.criterion)
 
         with BatchMemoryManager(
@@ -106,13 +106,15 @@ class PUFFLEModel:
                 metrics["train_disparity"].append(train_metrics["disparity"])
 
                 if self.wandb_run:
-                    self.wandb_run.log({
-                        "train_loss": train_metrics["loss"],
-                        "train_accuracy": train_metrics["accuracy"],
-                        "train_f1": train_metrics["f1"],
-                        "train_disparity": train_metrics["disparity"],
-                        "epoch": epoch + 1,
-                    })
+                    self.wandb_run.log(
+                        {
+                            "train_loss": train_metrics["loss"],
+                            "train_accuracy": train_metrics["accuracy"],
+                            "train_f1": train_metrics["f1"],
+                            "train_disparity": train_metrics["disparity"],
+                            "epoch": epoch + 1,
+                        }
+                    )
 
                 # Validation if provided
                 if val_loader:
@@ -124,22 +126,22 @@ class PUFFLEModel:
                     metrics["val_disparity"].append(val_metrics["disparity"])
 
                     if self.wandb_run:
-                        
-
                         custom_metric = val_metrics["accuracy"]
                         if self.target:
                             distance = self.target - val_metrics["disparity"]
                             penalty = 0 if distance > 0 else -float("inf")
                             custom_metric += penalty
 
-                        self.wandb_run.log({
-                            "val_loss": val_metrics["loss"],
-                            "val_accuracy": val_metrics["accuracy"],
-                            "val_f1": val_metrics["f1"],
-                            "val_disparity": val_metrics["disparity"],
-                            "epoch": epoch + 1,
-                            "Custom_metric": custom_metric,
-                        })
+                        self.wandb_run.log(
+                            {
+                                "val_loss": val_metrics["loss"],
+                                "val_accuracy": val_metrics["accuracy"],
+                                "val_f1": val_metrics["f1"],
+                                "val_disparity": val_metrics["disparity"],
+                                "epoch": epoch + 1,
+                                "Custom_metric": custom_metric,
+                            }
+                        )
 
                     if verbose:
                         print(
@@ -162,7 +164,6 @@ class PUFFLEModel:
                             f"Train F1: {train_metrics['f1']:.4f}, "
                             f"Train Disparity: {train_metrics['disparity']:.4f}"
                         )
-                    
 
         return metrics
 

@@ -19,8 +19,6 @@ from puffle.Utils.utils import Utils
 warnings.filterwarnings("ignore")
 
 
-
-
 def setup_wandb(project_name: str, run_name: str | None):
     return wandb.init(project=project_name, name=run_name) if run_name else wandb.init(project=project_name)
 
@@ -115,8 +113,6 @@ if __name__ == "__main__":
     else:
         val_loader = None
 
-
-
     lr = args.lr
     epochs = args.epochs
     MAX_PHYSICAL_BATCH_SIZE = 1024
@@ -127,7 +123,11 @@ if __name__ == "__main__":
         unfairness_loss=DisparityRegularizationLoss(),
     )
     model = LinearClassificationNet(input_size=11, output_size=2)
-    optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0) if args.optimizer == "sgd" else optim.Adam(model.parameters(), lr=lr)
+    optimizer = (
+        optim.SGD(model.parameters(), lr=lr, momentum=0)
+        if args.optimizer == "sgd"
+        else optim.Adam(model.parameters(), lr=lr)
+    )
 
     model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(
         module=model,
@@ -137,9 +137,8 @@ if __name__ == "__main__":
         max_grad_norm=args.max_grad_norm,
         criterion=criterion,
         grad_sample_mode="ghost",
-        poisson_sampling = True if private_training else False,
+        poisson_sampling=True if private_training else False,
     )
-
 
     puffle_model = PUFFLEModel(
         model=model_gc,
@@ -151,7 +150,6 @@ if __name__ == "__main__":
         target=args.target,
     )
 
-
     puffle_model.train(
         train_loader=train_loader_gc,
         epochs=epochs,
@@ -162,4 +160,4 @@ if __name__ == "__main__":
     )
 
     if wandb_run:
-        wandb_run.finish() 
+        wandb_run.finish()

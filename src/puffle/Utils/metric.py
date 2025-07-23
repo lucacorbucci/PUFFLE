@@ -73,7 +73,7 @@ def compute_differentiable_demographic_disparity(
         sensitive_attributes (torch.Tensor): The sensitive attributes.
         softmax_output (torch.Tensor): The softmax output of the model.
         probabilities (dict, optional): A dictionary containing the probabilities
-            of the target values. This is used in FL in the cases in which the client 
+            of the target values. This is used in FL in the cases in which the client
             does not have all the possible classes/sensitive values. Defaults to None.
     Returns:
         torch.Tensor: The demographic disparity of the model.
@@ -90,7 +90,9 @@ def compute_differentiable_demographic_disparity(
     if len(unique_sensitive_attributes) == 0 or len(unique_targets) == 0:
         raise ValueError("Input tensors sensitive_attributes and predictions_argmax must not be empty.")
     if len(unique_sensitive_attributes) == 1 or len(unique_targets) == 1:
-        raise ValueError("Input tensors sensitive_attributes and predictions_argmax must have more than one unique value.")
+        raise ValueError(
+            "Input tensors sensitive_attributes and predictions_argmax must have more than one unique value."
+        )
 
     fairness_violations = []
     for target in unique_targets:
@@ -104,31 +106,29 @@ def compute_differentiable_demographic_disparity(
             # the first and the third row and that we are considering the class 1.
             # In this case we will sum 0.8 and 0.7.
             Y_eq_k_and_Z_eq_z = torch.sum(
-                softmax_output[(predictions_argmax == target) & (sensitive_attributes == sensitive_attribute)][:, target]
+                softmax_output[(predictions_argmax == target) & (sensitive_attributes == sensitive_attribute)][
+                    :, target
+                ]
             )
 
             # Here we compute |Y = k, Z != z| with the same strategy we used to
             # compute |Y = k, Z = z|.
             Y_eq_k_and_Z_not_eq_z = torch.sum(
-                softmax_output[(predictions_argmax == target) & (sensitive_attributes != sensitive_attribute)][:, target]
-            )
-            
-            Z_eq_z = torch.sum(
-                softmax_output[(sensitive_attributes == sensitive_attribute)][:, target]
+                softmax_output[(predictions_argmax == target) & (sensitive_attributes != sensitive_attribute)][
+                    :, target
+                ]
             )
 
-            Z_not_eq_z = torch.sum(
-                softmax_output[(sensitive_attributes != sensitive_attribute)][:, target]
-            )
+            Z_eq_z = torch.sum(softmax_output[(sensitive_attributes == sensitive_attribute)][:, target])
+
+            Z_not_eq_z = torch.sum(softmax_output[(sensitive_attributes != sensitive_attribute)][:, target])
             # todo: we need to check if Z_eq_z and Z_not_eq_z are not equal to 0
-            # if they are equal to 0 we need to use the information present in the 
+            # if they are equal to 0 we need to use the information present in the
             # probabilities dictionary, if the probabilities dictionary is None
             # then we need to raise an error
             violation_term = torch.abs((Y_eq_k_and_Z_eq_z / Z_eq_z) - (Y_eq_k_and_Z_not_eq_z / Z_not_eq_z))
             fairness_violations.append(violation_term)
-    
-    
-    
+
     fairness_violations = torch.stack(fairness_violations)
     max_violation, _ = torch.max(fairness_violations, dim=0)
     return max_violation
