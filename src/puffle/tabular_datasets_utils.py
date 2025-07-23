@@ -1,10 +1,128 @@
+import random
+
 import numpy as np
 import pandas as pd
 from scipy.io import arff
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MinMaxScaler
+from torch.utils.data import Dataset
+
+from puffle.tabular_datasets_utils import dataset_to_numpy, load_dutch
+
+
+class TabularDataset(Dataset):
+    def __init__(self, x, z, y):
+        """
+        Initialize the custom dataset with x (features), z (sensitive values), and y (targets).
+
+        Args:
+        x (list of tensors): List of input feature tensors.
+        z (list): List of sensitive values.
+        y (list): List of target values.
+        """
+        self.samples = x
+        self.sensitive_features = z
+        self.targets = y
+        self.indexes = range(len(self.samples))
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        """
+        Get a single data point from the dataset.
+
+        Args:
+        idx (int): Index to retrieve the data point.
+
+        Returns:
+        sample (dict): A dictionary containing 'x', 'z', and 'y'.
+        """
+        x_sample = self.samples[idx]
+        z_sample = self.sensitive_features[idx]
+        y_sample = self.targets[idx]
+
+        return x_sample, z_sample, y_sample, self.indexes[idx], idx
+
+
+def prepare_dutch(base_path, sweep):
+    tmp = load_dutch(dataset_path=base_path)
+    tmp = dataset_to_numpy(*tmp, num_sensitive_features=1)
+
+    x = tmp[0]
+    y = tmp[2]
+    z = tmp[1]
+
+    xyz = list(zip(x, y, z))
+    random.shuffle(xyz)
+    x, y, z = zip(*xyz)
+    train_size = int(len(y) * 0.8)
+
+    x_train = np.array(x[:train_size])
+    x_test = np.array(x[train_size:])
+    y_train = np.array(y[:train_size])
+    y_test = np.array(y[train_size:])
+    z_train = np.array(z[:train_size])
+    z_test = np.array(z[train_size:])
+
+    if sweep:
+        val_size = int(len(x_train) * 0.2)
+
+        x_val = np.array(x_train[-val_size:])
+        x_train = np.array(x_train[:-val_size])
+
+        y_val = np.array(y_train[-val_size:])
+        y_train = np.array(y_train[:-val_size])
+
+        z_val = np.array(z_train[-val_size:])
+        z_train = np.array(z_train[:-val_size])
+
+        val_dataset = TabularDataset(
+            x=np.hstack((x_val, np.ones((x_val.shape[0], 1)))).astype(np.float32),
+            z=z_val.astype(np.float32),
+            y=y_val.astype(np.float32),
+        )
+    else:
+        val_dataset = None
+
+    train_dataset = TabularDataset(
+        x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
+        z=z_train.astype(np.float32),
+        y=y_train.astype(np.float32),
+    )
+
+    test_dataset = TabularDataset(
+        x=np.hstack((x_test, np.ones((x_test.shape[0], 1)))).astype(np.float32),
+        z=z_test.astype(np.float32),
+        y=y_test.astype(np.float32),
+    )
+
+    return train_dataset, test_dataset, val_dataset
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ##############################################################################################################
+
+
+
+
+
+
+
 
 
 def load_compas():

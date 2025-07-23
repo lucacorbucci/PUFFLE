@@ -3,8 +3,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-# from .DPL.DPLUtilsutils import Utils
-
 
 class DisparityRegularizationLoss(nn.Module):
     """This class defines the regularization loss as proposed in
@@ -171,6 +169,8 @@ class DisparityRegularizationLoss(nn.Module):
         fairness_violations = torch.stack(fairness_violations)
         mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(device)
         mask[index] = 1
+        mask = mask.to(device)
+        fairness_violations = fairness_violations.to(device)
         res = torch.sum(mask * fairness_violations)
 
         if global_computation:
