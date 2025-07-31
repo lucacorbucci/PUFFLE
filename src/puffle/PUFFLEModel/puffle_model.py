@@ -303,40 +303,6 @@ class PUFFLEModel:
             total_loss / len(data_loader), correct / total, y_true, y_pred, sensitive_attributes
         )
 
-    # def predict(self, x: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Make predictions with the model.
-
-    #     Args:
-    #         x (torch.Tensor): Input features
-
-    #     Returns:
-    #         torch.Tensor: Predicted class labels
-    #     """
-    #     self.model.eval()
-    #     with torch.no_grad():
-    #         x = x.to(self.device)
-    #         outputs = self.model(x)
-    #         softmax_outputs = F.softmax(outputs, dim=1)
-    #         _, predicted = torch.max(softmax_outputs, 1)
-    #     return predicted
-
-    # def predict_proba(self, x: torch.Tensor) -> torch.Tensor:
-    #     """
-    #     Get probability predictions with the model.
-
-    #     Args:
-    #         x (torch.Tensor): Input features
-
-    #     Returns:
-    #         torch.Tensor: Probability predictions
-    #     """
-    #     self.model.eval()
-    #     with torch.no_grad():
-    #         x = x.to(self.device)
-    #         outputs = self.model(x)
-    #         softmax_outputs = F.softmax(outputs, dim=1)
-    #     return softmax_outputs
 
     def _compute_metrics(
         self, loss: float, accuracy: float, y_true: List, y_pred: List, sensitive_attributes: List
@@ -362,52 +328,4 @@ class PUFFLEModel:
 
         return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity}
 
-    # def _infer_possible_values(self, data_loader: DataLoader) -> Tuple[List, List]:
-    #     """
-    #     Infer possible values for sensitive attributes and targets from the data.
 
-    #     Args:
-    #         data_loader (DataLoader): DataLoader to extract values from
-
-    #     Returns:
-    #         Tuple[List, List]: Lists of possible sensitive attributes and target values
-    #     """
-    #     sensitive_attributes = []
-    #     targets = []
-
-    #     # Extract unique values from a small portion of the data
-    #     for i, (_, z_batch, y_batch, _, _) in enumerate(data_loader):
-    #         sensitive_attributes.extend(z_batch.numpy() if isinstance(z_batch, torch.Tensor) else z_batch)
-    #         targets.extend(y_batch.numpy() if isinstance(y_batch, torch.Tensor) else y_batch)
-
-    #         # Limit to avoid scanning the entire dataset
-    #         if i >= min(10, len(data_loader) - 1):
-    #             break
-
-    #     return list(set(sensitive_attributes)), list(set(targets))
-
-    # def save(self, path: str) -> None:
-    #     """
-    #     Save the model to disk.
-
-    #     Args:
-    #         path (str): Path to save the model
-    #     """
-    #     torch.save(
-    #         {
-    #             "model_state_dict": self.model.state_dict(),
-    #             "optimizer_state_dict": self.optimizer.state_dict(),
-    #         },
-    #         path,
-    #     )
-
-    # def load(self, path: str) -> None:
-    #     """
-    #     Load the model from disk.
-
-    #     Args:
-    #         path (str): Path to load the model from
-    #     """
-    #     checkpoint = torch.load(path)
-    #     self.model.load_state_dict(checkpoint["model_state_dict"])
-    #     self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])

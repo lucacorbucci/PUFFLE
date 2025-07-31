@@ -11,11 +11,11 @@ import wandb
 from opacus import PrivacyEngine
 from torch import nn, optim
 
+from puffle.examples.data_preparation.dataset_preparation import prepare_celeba_centralised
+from puffle.examples.models.models import CNN
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
-from puffle.Utils.models import LinearClassificationNet
-from puffle.Utils.tabular_datasets_utils import prepare_dutch
 from puffle.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--optimizer", type=str, required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--validation_seed", type=int, default=None)
+    parser.add_argument("--csv_path", type=str, default=None)
 
     # Wandb parameters
     parser.add_argument("--wandb", type=bool, default=True)
@@ -69,12 +70,8 @@ if __name__ == "__main__":
     parser.add_argument("--regularization_mode", type=str, default="fixed")
     parser.add_argument("--target", type=float, default=None)
 
-    print("CIAO")
 
     args = parser.parse_args()
-
-    
-    
 
     if args.validation_seed is None:
         validation_seed = int(str(time.time()).split(".")[1]) * args.seed
@@ -91,32 +88,31 @@ if __name__ == "__main__":
         if args.wandb
         else None
     )
-    dutch_train, dutch_test, dutch_val = prepare_dutch("/raid/lcorbucci/data/dutch/", sweep=args.sweep, validation_seed=args.validation_seed)
-
+    Utils.seed_everything(args.seed)
+    celeba_train, celeba_test, celeba_val = prepare_celeba_centralised(debug=False, sweep=args.sweep, validation_seed=args.validation_seed, seed=args.seed)
     Utils.seed_everything(args.seed)
 
-    BATCH_SIZE = 256
 
     train_loader = torch.utils.data.DataLoader(
-        dutch_train,
-        batch_size=BATCH_SIZE,
+        celeba_train,
+        batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
         pin_memory=True,
     )
 
     test_loader = torch.utils.data.DataLoader(
-        dutch_test,
-        batch_size=BATCH_SIZE,
+        celeba_test,
+        batch_size=args.batch_size,
         shuffle=False,
         num_workers=0,
         pin_memory=True,
     )
 
-    if dutch_val is not None:
+    if celeba_val is not None:
         val_loader = torch.utils.data.DataLoader(
-            dutch_val,
-            batch_size=BATCH_SIZE,
+            celeba_val,
+            batch_size=args.batch_size,
             shuffle=False,
             num_workers=0,
             pin_memory=True,
@@ -133,12 +129,13 @@ if __name__ == "__main__":
         model_loss=nn.CrossEntropyLoss(),
         unfairness_loss=DisparityRegularizationLoss(),
     )
-    model = LinearClassificationNet(input_size=11, output_size=2)
+    model = CNN()
     optimizer = (
         optim.SGD(model.parameters(), lr=lr, momentum=0)
         if args.optimizer == "sgd"
         else optim.Adam(model.parameters(), lr=lr)
     )
+
 
     model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(
         module=model,
@@ -161,10 +158,12 @@ if __name__ == "__main__":
         target=args.target,
     )
 
+    print("Training the model")
+
     puffle_model.train(
         train_loader=train_loader_gc,
         epochs=epochs,
-        val_loader=val_loader if dutch_val is not None else test_loader,
+        val_loader=val_loader if celeba_val is not None else test_loader,
         verbose=True,
         average_probabilities=None,
         max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,

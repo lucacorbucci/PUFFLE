@@ -1,6 +1,4 @@
-import numpy as np
 import torch
-from opacus.optimizers.optimizer import DPOptimizer
 
 
 def compute_demographic_disparity(
