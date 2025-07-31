@@ -1,0 +1,38 @@
+program: main.py
+method: bayes
+metric:
+  name: Custom_metric
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  batch_size:
+    min: 2048
+    max: 4096
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd"]
+  regularization_lambda:
+    min: 0.05
+    max: 0.9    
+    
+command:
+  - ${env}
+  - uv 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --project_name 
+  - PuffleRewrite
+  - --target
+  - 0.05
+  - --epochs
+  - 10
+  - --sweep
+  - True 
+  - --regularization_mode
+  - fixed
