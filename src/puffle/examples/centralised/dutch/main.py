@@ -69,7 +69,9 @@ if __name__ == "__main__":
     parser.add_argument("--fairness_metric", type=str, default="disparity")
     parser.add_argument("--regularization_mode", type=str, default="fixed")
     parser.add_argument("--target", type=float, default=None)
-
+    parser.add_argument("--momentum", type=float, default=None)
+    parser.add_argument("--alpha", type=float, default=None)
+    parser.add_argument("--weight_decay_alpha", type=float, default=None)
 
     args = parser.parse_args()
 
@@ -154,12 +156,17 @@ if __name__ == "__main__":
         lambda_regularization=args.regularization_lambda,
         wandb_run=wandb_run,
         target=args.target,
+        tunable_lambda=args.regularization_mode == "tunable",
+        momentum=args.momentum if args.momentum is not None else None,
+        alpha=args.alpha if args.alpha is not None else None,
+        weight_decay_alpha=args.weight_decay_alpha if args.weight_decay_alpha is not None else None,
     )
 
     puffle_model.train(
         train_loader=train_loader_gc,
         epochs=epochs,
-        val_loader=val_loader if dutch_val is not None else test_loader,
+        val_loader=val_loader if dutch_val is not None else None,
+        test_loader=test_loader if dutch_test is not None else None,
         verbose=True,
         average_probabilities=None,
         max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,

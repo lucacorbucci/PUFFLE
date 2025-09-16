@@ -320,6 +320,8 @@ class DisparityRegularizationLoss(nn.Module):
             ]
         )
 
+        print(f"Y_eq_k_and_Z_eq_z {current_target} {current_sensitive_feature}: {Y_eq_k_and_Z_eq_z} - Z_eq_z: {Z_eq_z} - Y_eq_k_and_Z_not_eq_z: {Y_eq_k_and_Z_not_eq_z} - Z_not_eq_z: {Z_not_eq_z}")
+
         if Z_eq_z == 0 and Z_not_eq_z != 0:
             return np.abs(Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
         elif Z_eq_z != 0 and Z_not_eq_z == 0:

@@ -24,6 +24,10 @@ class PUFFLEModel:
         lambda_regularization: float = 0.0,
         wandb_run: Optional[object] = None,
         target: Optional[float] = None,
+        momentum: Optional[float] = None,
+        alpha: Optional[float] = None,
+        weight_decay_alpha: Optional[float] = None,
+        tunable_lambda: bool = False,
     ):
         """
         Initialize the PUFFLEModel wrapper.
@@ -41,6 +45,21 @@ class PUFFLEModel:
         self.lambda_regularization = lambda_regularization
         self.wandb_run = wandb_run
         self.target = target
+        if tunable_lambda:
+            if momentum is None or alpha is None or weight_decay_alpha is None:
+                raise ValueError(
+                    "For tunable lambda, momentum, alpha, and weight_decay_alpha must be provided."
+                )
+            self.momentum = momentum
+            self.velocity = 0.0
+            self.alpha = alpha
+            self.weight_decay_alpha = weight_decay_alpha
+        else:
+            self.momentum = None
+            self.velocity = 0.0
+            self.alpha = None
+            self.weight_decay_alpha = None
+        self.tunable_lambda = tunable_lambda
 
         # Set up device
         if device is None:
@@ -56,6 +75,7 @@ class PUFFLEModel:
         train_loader: DataLoader,
         epochs: int,
         val_loader: Optional[DataLoader] = None,
+        test_loader: Optional[DataLoader] = None,
         verbose: bool = True,
         average_probabilities: Optional[Dict] = None,
         max_physical_batch_size: int = 1024,
@@ -83,9 +103,12 @@ class PUFFLEModel:
             "val_accuracy": [],
             "val_f1": [],
             "val_disparity": [],
+            "test_loss": [],
+            "test_accuracy": [],
+            "test_f1": [],
+            "test_disparity": [],
         }
 
-        print(self.criterion)
 
         with BatchMemoryManager(
             data_loader=train_loader,
@@ -97,6 +120,7 @@ class PUFFLEModel:
                 train_metrics = self._train_one_epoch(
                     memory_safe_data_loader,
                     average_probabilities=average_probabilities,
+                    current_epoch=epoch,
                 )
 
                 # Store metrics
@@ -142,34 +166,31 @@ class PUFFLEModel:
                                 "Custom_metric": custom_metric,
                             }
                         )
+                elif test_loader:
+                    # If no validation loader, use test loader for evaluation
+                    test_metrics = self.evaluate(test_loader)
 
-                    if verbose:
-                        print(
-                            f"Epoch {epoch + 1}/{epochs}, "
-                            f"Train Loss: {train_metrics['loss']:.4f}, "
-                            f"Train Acc: {train_metrics['accuracy']:.4f}, "
-                            f"Train F1: {train_metrics['f1']:.4f}, "
-                            f"Train Disparity: {train_metrics['disparity']:.4f}, "
-                            f"Val Loss: {val_metrics['loss']:.4f}, "
-                            f"Val Acc: {val_metrics['accuracy']:.4f}, "
-                            f"Val F1: {val_metrics['f1']:.4f}, "
-                            f"Val Disparity: {val_metrics['disparity']:.4f}"
-                        )
-                else:
-                    if verbose:
-                        print(
-                            f"Epoch {epoch + 1}/{epochs}, "
-                            f"Train Loss: {train_metrics['loss']:.4f}, "
-                            f"Train Acc: {train_metrics['accuracy']:.4f}, "
-                            f"Train F1: {train_metrics['f1']:.4f}, "
-                            f"Train Disparity: {train_metrics['disparity']:.4f}"
-                        )
+                    metrics["test_loss"].append(test_metrics["loss"])
+                    metrics["test_accuracy"].append(test_metrics["accuracy"])
+                    metrics["test_f1"].append(test_metrics["f1"])
+                    metrics["test_disparity"].append(test_metrics["disparity"])
 
+                    if self.wandb_run:
+                        self.wandb_run.log(
+                            {
+                                "test_loss": test_metrics["loss"],
+                                "test_accuracy": test_metrics["accuracy"],
+                                "test_f1": test_metrics["f1"],
+                                "test_disparity": test_metrics["disparity"],
+                                "epoch": epoch + 1,
+                            }
+                        )
         return metrics
 
     def _train_one_epoch(
         self,
         train_loader: DataLoader,
+        current_epoch: int,
         average_probabilities: Optional[Dict] = None,
         track_metrics_every_n_batches: Optional[int] = None,
         optimizer_regularization: Optional[torch.optim.Optimizer] = None,
@@ -196,7 +217,7 @@ class PUFFLEModel:
 
         # Loop through batches
         for batch_idx, batch in enumerate(train_loader):
-            loss_batch, correct_batch, total_batch, y_batch, predicted_batch, z_batch = self._train_batch(
+            loss_batch, correct_batch, total_batch, y_batch, predicted_batch, z_batch, unfairness_loss = self._train_batch(
                 batch,
                 model=self.model,
                 optimizer=self.optimizer,
@@ -209,7 +230,12 @@ class PUFFLEModel:
             y_true.extend(y_batch.cpu().numpy())
             y_pred.extend(predicted_batch.cpu().numpy())
             sensitive_attributes.extend(z_batch.cpu().numpy() if isinstance(z_batch, torch.Tensor) else z_batch)
-
+            if self.tunable_lambda:
+                self.update_lambda(unfairness_loss)
+                self.wandb_run.log({"Lambda": self.lambda_regularization})
+        if self.tunable_lambda:
+            self.update_alpha(current_epoch=current_epoch)
+            self.wandb_run.log({"Alpha": self.alpha, "Epoch": current_epoch + 1})
         # Compute final metrics
         return self._compute_metrics(
             total_loss / len(train_loader), correct / total, y_true, y_pred, sensitive_attributes
@@ -249,8 +275,11 @@ class PUFFLEModel:
 
         correct_batch = (predicted == y_batch).sum().item()
         total_batch = y_batch.size(0)
-
-        return loss.item(), correct_batch, total_batch, y_batch, predicted, z_batch
+        unfairness_batch = compute_demographic_disparity(
+            z=torch.tensor(z_batch, device=self.device),
+            y=torch.tensor(predicted, device=self.device),
+        )
+        return loss.item(), correct_batch, total_batch, y_batch, predicted, z_batch, unfairness_batch
 
     def evaluate(self, data_loader: DataLoader, is_validation: bool = False) -> Dict[str, float]:
         """
@@ -303,7 +332,6 @@ class PUFFLEModel:
             total_loss / len(data_loader), correct / total, y_true, y_pred, sensitive_attributes
         )
 
-
     def _compute_metrics(
         self, loss: float, accuracy: float, y_true: List, y_pred: List, sensitive_attributes: List
     ) -> Dict[str, float]:
@@ -329,3 +357,34 @@ class PUFFLEModel:
         return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity}
 
 
+    def update_lambda(self, current_unfairness):
+        delta = self.target - current_unfairness
+        self.velocity = self.momentum * self.velocity + delta
+        new_lambda = self.lambda_regularization - self.velocity * self.alpha
+
+        if new_lambda >= 0 and new_lambda <= 1:
+            self.lambda_regularization = new_lambda
+        elif new_lambda > 1:
+            self.lambda_regularization = 1
+        else:
+            self.lambda_regularization = 0
+
+    def exp_lr_scheduler(self, initial_alpha, current_fl_round, decay_rate=0.001):
+        """
+        Decay learning rate by a factor of decay_rate every epoch.
+
+        Args:
+            initial_alpha (float): initial learning rate
+            current_fl_round (int): the current fl round in which the client was selected
+            decay_rate (float, optional): decay rate. Defaults to 0.1.
+        """
+        new_alpha = initial_alpha * decay_rate ** (current_fl_round + 1)
+        return new_alpha
+
+    def update_alpha(self, current_epoch):
+        if self.weight_decay_alpha:
+            self.alpha = self.exp_lr_scheduler(
+                initial_alpha=self.alpha,
+                current_fl_round=current_epoch,
+                decay_rate=self.weight_decay_alpha,
+            )

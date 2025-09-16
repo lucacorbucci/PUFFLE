@@ -20,3 +20,4 @@ run_sweep_and_agent () {
 
 
 run_sweep_and_agent "dutch"
+run_sweep_and_agent "dutch_tunable"

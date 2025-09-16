@@ -21,4 +21,5 @@ class MixLoss(nn.Module):
             possible_sensitive_attributes=[0, 1],
             possible_targets=[0, 1],
         )
+
         return (1 - lambda_regularization) * model_loss + lambda_regularization * unfairness_loss

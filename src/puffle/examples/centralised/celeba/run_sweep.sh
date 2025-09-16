@@ -20,3 +20,4 @@ run_sweep_and_agent () {
 
 
 run_sweep_and_agent "celeba"
+run_sweep_and_agent "celeba_tunable"

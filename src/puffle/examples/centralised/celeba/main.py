@@ -13,10 +13,10 @@ from torch import nn, optim
 
 from puffle.examples.data_preparation.dataset_preparation import prepare_celeba_centralised
 from puffle.examples.models.models import CNN
+from puffle.examples.utils.utils import seed_everything
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
-from puffle.Utils.utils import Utils
 
 warnings.filterwarnings("ignore")
 
@@ -69,7 +69,9 @@ if __name__ == "__main__":
     parser.add_argument("--fairness_metric", type=str, default="disparity")
     parser.add_argument("--regularization_mode", type=str, default="fixed")
     parser.add_argument("--target", type=float, default=None)
-
+    parser.add_argument("--momentum", type=float, default=None)
+    parser.add_argument("--alpha", type=float, default=None)
+    parser.add_argument("--weight_decay_alpha", type=float, default=None)
 
     args = parser.parse_args()
 
@@ -88,9 +90,9 @@ if __name__ == "__main__":
         if args.wandb
         else None
     )
-    Utils.seed_everything(args.seed)
+    seed_everything(args.seed)
     celeba_train, celeba_test, celeba_val = prepare_celeba_centralised(debug=False, sweep=args.sweep, validation_seed=args.validation_seed, seed=args.seed)
-    Utils.seed_everything(args.seed)
+    seed_everything(args.seed)
 
 
     train_loader = torch.utils.data.DataLoader(
@@ -156,6 +158,10 @@ if __name__ == "__main__":
         lambda_regularization=args.regularization_lambda,
         wandb_run=wandb_run,
         target=args.target,
+        tunable_lambda=args.regularization_mode == "tunable",
+        momentum=args.momentum if args.momentum is not None else None,
+        alpha=args.alpha if args.alpha is not None else None,
+        weight_decay_alpha=args.weight_decay_alpha if args.weight_decay_alpha is not None else None,
     )
 
     print("Training the model")
@@ -164,6 +170,7 @@ if __name__ == "__main__":
         train_loader=train_loader_gc,
         epochs=epochs,
         val_loader=val_loader if celeba_val is not None else test_loader,
+        test_loader=test_loader if celeba_test is not None else None,
         verbose=True,
         average_probabilities=None,
         max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,
