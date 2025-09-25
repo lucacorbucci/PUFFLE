@@ -109,6 +109,7 @@ class PUFFLEModel:
             "test_disparity": [],
         }
 
+        statistics = []
 
         with BatchMemoryManager(
             data_loader=train_loader,
@@ -128,6 +129,7 @@ class PUFFLEModel:
                 metrics["train_accuracy"].append(train_metrics["accuracy"])
                 metrics["train_f1"].append(train_metrics["f1"])
                 metrics["train_disparity"].append(train_metrics["disparity"])
+                statistics.append(train_metrics["statistics"])
 
                 if self.wandb_run:
                     self.wandb_run.log(
@@ -185,6 +187,20 @@ class PUFFLEModel:
                                 "epoch": epoch + 1,
                             }
                         )
+
+        # check if any metric in the list contains a torch tensor and convert it to a float
+        for key, value in metrics.items():
+            if isinstance(value, torch.Tensor):
+                metrics[key] = value.item()
+            elif isinstance(value, list):
+                for i, item in enumerate(value):
+                    if isinstance(item, torch.Tensor):
+                        metrics[key][i] = item.item()
+
+        metrics["counter_z"] = statistics[-1]["counter_z"]
+        metrics["counter_not_z"] = statistics[-1]["counter_not_z"]
+        metrics["counter_y_z"] = statistics[-1]["counter_y_z"]
+        metrics["counter_y_not_z"] = statistics[-1]["counter_y_not_z"]
         return metrics
 
     def _train_one_epoch(
@@ -232,10 +248,12 @@ class PUFFLEModel:
             sensitive_attributes.extend(z_batch.cpu().numpy() if isinstance(z_batch, torch.Tensor) else z_batch)
             if self.tunable_lambda:
                 self.update_lambda(unfairness_loss)
-                self.wandb_run.log({"Lambda": self.lambda_regularization})
+                if self.wandb_run:
+                    self.wandb_run.log({"Lambda": self.lambda_regularization})
         if self.tunable_lambda:
             self.update_alpha(current_epoch=current_epoch)
-            self.wandb_run.log({"Alpha": self.alpha, "Epoch": current_epoch + 1})
+            if self.wandb_run:
+                self.wandb_run.log({"Alpha": self.alpha, "Epoch": current_epoch + 1})
         # Compute final metrics
         return self._compute_metrics(
             total_loss / len(train_loader), correct / total, y_true, y_pred, sensitive_attributes
@@ -275,7 +293,7 @@ class PUFFLEModel:
 
         correct_batch = (predicted == y_batch).sum().item()
         total_batch = y_batch.size(0)
-        unfairness_batch = compute_demographic_disparity(
+        unfairness_batch, _  = compute_demographic_disparity(
             z=torch.tensor(z_batch, device=self.device),
             y=torch.tensor(predicted, device=self.device),
         )
@@ -352,9 +370,9 @@ class PUFFLEModel:
         f1 = f1_score(y_true, y_pred, average="macro")
 
         # Calculate demographic disparity
-        disparity = compute_demographic_disparity(z=torch.tensor(sensitive_attributes), y=torch.tensor(y_pred))
-
-        return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity}
+        disparity, statistics = compute_demographic_disparity(z=torch.tensor(sensitive_attributes), y=torch.tensor(y_pred))
+        
+        return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity, "statistics": statistics}
 
 
     def update_lambda(self, current_unfairness):

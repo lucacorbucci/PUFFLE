@@ -46,8 +46,20 @@ def compute_demographic_disparity(
 
             # Update the maximum disparity
             max_disparity = max(max_disparity, disparity)
+            
+            counter_z = (z == z_val).sum().item()
+            counter_not_z = (z != z_val).sum().item()
+            counter_y_z = (y[(z == z_val)] == y_val).sum().item()
+            counter_y_not_z = (y[(z != z_val)] == y_val).sum().item()
 
-    return max_disparity
+    statistics = {
+        "counter_z": counter_z,
+        "counter_not_z": counter_not_z,
+        "counter_y_z": counter_y_z,
+        "counter_y_not_z": counter_y_not_z,
+    }
+
+    return max_disparity, statistics
 
 
 def compute_differentiable_demographic_disparity(

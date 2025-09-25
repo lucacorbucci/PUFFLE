@@ -19,3 +19,5 @@ test_ds
 train_ds
 *.pth
 *.npy
+
+! examples/

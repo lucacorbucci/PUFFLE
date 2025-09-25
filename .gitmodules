@@ -1,6 +1,3 @@
-[submodule "src/puffle/examples/FlowerFLTemplate"]
-	path = src/puffle/examples/FlowerFLTemplate
-	url = https://github.com/lucacorbucci/FlowerFLTemplate
 [submodule "src/FlowerFLTemplate"]
 	path = src/FlowerFLTemplate
 	url = https://github.com/lucacorbucci/FlowerFLTemplate
