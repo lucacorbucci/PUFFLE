@@ -1,12 +1,8 @@
 import argparse
-import os
-import random
 import time
 import warnings
 
-import numpy as np
 import torch
-import torch.nn.functional as F
 import wandb
 from opacus import PrivacyEngine
 from torch import nn, optim
@@ -29,15 +25,20 @@ def check_input(args):
     # check input for unfairness reduction parameters
     if args.unfairness_reduction:
         if args.regularization_lambda < 0 or args.regularization_lambda > 1:
-            raise ValueError("Lambda must be between 0 and 1.")
+            msg = "Lambda must be between 0 and 1."
+            raise ValueError(msg)
         if args.fairness_metric not in ["disparity", "error_rate"]:
-            raise ValueError("Fairness metric must be either 'disparity' or 'error_rate'.")
+            msg = "Fairness metric must be either 'disparity' or 'error_rate'."
+            raise ValueError(msg)
         if args.regularization_mode not in ["fixed", "tunable"]:
-            raise ValueError("Regularization model must be either 'fixed' or 'tunable'.")
+            msg = "Regularization model must be either 'fixed' or 'tunable'."
+            raise ValueError(msg)
         if args.target is None:
-            raise ValueError("Target must be specified for unfairness reduction.")
+            msg = "Target must be specified for unfairness reduction."
+            raise ValueError(msg)
         if args.target < 0 or args.target > 1:
-            raise ValueError("Target must be between 0 and 1.")
+            msg = "Target must be between 0 and 1."
+            raise ValueError(msg)
 
 
 if __name__ == "__main__":
@@ -91,9 +92,10 @@ if __name__ == "__main__":
         else None
     )
     seed_everything(args.seed)
-    celeba_train, celeba_test, celeba_val = prepare_celeba_centralised(debug=False, sweep=args.sweep, validation_seed=args.validation_seed, seed=args.seed)
+    celeba_train, celeba_test, celeba_val = prepare_celeba_centralised(
+        debug=False, sweep=args.sweep, validation_seed=args.validation_seed, seed=args.seed
+    )
     seed_everything(args.seed)
-
 
     train_loader = torch.utils.data.DataLoader(
         celeba_train,
@@ -138,7 +140,6 @@ if __name__ == "__main__":
         else optim.Adam(model.parameters(), lr=lr)
     )
 
-
     model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(
         module=model,
         optimizer=optimizer,
@@ -147,7 +148,7 @@ if __name__ == "__main__":
         max_grad_norm=args.max_grad_norm,
         criterion=criterion,
         grad_sample_mode="ghost",
-        poisson_sampling=True if private_training else False,
+        poisson_sampling=bool(private_training),
     )
 
     puffle_model = PUFFLEModel(
@@ -164,7 +165,6 @@ if __name__ == "__main__":
         weight_decay_alpha=args.weight_decay_alpha if args.weight_decay_alpha is not None else None,
     )
 
-    print("Training the model")
 
     puffle_model.train(
         train_loader=train_loader_gc,

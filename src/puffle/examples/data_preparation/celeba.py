@@ -16,7 +16,8 @@ class CelebaDataset(Dataset):
         transform: torchvision.transforms = None,
         debug: bool = True,
     ) -> None:
-        """Initialization of the dataset.
+        """
+        Initialization of the dataset.
 
         Args:
         ----
@@ -25,8 +26,8 @@ class CelebaDataset(Dataset):
             image_path (str): path of the images
             transform (torchvision.transforms, optional): Transformation to apply
             to the images. Defaults to None.
-        """
 
+        """
         smiling_dict = {-1: 0, 1: 1}
         targets = [smiling_dict[item] for item in dataframe["Smiling"].tolist()]
         self.targets = targets
@@ -47,12 +48,13 @@ class CelebaDataset(Dataset):
             ]
 
     def __getitem__(self, index: int):
-        """Returns a sample from the dataset.
+        """
+        Returns a sample from the dataset.
 
         Args:
             idx (_type_): index of the sample we want to retrieve
 
-        Returns
+        Returns:
         -------
             _type_: sample we want to retrieve
 
@@ -67,19 +69,15 @@ class CelebaDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        return (
-            img,
-            self.sensitive_attributes[index],
-            self.targets[index], self.indexes[index], index
-            
-        )
+        return (img, self.sensitive_attributes[index], self.targets[index], self.indexes[index], index)
 
     def __len__(self) -> int:
-        """This function returns the size of the dataset.
+        """
+        This function returns the size of the dataset.
 
         Returns
         -------
             int: size of the dataset
+
         """
         return self.n_samples
-

@@ -3,7 +3,7 @@ from torch import nn
 
 class MixLoss(nn.Module):
     def __init__(self, model_loss, unfairness_loss, reduction="mean"):
-        super(MixLoss, self).__init__()
+        super().__init__()
         self.model_criterion = model_loss
         self.unfairness_criterion = unfairness_loss
         self.reduction = reduction

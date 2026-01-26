@@ -1,12 +1,8 @@
 import argparse
-import os
-import random
 import time
 import warnings
 
-import numpy as np
 import torch
-import torch.nn.functional as F
 import wandb
 from opacus import PrivacyEngine
 from torch import nn, optim
@@ -29,15 +25,20 @@ def check_input(args):
     # check input for unfairness reduction parameters
     if args.unfairness_reduction:
         if args.regularization_lambda < 0 or args.regularization_lambda > 1:
-            raise ValueError("Lambda must be between 0 and 1.")
+            msg = "Lambda must be between 0 and 1."
+            raise ValueError(msg)
         if args.fairness_metric not in ["disparity", "error_rate"]:
-            raise ValueError("Fairness metric must be either 'disparity' or 'error_rate'.")
+            msg = "Fairness metric must be either 'disparity' or 'error_rate'."
+            raise ValueError(msg)
         if args.regularization_mode not in ["fixed", "tunable"]:
-            raise ValueError("Regularization model must be either 'fixed' or 'tunable'.")
+            msg = "Regularization model must be either 'fixed' or 'tunable'."
+            raise ValueError(msg)
         if args.target is None:
-            raise ValueError("Target must be specified for unfairness reduction.")
+            msg = "Target must be specified for unfairness reduction."
+            raise ValueError(msg)
         if args.target < 0 or args.target > 1:
-            raise ValueError("Target must be between 0 and 1.")
+            msg = "Target must be between 0 and 1."
+            raise ValueError(msg)
 
 
 if __name__ == "__main__":
@@ -91,7 +92,9 @@ if __name__ == "__main__":
         else None
     )
     seed_everything(args.seed)
-    dutch_train, dutch_test, dutch_val = prepare_dutch(args.csv_path, sweep=args.sweep, validation_seed=args.validation_seed)
+    dutch_train, dutch_test, dutch_val = prepare_dutch(
+        args.csv_path, sweep=args.sweep, validation_seed=args.validation_seed
+    )
     seed_everything(args.seed)
 
     train_loader = torch.utils.data.DataLoader(
@@ -145,7 +148,7 @@ if __name__ == "__main__":
         max_grad_norm=args.max_grad_norm,
         criterion=criterion,
         grad_sample_mode="ghost",
-        poisson_sampling=True if private_training else False,
+        poisson_sampling=bool(private_training),
     )
 
     puffle_model = PUFFLEModel(

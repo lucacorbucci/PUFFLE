@@ -1,10 +1,9 @@
-from typing import Dict, List, Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from opacus.utils.batch_memory_manager import BatchMemoryManager
 from sklearn.metrics import f1_score
+from torch import nn
 from torch.utils.data import DataLoader
 
 from puffle.Utils.metric import compute_demographic_disparity
@@ -22,11 +21,11 @@ class PUFFLEModel:
         criterion: nn.Module,
         device: torch.device | None = None,
         lambda_regularization: float = 0.0,
-        wandb_run: Optional[object] = None,
-        target: Optional[float] = None,
-        momentum: Optional[float] = None,
-        alpha: Optional[float] = None,
-        weight_decay_alpha: Optional[float] = None,
+        wandb_run: object | None = None,
+        target: float | None = None,
+        momentum: float | None = None,
+        alpha: float | None = None,
+        weight_decay_alpha: float | None = None,
         tunable_lambda: bool = False,
     ):
         """
@@ -38,6 +37,7 @@ class PUFFLEModel:
                                                          Adam will be used with default params.
             criterion (nn.Module): Loss function for training, default is cross entropy
             device (torch.device): Device to use for computation (CPU/GPU)
+
         """
         self.model = model
         self.criterion = criterion
@@ -47,9 +47,8 @@ class PUFFLEModel:
         self.target = target
         if tunable_lambda:
             if momentum is None or alpha is None or weight_decay_alpha is None:
-                raise ValueError(
-                    "For tunable lambda, momentum, alpha, and weight_decay_alpha must be provided."
-                )
+                msg = "For tunable lambda, momentum, alpha, and weight_decay_alpha must be provided."
+                raise ValueError(msg)
             self.momentum = momentum
             self.velocity = 0.0
             self.alpha = alpha
@@ -74,12 +73,12 @@ class PUFFLEModel:
         self,
         train_loader: DataLoader,
         epochs: int,
-        val_loader: Optional[DataLoader] = None,
-        test_loader: Optional[DataLoader] = None,
+        val_loader: DataLoader | None = None,
+        test_loader: DataLoader | None = None,
         verbose: bool = True,
-        average_probabilities: Optional[Dict] = None,
+        average_probabilities: dict | None = None,
         max_physical_batch_size: int = 1024,
-    ) -> Dict[str, List[float]]:
+    ) -> dict[str, list[float]]:
         """
         Train the model with optional fairness regularization.
 
@@ -92,6 +91,7 @@ class PUFFLEModel:
 
         Returns:
             Dict[str, List[float]]: Dictionary of metrics tracked during training
+
         """
         # Initialize tracking metrics
         metrics = {
@@ -207,10 +207,10 @@ class PUFFLEModel:
         self,
         train_loader: DataLoader,
         current_epoch: int,
-        average_probabilities: Optional[Dict] = None,
-        track_metrics_every_n_batches: Optional[int] = None,
-        optimizer_regularization: Optional[torch.optim.Optimizer] = None,
-    ) -> Dict[str, float]:
+        average_probabilities: dict | None = None,
+        track_metrics_every_n_batches: int | None = None,
+        optimizer_regularization: torch.optim.Optimizer | None = None,
+    ) -> dict[str, float]:
         """
         Train for one epoch.
 
@@ -222,6 +222,7 @@ class PUFFLEModel:
 
         Returns:
             Dict[str, float]: Dictionary of metrics for the epoch
+
         """
         self.model.train()
         total_loss = 0.0
@@ -232,12 +233,14 @@ class PUFFLEModel:
         sensitive_attributes = []
 
         # Loop through batches
-        for batch_idx, batch in enumerate(train_loader):
-            loss_batch, correct_batch, total_batch, y_batch, predicted_batch, z_batch, unfairness_loss = self._train_batch(
-                batch,
-                model=self.model,
-                optimizer=self.optimizer,
-                criterion=self.criterion,
+        for _batch_idx, batch in enumerate(train_loader):
+            loss_batch, _correct_batch, _total_batch, y_batch, predicted_batch, z_batch, unfairness_loss = (
+                self._train_batch(
+                    batch,
+                    model=self.model,
+                    optimizer=self.optimizer,
+                    criterion=self.criterion,
+                )
             )
 
             total_loss += loss_batch
@@ -281,7 +284,8 @@ class PUFFLEModel:
         if criterion is not None:
             loss = criterion((outputs, z_batch, self.lambda_regularization), y_batch.long())
         else:
-            raise ValueError("Criterion must be provided for training.")
+            msg = "Criterion must be provided for training."
+            raise ValueError(msg)
 
         # Backward pass and optimize
         loss.backward()
@@ -293,13 +297,13 @@ class PUFFLEModel:
 
         correct_batch = (predicted == y_batch).sum().item()
         total_batch = y_batch.size(0)
-        unfairness_batch, _  = compute_demographic_disparity(
+        unfairness_batch, _ = compute_demographic_disparity(
             z=torch.tensor(z_batch, device=self.device),
             y=torch.tensor(predicted, device=self.device),
         )
         return loss.item(), correct_batch, total_batch, y_batch, predicted, z_batch, unfairness_batch
 
-    def evaluate(self, data_loader: DataLoader, is_validation: bool = False) -> Dict[str, float]:
+    def evaluate(self, data_loader: DataLoader, is_validation: bool = False) -> dict[str, float]:
         """
         Evaluate the model on a dataset.
 
@@ -309,6 +313,7 @@ class PUFFLEModel:
 
         Returns:
             Dict[str, float]: Dictionary of evaluation metrics
+
         """
         self.model.eval()
         total_loss = 0.0
@@ -351,8 +356,8 @@ class PUFFLEModel:
         )
 
     def _compute_metrics(
-        self, loss: float, accuracy: float, y_true: List, y_pred: List, sensitive_attributes: List
-    ) -> Dict[str, float]:
+        self, loss: float, accuracy: float, y_true: list, y_pred: list, sensitive_attributes: list
+    ) -> dict[str, float]:
         """
         Compute evaluation metrics.
 
@@ -365,15 +370,17 @@ class PUFFLEModel:
 
         Returns:
             Dict[str, float]: Dictionary of computed metrics
+
         """
         # Calculate F1 score
         f1 = f1_score(y_true, y_pred, average="macro")
 
         # Calculate demographic disparity
-        disparity, statistics = compute_demographic_disparity(z=torch.tensor(sensitive_attributes), y=torch.tensor(y_pred))
-        
-        return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity, "statistics": statistics}
+        disparity, statistics = compute_demographic_disparity(
+            z=torch.tensor(sensitive_attributes), y=torch.tensor(y_pred)
+        )
 
+        return {"loss": loss, "accuracy": accuracy, "f1": f1, "disparity": disparity, "statistics": statistics}
 
     def update_lambda(self, current_unfairness):
         delta = self.target - current_unfairness
@@ -395,9 +402,9 @@ class PUFFLEModel:
             initial_alpha (float): initial learning rate
             current_fl_round (int): the current fl round in which the client was selected
             decay_rate (float, optional): decay rate. Defaults to 0.1.
+
         """
-        new_alpha = initial_alpha * decay_rate ** (current_fl_round + 1)
-        return new_alpha
+        return initial_alpha * decay_rate ** (current_fl_round + 1)
 
     def update_alpha(self, current_epoch):
         if self.weight_decay_alpha:

@@ -237,15 +237,17 @@ def dataset_to_numpy(
 
     # current implementation assumes each sensitive feature is binary
     for i, tmp in enumerate(_metadata["protected_atts"][:num_sensitive_features]):
-        assert len(_Z[tmp].unique()) == 2, "Sensitive feature is not binary!"
+        if len(_Z[tmp].unique()) != 2:
+            msg = "Sensitive feature is not binary!"
+            raise ValueError(msg)
 
     # 1-hot sensitive features, (optionally) swap ordering so privileged class feature == 1 is always last, preceded by the corresponding unprivileged feature
     _Z2 = pd.get_dummies(_Z, columns=_Z.columns, drop_first=False)
     if sensitive_features_last:
         for i, tmp in enumerate(_Z.columns):
-            assert _metadata["protected_att_values"][i] in _Z[tmp].unique(), (
-                "Protected attribute value not found in data!"
-            )
+            if _metadata["protected_att_values"][i] not in _Z[tmp].unique():
+                msg = "Protected attribute value not found in data!"
+                raise ValueError(msg)
             if not np.allclose(float(_metadata["protected_att_values"][i]), 0):
                 # swap columns
                 _Z2.iloc[:, [2 * i, 2 * i + 1]] = _Z2.iloc[:, [2 * i + 1, 2 * i]]

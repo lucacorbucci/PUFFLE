@@ -1,6 +1,7 @@
-import torch
-import pytest
 import numpy as np
+import pytest
+import torch
+
 from puffle.FairReg.Utils.metric import compute_demographic_disparity, compute_differentiable_demographic_disparity
 
 
@@ -99,7 +100,7 @@ class TestMetrics:
         # This should return 0 disparity
         with pytest.raises(ValueError):
             # This should raise a RuntimeError as we can't compute P(Y|Z!=z) when all Z are the same
-            result = compute_demographic_disparity(z, y)
+            compute_demographic_disparity(z, y)
 
     def test_compute_differentiable_demographic_disparity_basic(self):
         """Test the basic functionality of compute_differentiable_demographic_disparity."""
@@ -150,7 +151,7 @@ class TestMetrics:
         # Max violation = 0.85
         expected_disparity = 0.85
 
-        device = torch.device("cpu")
+        torch.device("cpu")
         result = compute_differentiable_demographic_disparity(
             predictions_argmax=predictions_argmax,
             sensitive_attributes=sensitive_attributes,
@@ -178,7 +179,7 @@ class TestMetrics:
         # With perfect balance, the disparity should be 0
         expected_disparity = 0.0
 
-        device = torch.device("cpu")
+        torch.device("cpu")
         result = compute_differentiable_demographic_disparity(
             predictions_argmax=predictions_argmax,
             sensitive_attributes=sensitive_attributes,

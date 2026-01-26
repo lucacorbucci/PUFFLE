@@ -1,10 +1,10 @@
+from unittest.mock import patch
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-from torch.utils.data import Dataset, DataLoader, TensorDataset
-import torch.nn as nn
-import torch.nn.functional as F
-from unittest.mock import Mock, patch
+from torch import nn
+from torch.utils.data import DataLoader, Dataset
 
 from puffle.FairModel.fair_model import PUFFLEModel
 
@@ -12,7 +12,7 @@ from puffle.FairModel.fair_model import PUFFLEModel
 # Create a simple model for testing
 class SimpleModel(nn.Module):
     def __init__(self, input_dim=2, output_dim=2):
-        super(SimpleModel, self).__init__()
+        super().__init__()
         self.layer = nn.Linear(input_dim, output_dim)
 
     def forward(self, x):
@@ -245,13 +245,12 @@ class TestPUFFLEModel:
 
         def mock_evaluate(data_loader):
             call_count[0] += 1
-            result = {
+            return {
                 "loss": 1.0 + call_count[0] * 0.1,  # Increasing loss
                 "accuracy": 0.8,
                 "f1": 0.7,
                 "disparity": 0.3,
             }
-            return result
 
         puffle_model.evaluate = mock_evaluate
 
@@ -297,7 +296,7 @@ class TestPUFFLEModel:
         new_puffle_model.load(str(model_path))
 
         # Check that the model parameters are the same
-        for p1, p2 in zip(puffle_model.model.parameters(), new_puffle_model.model.parameters()):
+        for p1, p2 in zip(puffle_model.model.parameters(), new_puffle_model.model.parameters(), strict=False):
             assert torch.allclose(p1, p2)
 
         # Check that the fairness weight is the same
