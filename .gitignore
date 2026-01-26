@@ -19,5 +19,8 @@ test_ds
 train_ds
 *.pth
 *.npy
+agent.md
+code-style.md
+changelog_cleanup.md
 
 ! examples/
