@@ -1,10 +1,6 @@
-import random
-from collections import Counter, defaultdict
 
 import numpy as np
 import torch
-import torch.nn.functional as F
-
 from FairReg.RegularizationLoss import RegularizationLoss
 
 
@@ -161,10 +157,8 @@ class TestRegularization:
             possible_targets,
             binary_sensitive_value,
         )
-        print(actual_probabilities)
 
         # Compare expected and actual outputs
-        # assert actual_probabilities == expected_probabilities
 
         for key, value in actual_probabilities.items():
             current_value = torch.tensor(value) if isinstance(value, int) else value

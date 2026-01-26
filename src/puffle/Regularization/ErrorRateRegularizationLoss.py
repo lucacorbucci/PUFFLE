@@ -1,11 +1,8 @@
-import traceback
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
-
-# from .DPL.DPLUtilsutils import Utils
 
 
 class ErrorRateRegularizationLoss(nn.Module):
@@ -24,13 +21,14 @@ class ErrorRateRegularizationLoss(nn.Module):
         group: int,
     ):
         if group is None:
-            raise ValueError("The privileged and unprivileged groups must be specified")
+            msg = "The privileged and unprivileged groups must be specified"
+            raise ValueError(msg)
         analysis_dict = {}
         for index, y, prediction, current_group in zip(
             list(range(len(predictions))),
             true_targets,
             predictions_argmax,
-            sensitive_attribute_list,
+            sensitive_attribute_list, strict=False,
         ):
             prediction = int(prediction.item())
             y = int(y.item())
@@ -38,25 +36,13 @@ class ErrorRateRegularizationLoss(nn.Module):
                 analysis_dict[(y, prediction, current_group)] = []
             analysis_dict[(y, prediction, current_group)].append(index)
 
-        if (0, 1, group) in analysis_dict:
-            fp = len(analysis_dict[(0, 1, group)])
-        else:
-            fp = 0
+        fp = len(analysis_dict[0, 1, group]) if (0, 1, group) in analysis_dict else 0
 
-        if (0, 0, group) in analysis_dict:
-            tn = len(analysis_dict[(0, 0, group)])
-        else:
-            tn = 0
+        tn = len(analysis_dict[0, 0, group]) if (0, 0, group) in analysis_dict else 0
 
-        if (1, 1, group) in analysis_dict:
-            tp = len(analysis_dict[(1, 1, group)])
-        else:
-            tp = 0
+        tp = len(analysis_dict[1, 1, group]) if (1, 1, group) in analysis_dict else 0
 
-        if (1, 0, group) in analysis_dict:
-            fn = len(analysis_dict[(1, 0, group)])
-        else:
-            fn = 0
+        fn = len(analysis_dict[1, 0, group]) if (1, 0, group) in analysis_dict else 0
 
         return (
             fp,
@@ -76,14 +62,15 @@ class ErrorRateRegularizationLoss(nn.Module):
         unprivileged_group: int,
     ):
         if privileged_group is None or unprivileged_group is None:
-            raise ValueError("The privileged and unprivileged groups must be specified")
+            msg = "The privileged and unprivileged groups must be specified"
+            raise ValueError(msg)
 
         analysis_dict = {}
         for index, y, prediction, group in zip(
             list(range(len(predictions))),
             true_targets,
             predictions_argmax,
-            sensitive_attribute_list,
+            sensitive_attribute_list, strict=False,
         ):
             prediction = int(prediction.item())
             y = int(y.item())
@@ -178,14 +165,15 @@ class ErrorRateRegularizationLoss(nn.Module):
         true_targets: torch.tensor,
         possible_sensitive_attributes: list,
         possible_targets: list,
-        average_probabilities: dict = None,
+        average_probabilities: dict | None = None,
         wandb_run=None,
         batch=None,
         privileged_group=None,
         unprivileged_group=None,
         global_computation=False,
     ) -> torch.tensor:
-        """This function computes the regularization term.
+        """
+        This function computes the regularization term.
         It takes as input the sensitive attribute list, the targets,
         the device and the predictions computed with the model.
         It returns the regularization term.
@@ -223,9 +211,11 @@ class ErrorRateRegularizationLoss(nn.Module):
 
         Returns:
             float: the disparity metric computed on the data passed as parameter
+
         """
         if privileged_group is None or unprivileged_group is None:
-            raise ValueError("The privileged and unprivileged groups must be specified")
+            msg = "The privileged and unprivileged groups must be specified"
+            raise ValueError(msg)
         fairness_violations = []
         # We compute the softmax of the predictions. We do this because
         # we can't use the argmax function on the nn output,
@@ -246,7 +236,6 @@ class ErrorRateRegularizationLoss(nn.Module):
         possible_targets = [int(item) for item in possible_targets]
         possible_sensitive_attributes = [int(item) for item in possible_sensitive_attributes]
 
-        analysis_dict = {}
 
         sensitive_attribute_list = [
             item.item() if isinstance(item, torch.Tensor) else item for item in sensitive_attribute_list
@@ -265,15 +254,15 @@ class ErrorRateRegularizationLoss(nn.Module):
                     tp_privileged_group,
                     fn_unprivileged_group,
                     fn_privileged_group,
-                    analysis_dict,
-                    fp_unprivileged_group_argmax,
-                    fp_privileged_group_argmax,
-                    tn_privileged_group_argmax,
-                    tn_unprivileged_group_argmax,
-                    tp_unprivileged_group_argmax,
-                    tp_privileged_group_argmax,
-                    fn_unprivileged_group_argmax,
-                    fn_privileged_group_argmax,
+                    _analysis_dict,
+                    _fp_unprivileged_group_argmax,
+                    _fp_privileged_group_argmax,
+                    _tn_privileged_group_argmax,
+                    _tn_unprivileged_group_argmax,
+                    _tp_unprivileged_group_argmax,
+                    _tp_privileged_group_argmax,
+                    _fn_unprivileged_group_argmax,
+                    _fn_privileged_group_argmax,
                 ) = ErrorRateRegularizationLoss.compute_formula_components(
                     predictions,
                     true_targets,
@@ -295,26 +284,21 @@ class ErrorRateRegularizationLoss(nn.Module):
                             + tp_unprivileged_group
                             + fn_unprivileged_group
                         )
-                    else:
-                        if average_probabilities is not None and unprivileged in average_probabilities:
-                            # print("I need the probabilities: ", average_probabilities)
-                            err_unpriv = average_probabilities[unprivileged]
+                    elif average_probabilities is not None and unprivileged in average_probabilities:
+                        err_unpriv = average_probabilities[unprivileged]
 
-                        else:
-                            fairness_violations.append(torch.tensor(0.0).to(device))
-                            added = True
+                    else:
+                        fairness_violations.append(torch.tensor(0.0).to(device))
+                        added = True
 
                     if privileged in possible_sensitive_attributes:
                         err_priv = (fp_privileged_group + fn_privileged_group) / (
                             fp_privileged_group + tn_privileged_group + tp_privileged_group + fn_privileged_group
                         )
-                    else:
-                        if average_probabilities is not None and privileged in average_probabilities:
-                            # print("I need the probabilities: ", average_probabilities)
-                            err_priv = average_probabilities[privileged]
-                        else:
-                            if added is False:
-                                fairness_violations.append(torch.tensor(0.0).to(device))
+                    elif average_probabilities is not None and privileged in average_probabilities:
+                        err_priv = average_probabilities[privileged]
+                    elif added is False:
+                        fairness_violations.append(torch.tensor(0.0).to(device))
 
                     if err_unpriv is not None and err_priv is not None:
                         error_rate = (
@@ -322,24 +306,15 @@ class ErrorRateRegularizationLoss(nn.Module):
                         )
                         if not isinstance(error_rate, torch.Tensor):
                             error_rate = torch.tensor(error_rate).to(device)
-                        # error_rate = abs(err_unpriv - err_priv) #if err_unpriv - err_priv > 0 else torch.tensor(0.0).to(device)
                         fairness_violations.append(error_rate)
 
-                    # err_unpriv_argmax = (fp_unprivileged_group_argmax + fn_unprivileged_group_argmax) / (fp_unprivileged_group_argmax + tn_unprivileged_group_argmax + tp_unprivileged_group_argmax + fn_unprivileged_group_argmax)
-                    # err_priv_argmax = (fp_privileged_group_argmax + fn_privileged_group_argmax) / (fp_privileged_group_argmax + tn_privileged_group_argmax + tp_privileged_group_argmax + fn_privileged_group_argmax)
-                    # error_rate_argmax = err_unpriv_argmax - err_priv_argmax if err_unpriv_argmax - err_priv_argmax > 0 else 0
-                    # # error_rate_argmax = abs(err_unpriv_argmax - err_priv_argmax) # if err_unpriv_argmax - err_priv_argmax > 0 else 0
-
                 except Exception:
-                    print(traceback.format_exc())
-                    print("Exception in ErrorRateRegularizationLoss, adding 0.0")
                     fairness_violations.append(torch.tensor(0.0).to(device))
                 if global_computation:
                     global_counters[privileged] = err_priv
 
             if global_computation:
                 global_counters[unprivileged] = err_unpriv
-        # return fairness_violations[0]
 
         fairness_violations_ = [item.item() if isinstance(item, torch.Tensor) else item for item in fairness_violations]
 
@@ -369,7 +344,7 @@ class ErrorRateRegularizationLoss(nn.Module):
         device: torch.device,
         privileged_group: int,
         unprivileged_group: int,
-        sum_counters: dict = None,
+        sum_counters: dict | None = None,
     ) -> torch.tensor:
         """
         When we want to compute the error rate metric on the entire dataset
@@ -394,6 +369,7 @@ class ErrorRateRegularizationLoss(nn.Module):
         Returns:
             float: the error rate metric computed on the dataset
                 passed as parameter
+
         """
         predictions = torch.tensor([]).to(device)
         sensitive_attribute_list = torch.tensor([]).to(device)
@@ -431,11 +407,9 @@ class ErrorRateRegularizationLoss(nn.Module):
         sensitive_attribute_list: torch.tensor,
         y_true: torch.tensor,
         analysis_dict: dict,
-        # current_target: int,
-        # current_sensitive_feature: int,
-        # weights: dict = None,
     ):
-        """Debug function used to compute the DPL using the argmax function
+        """
+        Debug function used to compute the DPL using the argmax function
         instead of the softmax.
 
         Args:
@@ -459,8 +433,8 @@ class ErrorRateRegularizationLoss(nn.Module):
                 feature we are considering in this iteration, the number
                 of times the sensitive feature is not equal to the sensitive
                 feature we are considering in this iteration
-        """
 
+        """
         total_num_samples = len(sensitive_attribute_list)
 
         return max(
@@ -485,7 +459,8 @@ class ErrorRateRegularizationLoss(nn.Module):
         privileged_group: int,
         unprivileged_group: int,
     ) -> torch.tensor:
-        """This function computes the probabilities and the counters
+        """
+        This function computes the probabilities and the counters
             of each possible combination of target and sensitive attribute.
             It is used to compute the probabilities that we use to estimate
             the probabilities of the missing sensitive attributes in the
@@ -503,6 +478,7 @@ class ErrorRateRegularizationLoss(nn.Module):
         Returns:
             (dict, dict): the probabilities and the counters of each possible combination
                 of target and sensitive attribute
+
         """
         softmax_ = F.softmax(predictions, dim=1)
 
@@ -514,7 +490,6 @@ class ErrorRateRegularizationLoss(nn.Module):
         sensitive_attribute_list = torch.tensor([int(item) for item in sensitive_attribute_list])
         sensitive_attribute_list = sensitive_attribute_list.to(device)
 
-        # probabilities = {}
         counters = {}
         possible_targets = [int(item) for item in possible_targets]
         possible_sensitive_attributes = [int(item) for item in possible_sensitive_attributes]
@@ -551,7 +526,7 @@ class ErrorRateRegularizationLoss(nn.Module):
                 # in the DPL formula. |Z=z| and |Z!=z|
                 Z_eq_z = len(sensitive_attribute_list[sensitive_attribute_list == z])
 
-                Y_eq_k_and_Z_eq_z = torch.sum(
+                torch.sum(
                     softmax_[(predictions_argmax == target) & (sensitive_attribute_list == z)][:, target]
                 )
 

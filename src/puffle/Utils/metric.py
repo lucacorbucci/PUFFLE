@@ -19,19 +19,18 @@ def compute_demographic_disparity(
 
     Returns:
         float: The demographic disparity of the model.
+
     """
     if len(z) != len(y):
-        raise ValueError("Input tensors z and y must have the same length.")
+        msg = "Input tensors z and y must have the same length."
+        raise ValueError(msg)
     if not isinstance(z, torch.Tensor) or not isinstance(y, torch.Tensor):
-        raise TypeError("Input tensors z and y must be of type torch.Tensor.")
+        msg = "Input tensors z and y must be of type torch.Tensor."
+        raise TypeError(msg)
 
     unique_z = torch.unique(z)
     unique_y = torch.unique(y)
 
-    # if len(unique_z) == 0 or len(unique_y) == 0:
-    #     raise ValueError("Input tensors z and y must not be empty.")
-    # if len(unique_z) == 1 or len(unique_y) == 1:
-    #     raise ValueError("Input tensors z and y must have more than one unique value.")
 
     max_disparity = 0
 
@@ -46,7 +45,7 @@ def compute_demographic_disparity(
 
             # Update the maximum disparity
             max_disparity = max(max_disparity, disparity)
-            
+
             counter_z = (z == z_val).sum().item()
             counter_not_z = (z != z_val).sum().item()
             counter_y_z = (y[(z == z_val)] == y_val).sum().item()
@@ -66,7 +65,7 @@ def compute_differentiable_demographic_disparity(
     predictions_argmax: torch.Tensor,
     sensitive_attributes: torch.Tensor,
     softmax_output: torch.Tensor,
-    probabilities: dict = None,
+    probabilities: dict | None = None,
 ):
     """
     Compute the demographic disparity of a model in a differentiable way.
@@ -85,23 +84,28 @@ def compute_differentiable_demographic_disparity(
         probabilities (dict, optional): A dictionary containing the probabilities
             of the target values. This is used in FL in the cases in which the client
             does not have all the possible classes/sensitive values. Defaults to None.
+
     Returns:
         torch.Tensor: The demographic disparity of the model.
-    """
 
+    """
     if len(sensitive_attributes) != len(predictions_argmax):
-        raise ValueError("Input tensors sensitive_attributes and predictions_argmax must have the same length.")
+        msg = "Input tensors sensitive_attributes and predictions_argmax must have the same length."
+        raise ValueError(msg)
     if not isinstance(sensitive_attributes, torch.Tensor) or not isinstance(predictions_argmax, torch.Tensor):
-        raise TypeError("Input tensors sensitive_attributes and predictions_argmax must be of type torch.Tensor.")
+        msg = "Input tensors sensitive_attributes and predictions_argmax must be of type torch.Tensor."
+        raise TypeError(msg)
 
     unique_sensitive_attributes = torch.unique(sensitive_attributes)
     unique_targets = torch.unique(predictions_argmax)
 
     if len(unique_sensitive_attributes) == 0 or len(unique_targets) == 0:
-        raise ValueError("Input tensors sensitive_attributes and predictions_argmax must not be empty.")
+        msg = "Input tensors sensitive_attributes and predictions_argmax must not be empty."
+        raise ValueError(msg)
     if len(unique_sensitive_attributes) == 1 or len(unique_targets) == 1:
+        msg = "Input tensors sensitive_attributes and predictions_argmax must have more than one unique value."
         raise ValueError(
-            "Input tensors sensitive_attributes and predictions_argmax must have more than one unique value."
+            msg
         )
 
     fairness_violations = []
@@ -132,7 +136,7 @@ def compute_differentiable_demographic_disparity(
             Z_eq_z = torch.sum(softmax_output[(sensitive_attributes == sensitive_attribute)][:, target])
 
             Z_not_eq_z = torch.sum(softmax_output[(sensitive_attributes != sensitive_attribute)][:, target])
-            # todo: we need to check if Z_eq_z and Z_not_eq_z are not equal to 0
+            # TODO: we need to check if Z_eq_z and Z_not_eq_z are not equal to 0
             # if they are equal to 0 we need to use the information present in the
             # probabilities dictionary, if the probabilities dictionary is None
             # then we need to raise an error

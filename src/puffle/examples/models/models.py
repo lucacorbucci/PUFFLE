@@ -1,4 +1,3 @@
-import torch.nn as nn
 from torch import Tensor, nn
 
 
@@ -8,12 +7,12 @@ class LinearClassificationNet(nn.Module):
     """
 
     def __init__(self, input_size, output_size):
-        super(LinearClassificationNet, self).__init__()
+        super().__init__()
         self.layer1 = nn.Linear(input_size, output_size, bias=False)
 
     def forward(self, x):
-        x = self.layer1(x.float())
-        return x
+        return self.layer1(x.float())
+
 
 class CNN(nn.Module):
     """This class defines the CNN."""
@@ -24,13 +23,15 @@ class CNN(nn.Module):
         num_classes: int = 2,
         dropout_rate: float = 0,
     ) -> None:
-        """Initializes the CNN network.
+        """
+        Initializes the CNN network.
 
         Args:
         ----
             in_channels (int, optional): Number of input channels . Defaults to 3.
             num_classes (int, optional): Number of classes . Defaults to 2.
             dropout_rate (float, optional): _description_. Defaults to 0.2.
+
         """
         super().__init__()
         self.cnn1 = nn.Conv2d(
@@ -47,21 +48,21 @@ class CNN(nn.Module):
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
         )
-        # self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, input_data: Tensor) -> Tensor:
-        """Defines the forward pass of the network.
+        """
+        Defines the forward pass of the network.
 
         Args:
             input_data (Tensor): Input data
 
-        Returns
+        Returns:
         -------
             Tensor: Output data
+
         """
         out = self.gn_relu(self.cnn1(input_data))
         out = self.gn_relu(self.cnn2(out))
         out = self.gn_relu(self.cnn3(out))
         out = out.reshape(out.size(0), -1)
-        out = self.fc1(out)
-        return out
+        return self.fc1(out)

@@ -5,7 +5,8 @@ from torch import nn
 
 
 class DisparityRegularizationLoss(nn.Module):
-    """This class defines the regularization loss as proposed in
+    """
+    This class defines the regularization loss as proposed in
     https://arxiv.org/abs/2302.09183.
     It uses the definition of demographic parity to compute the
     fairness violation term for each batch and then it uses this
@@ -24,13 +25,14 @@ class DisparityRegularizationLoss(nn.Module):
         predictions: torch.tensor,
         possible_sensitive_attributes: list,
         possible_targets: list,
-        average_probabilities: dict = None,
+        average_probabilities: dict | None = None,
         wandb_run=None,
         batch=None,
         global_computation=False,
         json_file=None,
     ) -> torch.tensor:
-        """This function computes the regularization term.
+        """
+        This function computes the regularization term.
         It takes as input the sensitive attribute list, the targets,
         the device and the predictions computed with the model.
         It returns the regularization term.
@@ -68,8 +70,8 @@ class DisparityRegularizationLoss(nn.Module):
 
         Returns:
             float: the disparity metric computed on the data passed as parameter
-        """
 
+        """
         fairness_violations = []
         # We compute the softmax of the predictions. We do this because
         # we can't use the argmax function on the nn output,
@@ -193,12 +195,10 @@ class DisparityRegularizationLoss(nn.Module):
                 # Then we will derive the counters that we remove here from the counters
                 # of the sensitive values and the combinations.
                 for non_existing, _ in json_file["missing_combinations"]:
-                    if non_existing in global_counters:
-                        del global_counters[non_existing]
+                    global_counters.pop(non_existing, None)
 
             return (res, global_counters)
-        else:
-            return res
+        return res
 
     def violation_with_dataset(
         self,
@@ -231,6 +231,7 @@ class DisparityRegularizationLoss(nn.Module):
         Returns:
             float: the disparity metric computed on the dataset
                 passed as parameter
+
         """
         predictions = torch.tensor([]).to(device)
         sensitive_attribute_list = torch.tensor([]).to(device)
@@ -268,9 +269,10 @@ class DisparityRegularizationLoss(nn.Module):
         sensitive_attribute_list: torch.tensor,
         current_target: int,
         current_sensitive_feature: int,
-        weights: dict = None,
+        weights: dict | None = None,
     ):
-        """Debug function used to compute the DPL using the argmax function
+        """
+        Debug function used to compute the DPL using the argmax function
         instead of the softmax.
 
         Args:
@@ -294,15 +296,8 @@ class DisparityRegularizationLoss(nn.Module):
                 feature we are considering in this iteration, the number
                 of times the sensitive feature is not equal to the sensitive
                 feature we are considering in this iteration
+
         """
-
-        # opposite_sensitive_feature = 0 if current_sensitive_feature == 1 else 1
-
-        # Z_eq_z_argmax = 0
-        # Z_not_eq_z_argmax = 0
-        # Y_eq_k_and_Z_eq_z_argmax = 0
-        # Y_eq_k_and_Z_not_eq_z_argmax = 0
-
         # Z_eq_z and Z_not_eq_z are the denominators that we will use
         # in the DPL formula. |Z=z| and |Z!=z|
 
@@ -320,16 +315,14 @@ class DisparityRegularizationLoss(nn.Module):
             ]
         )
 
-        print(f"Y_eq_k_and_Z_eq_z {current_target} {current_sensitive_feature}: {Y_eq_k_and_Z_eq_z} - Z_eq_z: {Z_eq_z} - Y_eq_k_and_Z_not_eq_z: {Y_eq_k_and_Z_not_eq_z} - Z_not_eq_z: {Z_not_eq_z}")
 
         if Z_eq_z == 0 and Z_not_eq_z != 0:
             return np.abs(Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
-        elif Z_eq_z != 0 and Z_not_eq_z == 0:
+        if Z_eq_z != 0 and Z_not_eq_z == 0:
             return np.abs(Y_eq_k_and_Z_eq_z / Z_eq_z).item()
-        elif Z_eq_z == 0 and Z_not_eq_z == 0:
+        if Z_eq_z == 0 and Z_not_eq_z == 0:
             return 0
-        else:
-            return np.abs(Y_eq_k_and_Z_eq_z / Z_eq_z - Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
+        return np.abs(Y_eq_k_and_Z_eq_z / Z_eq_z - Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
 
     @staticmethod
     def compute_probabilities(
@@ -339,7 +332,8 @@ class DisparityRegularizationLoss(nn.Module):
         possible_sensitive_attributes: list,
         possible_targets: list,
     ) -> torch.tensor:
-        """This function computes the probabilities and the counters
+        """
+        This function computes the probabilities and the counters
             of each possible combination of target and sensitive attribute.
             It is used to compute the probabilities that we use to estimate
             the probabilities of the missing sensitive attributes in the
@@ -357,6 +351,7 @@ class DisparityRegularizationLoss(nn.Module):
         Returns:
             (dict, dict): the probabilities and the counters of each possible combination
                 of target and sensitive attribute
+
         """
         softmax_ = F.softmax(predictions, dim=1)
 
@@ -370,7 +365,6 @@ class DisparityRegularizationLoss(nn.Module):
 
         probabilities = {}
         counters = {}
-        # possible_targets = [int(item) for item in possible_targets]
         possible_sensitive_attributes = [int(item) for item in possible_sensitive_attributes]
 
         for z in list(possible_sensitive_attributes):
