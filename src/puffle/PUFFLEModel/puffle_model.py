@@ -11,6 +11,7 @@ from sklearn.metrics import f1_score
 from torch import nn
 from torch.utils.data import DataLoader
 
+from puffle.Utils.lambda_updater import LambdaUpdater, LambdaUpdateStrategy
 from puffle.Utils.metric import compute_demographic_disparity
 
 
@@ -56,6 +57,12 @@ class PUFFLEModel:
         weight_decay_alpha: float = 0.99,
         *,
         tunable_lambda: bool = False,
+        lambda_update_strategy: LambdaUpdateStrategy
+        | str = LambdaUpdateStrategy.GRADIENT,
+        # PID-specific parameters (only used if strategy is PID)
+        lambda_kp: float = 0.01,
+        lambda_ki: float = 0.001,
+        lambda_kd: float = 0.005,
     ) -> None:
         """
         Initialization of the PUFFLE model.
@@ -68,10 +75,15 @@ class PUFFLEModel:
             lambda_regularization (float, optional): The lambda regularization parameter. Defaults to 0.0.
             wandb_run (Any, optional): WandB run for logging. Defaults to None.
             target (float, optional): Target for tunable lambda. Defaults to None.
-            momentum (float, optional): Momentum for tunable lambda. Defaults to 0.9.
-            alpha (float, optional): Alpha parameter for tunable lambda. Defaults to 0.01.
+            momentum (float, optional): Momentum for tunable lambda (momentum strategy). Defaults to 0.9.
+            alpha (float, optional): Alpha parameter for tunable lambda (gradient/momentum). Defaults to 0.01.
             weight_decay_alpha (float, optional): Weight decay for alpha. Defaults to 0.99.
             tunable_lambda (bool): Whether to use a tunable lambda.
+            lambda_update_strategy (LambdaUpdateStrategy | str): Strategy for lambda updates.
+                Options: "momentum", "gradient", "pid". Defaults to "gradient".
+            lambda_kp (float): Proportional gain for PID controller. Defaults to 0.01.
+            lambda_ki (float): Integral gain for PID controller. Defaults to 0.001.
+            lambda_kd (float): Derivative gain for PID controller. Defaults to 0.005.
 
         """
         self.model = model
@@ -89,6 +101,19 @@ class PUFFLEModel:
             lambda_regularization  # For backward compatibility if needed
         )
         self.fairness_regularizer = True if lambda_regularization > 0 else None
+
+        # Initialize lambda updater with selected strategy
+        if isinstance(lambda_update_strategy, str):
+            lambda_update_strategy = LambdaUpdateStrategy(lambda_update_strategy)
+
+        self.lambda_updater = LambdaUpdater(
+            strategy=lambda_update_strategy,
+            alpha=alpha,
+            momentum=momentum,
+            kp=lambda_kp,
+            ki=lambda_ki,
+            kd=lambda_kd,
+        )
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -564,13 +589,13 @@ class PUFFLEModel:
         }
 
     def update_lambda(self, unfairness_loss: float) -> None:
-        """Update the lambda parameter for tunable lambda."""
+        """Update the lambda parameter using the configured strategy."""
         if self.target is not None:
-            new_lambda = self.lambda_regularization + self.alpha * (
-                unfairness_loss - self.target
+            self.lambda_regularization = self.lambda_updater.update(
+                current_lambda=self.lambda_regularization,
+                unfairness=unfairness_loss,
+                target=self.target,
             )
-            # Constrain lambda to [0.0, 1.0]
-            self.lambda_regularization = max(0.0, min(1.0, new_lambda))
 
     def update_alpha(self, *, current_epoch: int) -> None:  # noqa: ARG002
         """Update the alpha parameter."""
