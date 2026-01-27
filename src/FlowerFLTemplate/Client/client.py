@@ -4,18 +4,24 @@ import dill
 import torch
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
-from Models.utils import get_model
 from opacus import PrivacyEngine
 from torch import nn
 from torch.utils.data import DataLoader
 
-# from Training.training import test, train
-from Utils.preferences import Preferences
-from Utils.utils import get_optimizer, get_params, set_params
+from FlowerFLTemplate.Models.utils import get_model
 
+# from Training.training import test, train
+from FlowerFLTemplate.Utils.preferences import Preferences
+from FlowerFLTemplate.Utils.utils import get_optimizer, get_params, set_params
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
+from puffle.Utils.config import PUFFLEConfig
+from puffle.Utils.constants import (
+    DEFAULT_ALPHA,
+    DEFAULT_MOMENTUM,
+    DEFAULT_WEIGHT_DECAY_ALPHA,
+)
 
 
 class FlowerClient(NumPyClient):
@@ -57,7 +63,12 @@ class FlowerClient(NumPyClient):
                 self.train_node = True
                 self.sampling_frequency = counter_sampling[str(self.partition_id)]
 
-        trained_model = get_model(dataset=self.preferences.dataset_name)
+        trained_model = get_model(
+            model_name=self.preferences.model,
+            num_classes=self.preferences.num_classes,
+            in_channels=self.preferences.in_channels,
+            pixel=self.preferences.pixel,
+        )
         optimizer = get_optimizer(trained_model, preferences)
         criterion = MixLoss(
             model_loss=nn.CrossEntropyLoss(),
@@ -73,7 +84,7 @@ class FlowerClient(NumPyClient):
             else 0.0
         )
 
-        model_gc, optimizer_gc, criterion_gc, train_loader_gc = (
+        model_gc, optimizer_gc, criterion_gc, _train_loader_gc = (
             self.privacy_engine.make_private(
                 module=trained_model,
                 optimizer=optimizer,
@@ -82,7 +93,7 @@ class FlowerClient(NumPyClient):
                 max_grad_norm=self.preferences.max_grad_norm,
                 criterion=criterion,
                 grad_sample_mode="ghost",
-                poisson_sampling=True if self.preferences.private_training else False,
+                poisson_sampling=bool(self.preferences.private_training),
             )
         )
 
@@ -91,18 +102,20 @@ class FlowerClient(NumPyClient):
             optimizer=optimizer_gc,
             criterion=criterion_gc,
             device=self.device,
-            lambda_regularization=self.preferences.regularization_lambda,
-            target=self.preferences.target,
-            tunable_lambda=self.preferences.regularization_mode == "tunable",
-            momentum=self.preferences.momentum
-            if self.preferences.momentum is not None
-            else None,
-            alpha=self.preferences.alpha
-            if self.preferences.alpha is not None
-            else None,
-            weight_decay_alpha=self.preferences.weight_decay_alpha
-            if self.preferences.weight_decay_alpha is not None
-            else None,
+            config=PUFFLEConfig(
+                lambda_regularization=self.preferences.regularization_lambda,
+                target=self.preferences.target,
+                tunable_lambda=self.preferences.regularization_mode == "tunable",
+                momentum=self.preferences.momentum
+                if self.preferences.momentum is not None
+                else DEFAULT_MOMENTUM,
+                alpha=self.preferences.alpha
+                if self.preferences.alpha is not None
+                else DEFAULT_ALPHA,
+                weight_decay_alpha=self.preferences.weight_decay_alpha
+                if self.preferences.weight_decay_alpha is not None
+                else DEFAULT_WEIGHT_DECAY_ALPHA,
+            ),
         )
 
     def fit(
@@ -160,15 +173,20 @@ class FlowerClient(NumPyClient):
         return float(result_dict["loss"]), len(self.valloader), {}  # result_dict
 
     def get_noise_multiplier(self, dataset, target_epsilon=None):
-        model_noise = get_model(dataset=self.preferences.dataset_name)
+        model_noise = get_model(
+            model_name=self.preferences.model,
+            num_classes=self.preferences.num_classes,
+            in_channels=self.preferences.in_channels,
+            pixel=self.preferences.pixel,
+        )
         privacy_engine = PrivacyEngine(accountant="rdp")
-        optimizer_noise = nn.CrossEntropyLoss()
+        optimizer_noise = torch.optim.SGD(model_noise.parameters(), lr=0.1)
 
         (
             _,
             private_optimizer,
             _,
-        ) = privacy_engine.make_private_with_epsilon(
+        ) = privacy_engine.make_private_with_epsilon(  # type: ignore
             module=model_noise,
             optimizer=optimizer_noise,
             data_loader=dataset,

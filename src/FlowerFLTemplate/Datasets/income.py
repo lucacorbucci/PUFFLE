@@ -3,11 +3,12 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from Client.client import FlowerClient
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, TargetEncoder
 from torch.utils.data import DataLoader, Dataset
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class IncomeDataset(Dataset):
@@ -189,8 +190,6 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
                 test = pd.read_csv(f"{preferences.dataset_path}/{partition_id}/{file}")
 
     if preferences.sweep:
-        print("[Preparing data for cross-silo for sweep...]")
-
         train, val = train_test_split(
             train, test_size=0.2, random_state=preferences.node_shuffle_seed
         )
@@ -231,7 +230,6 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
             preferences=preferences,
             partition_id=partition_id,
         ).to_client()
-    print("[Preparing data for cross-silo...]")
 
     x_train, z_train, y_train, _, _ = prepare_income(
         df=train,
@@ -256,9 +254,6 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
         y=y_test.astype(np.float32),
     )
 
-    print("Train dataset size:", len(train_dataset))
-    print("Test dataset size:", len(test_dataset))
-
     trainloader = DataLoader(
         train_dataset, batch_size=preferences.batch_size, shuffle=True
     )
@@ -267,5 +262,8 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
     )
 
     return FlowerClient(
-        trainloader=trainloader, valloader=test_loader, preferences=preferences
+        trainloader=trainloader,
+        valloader=test_loader,
+        preferences=preferences,
+        partition_id=partition_id,
     ).to_client()

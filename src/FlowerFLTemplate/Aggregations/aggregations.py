@@ -191,7 +191,6 @@ class Aggregation:
             agg_metrics = {
                 "Train Loss": sum(losses) / total_examples,
                 "Train Accuracy": sum(accuracies) / total_examples,
-                # "Train Loss with Regularization": sum(losses_with_regularization) / total_examples,
                 "FL Round": server_round,
             }
         else:
@@ -205,12 +204,19 @@ class Aggregation:
                 "FL Round": server_round,
             }
 
-        if statistics:
-            statistics = [stat[-1] for stat in statistics]
-            counter_z = sum([stat["counter_z"] for stat in statistics])
-            counter_not_z = sum([stat["counter_not_z"] for stat in statistics])
-            counter_y_z = sum([stat["counter_y_z"] for stat in statistics])
-            counter_y_not_z = sum([stat["counter_y_z"] for stat in statistics])
+        # Handle fairness counters
+        # PUFFLEModel returns flat keys: counter_z, counter_not_z, counter_y_z, counter_y_not_z
+        # We need to sum them up across all clients.
+        # Note: These are totals from the clients if they are properly accumulated or last batch stats.
+        # Assuming PUFFLEModel returns counts from the last epoch/batch accumulation logic.
+        # Check if any client returned counters
+        has_counters = any("counter_z" in m for _, m in metrics)
+
+        if has_counters:
+            counter_z = sum([m.get("counter_z", 0) for _, m in metrics])
+            counter_not_z = sum([m.get("counter_not_z", 0) for _, m in metrics])
+            counter_y_z = sum([m.get("counter_y_z", 0) for _, m in metrics])
+            counter_y_not_z = sum([m.get("counter_y_not_z", 0) for _, m in metrics])
 
             first_part = counter_y_z / counter_z if counter_z > 0 else 0
             second_part = counter_y_not_z / counter_not_z if counter_not_z > 0 else 0

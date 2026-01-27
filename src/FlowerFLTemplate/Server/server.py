@@ -3,7 +3,6 @@ import io
 import timeit
 from logging import INFO, WARNING
 
-from ClientManager.client_manager import SimpleClientManager
 from flwr.common import (
     Code,
     DisconnectRes,
@@ -21,7 +20,9 @@ from flwr.server.client_proxy import ClientProxy
 from flwr.server.history import History
 from flwr.server.server_config import ServerConfig
 from flwr.server.strategy import FedAvg, Strategy
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.ClientManager.client_manager import SimpleClientManager
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 FitResultsAndFailures = tuple[
     list[tuple[ClientProxy, FitRes]],
@@ -296,7 +297,7 @@ class Server:
     def disconnect_all_clients(self, timeout: float | None) -> None:
         """Send shutdown signal to all clients."""
         all_clients = self._client_manager.all()
-        clients = [all_clients[k] for k in all_clients.keys()]
+        clients = [all_clients[k] for k in all_clients]
         instruction = ReconnectIns(seconds=None)
         client_instructions = [(client_proxy, instruction) for client_proxy in clients]
         _ = reconnect_clients(

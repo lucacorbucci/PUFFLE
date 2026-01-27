@@ -33,8 +33,7 @@ class LinearClassificationNet(nn.Module):
             Tensor: Output logits of shape (batch_size, output_size).
 
         """
-        x = self.layer1(x.float())
-        return x
+        return self.layer1(x.float())
 
 
 class AbaloneNet(nn.Module):
@@ -136,9 +135,7 @@ class SimpleMNISTModel(nn.Module):
 
         # Pass through layers
         x = functional.relu(self.fc1(x))
-        x = self.fc2(x)
-
-        return x
+        return self.fc2(x)
 
 
 class CelebaNet(nn.Module):
@@ -196,5 +193,4 @@ class CelebaNet(nn.Module):
         out = self.gn_relu(self.cnn2(out))
         out = self.gn_relu(self.cnn3(out))
         out = out.reshape(out.size(0), -1)
-        out = self.fc1(out)
-        return out
+        return self.fc1(out)

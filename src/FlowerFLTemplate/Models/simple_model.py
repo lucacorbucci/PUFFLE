@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from Models.model import Model
+from FlowerFLTemplate.Models.model import Model
 
 
 class SimpleModel(Model):

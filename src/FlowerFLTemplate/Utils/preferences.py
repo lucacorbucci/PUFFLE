@@ -28,6 +28,9 @@ class Preferences:
     fl_setting: str | None = None
     dataset_path: str | None = None
     sweep: bool = False
+    project_name: str | None = None
+    run_name: str | None = None
+    wandb: bool = False
     dataset_name: str | None = None
     scaler: Any = None
     partitioner_type: str | None = None
@@ -43,6 +46,12 @@ class Preferences:
     momentum: float = 0.9
 
     image_path: str | None = None
+
+    # Model architecture parameters
+    model: str | None = None
+    num_classes: int | None = None
+    in_channels: int | None = None
+    pixel: int | None = None
 
     # Unfairness reduction parameters
     unfairness_reduction: bool = False

@@ -2,10 +2,11 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from Client.client import FlowerClient
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, Dataset
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class DutchDataset(Dataset):
@@ -87,7 +88,8 @@ def get_dutch_scaler(
 
     """
     if dutch_df is None:
-        raise ValueError("dutch_df cannot be None")
+        msg = "dutch_df cannot be None"
+        raise ValueError(msg)
 
     _, _, _, scaler = prepare_dutch(
         dutch_df=dutch_df,
@@ -167,14 +169,10 @@ def prepare_dutch_for_cross_silo(
     )
 
     test = partition_train_test["test"]
-    if partition_id == 0 or partition_id == 1:
-        print(f"partition Id {partition_id} - Test set size: {len(test)}")
-        print(f"Test set columns: {test.column_names}")
-        print(f"Test set example:\n{test[0]}")
+    if partition_id in {0, 1}:
+        pass
 
     if preferences.sweep:
-        print("[Preparing data for cross-silo for sweep...]")
-
         partition_loader_train_val = partition_train_test["train"].train_test_split(
             test_size=0.2, seed=preferences.node_shuffle_seed
         )
@@ -215,7 +213,6 @@ def prepare_dutch_for_cross_silo(
             preferences=preferences,
             partition_id=partition_id,
         ).to_client()
-    print("[Preparing data for cross-silo...]")
     train = partition_train_test["train"].to_pandas()
     test = partition_train_test["test"].to_pandas()
 
@@ -239,9 +236,6 @@ def prepare_dutch_for_cross_silo(
         z=z_test.astype(np.float32),
         y=y_test.astype(np.float32),
     )
-
-    print("Train dataset size:", len(train_dataset))
-    print("Test dataset size:", len(test_dataset))
 
     trainloader = DataLoader(
         train_dataset, batch_size=preferences.batch_size, shuffle=True

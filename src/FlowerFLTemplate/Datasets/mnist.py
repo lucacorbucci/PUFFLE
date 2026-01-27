@@ -3,11 +3,12 @@ from typing import Any
 
 import torch
 import torchvision
-from Client.client import FlowerClient
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class ImageDataset(Dataset):
@@ -88,7 +89,6 @@ def download_mnist(data_root: str = "../data/") -> Any:
         OSError: If directory creation or file saving fails.
 
     """
-    print("Starting download of MNIST dataset...")
     # Download the training and testing datasets
     transformer = transforms.ToTensor()
     mnist_train = torchvision.datasets.MNIST(
@@ -126,7 +126,7 @@ def download_mnist(data_root: str = "../data/") -> Any:
 
         # Print progress every 1000 images
         if (i + 1) % 10000 == 0:
-            print(f"Saved {i + 1} images...")
+            pass
 
     return full_dataset
 
@@ -153,11 +153,7 @@ def prepare_mnist(partition: Any, preferences: Preferences) -> DataLoader:
             [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
         ),
     )
-    trainloader = DataLoader(
-        train_dataset, batch_size=preferences.batch_size, shuffle=True
-    )
-
-    return trainloader
+    return DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
 
 
 def prepare_mnist_for_cross_silo(
@@ -184,8 +180,6 @@ def prepare_mnist_for_cross_silo(
         test_size=0.2, seed=preferences.seed
     )
     if preferences.sweep:
-        print("[Preparing data for cross-silo for sweep...]")
-
         partition_loader_train_val = partition_train_test["train"].train_test_split(
             test_size=0.2, seed=preferences.node_shuffle_seed
         )
@@ -201,7 +195,6 @@ def prepare_mnist_for_cross_silo(
             preferences=preferences,
             partition_id=partition_id,
         ).to_client()
-    print("[Preparing data for cross-silo...]")
 
     train = partition_train_test["train"]
     test = partition_train_test["test"]

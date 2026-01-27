@@ -7,13 +7,14 @@ import dill
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class SimpleClientManager(ClientManager):
     """Provides a pool of available clients."""
 
-    def __init__(self, preferences: Preferences = None) -> None:
+    def __init__(self, preferences: Preferences | None = None) -> None:
         """
         Initializes a SimpleClientManager instance for managing Flower clients.
 
@@ -145,7 +146,6 @@ class SimpleClientManager(ClientManager):
             else:
                 start = fl_round * nodes_to_sample % len(client_list)
                 end = (fl_round * nodes_to_sample + nodes_to_sample) % len(client_list)
-            print(f"Round {fl_round}: Sampling nodes from {start} to {end}")
             if start < end:
                 sampled_nodes[fl_round] = client_list[start:end]
             else:
@@ -195,20 +195,15 @@ class SimpleClientManager(ClientManager):
                         [int(client_id) for client_id in self.clients_list]
                     )
                 ]
-                print("Clients list: ", self.clients_list)
 
                 # sample the test clients from the self.clients_list
                 self.test_clients_list = self.clients_list[
                     : self.preferences.num_test_nodes
                 ]
-                print(
-                    "Nodes to sample: ", self.preferences.sampled_test_nodes_per_round
-                )
                 sampled_nodes_test = self.sample_clients_per_round(
                     fraction=self.preferences.sampled_test_nodes_per_round,
                     client_list=self.test_clients_list,
                 )
-                print("Test Nodes: ", sampled_nodes_test)
 
                 with open(
                     f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb"
@@ -276,21 +271,13 @@ class SimpleClientManager(ClientManager):
 
                 random.seed(self.preferences.seed)
 
-                print("Train nodes: ", self.training_clients_list)
-                print("Validation nodes: ", self.validation_clients_list)
-                print("Test nodes: ", self.test_clients_list)
             else:
-                print("Clients list: ", self.clients_list)
                 # In this case I'm in the cross-silo case
                 # This means that each node has training, validation and test data
                 # so each node could be used for training, validation and testing
                 if self.preferences.sampled_validation_nodes_per_round:
                     random.seed(self.preferences.node_shuffle_seed)
                     random.shuffle(self.clients_list)
-                    print(
-                        "Sampling validation nodes per round: ",
-                        self.preferences.sampled_validation_nodes_per_round,
-                    )
                     sampled_nodes_validation = self.pre_sample_clients(
                         fraction=self.preferences.sampled_validation_nodes_per_round,
                         client_list=self.clients_list,
@@ -300,12 +287,9 @@ class SimpleClientManager(ClientManager):
                         "wb",
                     ) as f:
                         dill.dump(sampled_nodes_validation, f)
-                        print("Validation nodes: ", sampled_nodes_validation)
                     random.seed(self.preferences.seed)
                 else:
-                    print(
-                        "No validation nodes sampled, using all clients for training and testing."
-                    )
+                    pass
 
                 sampled_nodes_test = self.pre_sample_clients(
                     fraction=self.preferences.sampled_test_nodes_per_round,
@@ -316,7 +300,6 @@ class SimpleClientManager(ClientManager):
                     f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb"
                 ) as f:
                     dill.dump(sampled_nodes_test, f)
-                    print("Test nodes: ", sampled_nodes_test)
 
                 sampled_nodes_train = self.pre_sample_clients(
                     fraction=self.preferences.sampled_training_nodes_per_round,
@@ -326,8 +309,6 @@ class SimpleClientManager(ClientManager):
                     f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb"
                 ) as f:
                     dill.dump(sampled_nodes_train, f)
-
-                print("Train nodes: ", sampled_nodes_train)
 
                 counter_sampling = {}
                 for sample_list in sampled_nodes_train.values():
@@ -448,10 +429,6 @@ class SimpleClientManager(ClientManager):
             sampled_clients = [self.clients[str(node)] for node in train_nodes[0]]
             self.num_round_train += 1
 
-            print(
-                f"===>>>> Sampled for training round {self.num_round_train}: ",
-                [client.cid for client in sampled_clients],
-            )
         elif phase == "validation":
             with open(
                 f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl", "rb"
@@ -463,10 +440,6 @@ class SimpleClientManager(ClientManager):
                 for node in validation_nodes[self.num_round_validation]
             ]
             self.num_round_validation += 1
-            print(
-                "===>>>> Sampled for validation: ",
-                [client.cid for client in sampled_clients],
-            )
         else:
             with open(
                 f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "rb"
@@ -478,7 +451,4 @@ class SimpleClientManager(ClientManager):
             ]
             self.num_round_test += 1
 
-            print(
-                "===>>>> Sampled for test: ", [client.cid for client in sampled_clients]
-            )
         return sampled_clients

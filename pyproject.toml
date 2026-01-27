@@ -96,3 +96,9 @@ max-args = 12
 "src/puffle/Regularization/error_rate_regularization_loss.py" = ["PLR0912", "PLR0915", "ARG002", "ARG004", "BLE001"]
 "src/puffle/Regularization/disparity_loss.py" = ["PLR0912", "ARG002"]
 "src/puffle/PUFFLEModel/puffle_model.py" = ["T201", "PLR0913"]
+"src/FlowerFLTemplate/**/*" = ["N999", "ARG002", "PTH", "RET504", "PGH003", "NPY002", "INP001", "D404", "S301", "FBT001", "PD011", "PLR2004", "ARG001", "D417", "ERA001", "ARG004", "PLR0912", "PLR0915", "S311"]
+"src/FlowerFLTemplate/Datasets/*" = ["T201", "PTH"]
+"src/FlowerFLTemplate/main.py" = ["T201"]
+
+[tool.pyright]
+extraPaths = ["src/FlowerFLTemplate"]

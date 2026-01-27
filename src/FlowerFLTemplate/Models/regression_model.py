@@ -4,7 +4,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from torch import nn
 from torch.utils.data import DataLoader
 
-from Models.model import Model
+from FlowerFLTemplate.Models.model import Model
 
 
 class RegressionModel(Model):

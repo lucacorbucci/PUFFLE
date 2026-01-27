@@ -5,7 +5,8 @@ from collections import OrderedDict
 import numpy as np
 import torch
 from flwr.common import NDArrays
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 # Two auxhiliary functions to set and extract parameters of a model
@@ -34,12 +35,11 @@ def get_optimizer(
             return torch.optim.Adam(
                 model.parameters(),
                 lr=preferences.lr,
-                weight_decay=preferences.weight_decay
-                if hasattr(preferences, "weight_decay")
-                else 0,
+                weight_decay=getattr(preferences, "weight_decay", 0.0),
             )
         case _:
-            raise ValueError(f"Unsupported optimizer: {preferences.optimizer}")
+            msg = f"Unsupported optimizer: {preferences.optimizer}"
+            raise ValueError(msg)
 
 
 def seed_everything(seed: int) -> None:

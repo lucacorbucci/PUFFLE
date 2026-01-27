@@ -3,10 +3,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import torch
-from Client.client import FlowerClient
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from torch.utils.data import DataLoader, Dataset
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class AbaloneDataset(Dataset):
@@ -132,9 +133,6 @@ def prepare_abalone(
     scaler = StandardScaler()
     x_train = scaler.fit_transform(x)
 
-    print(f"\nTraining set size: {x_train.shape[0]}")
-    print(f"Number of features: {x_train.shape[1]}")
-
     return x_train, np.array(y_train), scaler
 
 
@@ -162,8 +160,6 @@ def prepare_abalone_for_cross_silo(
         test_size=0.2, seed=preferences.seed
     )
     if preferences.sweep:
-        print("[Preparing data for cross-silo for sweep...]")
-
         partition_loader_train_val = partition_train_test["train"].train_test_split(
             test_size=0.2, seed=preferences.node_shuffle_seed
         )
@@ -202,7 +198,6 @@ def prepare_abalone_for_cross_silo(
             preferences=preferences,
             partition_id=partition,
         ).to_client()
-    print("[Preparing data for cross-silo...]")
     train = partition_train_test["train"].to_pandas()
     test = partition_train_test["test"].to_pandas()
 
@@ -225,9 +220,6 @@ def prepare_abalone_for_cross_silo(
         y=y_test,
     )
 
-    print("Train dataset size:", len(train_dataset))
-    print("Test dataset size:", len(test_dataset))
-
     trainloader = DataLoader(
         train_dataset, batch_size=preferences.batch_size, shuffle=True
     )
@@ -236,5 +228,8 @@ def prepare_abalone_for_cross_silo(
     )
 
     return FlowerClient(
-        trainloader=trainloader, valloader=test_loader, preferences=preferences
+        trainloader=trainloader,
+        valloader=test_loader,
+        preferences=preferences,
+        partition_id=partition_id,
     ).to_client()

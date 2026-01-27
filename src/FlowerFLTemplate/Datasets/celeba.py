@@ -2,11 +2,12 @@ import os
 
 import pandas as pd
 import torch
-from Client.client import FlowerClient
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-from Utils.preferences import Preferences
+
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 class CelebaDataset(Dataset):
@@ -84,25 +85,26 @@ class CelebaDataset(Dataset):
         return self.n_samples
 
 
+import flwr as fl
+
+
 def prepare_celeba(partition: pd.DataFrame, preferences: Preferences) -> DataLoader:
     dataset = partition
-    train_dataset = CelebaDataset(dataframe=dataset, image_path=preferences.image_path)
-    trainloader = DataLoader(
-        train_dataset, batch_size=preferences.batch_size, shuffle=True
-    )
-
-    return trainloader
+    image_path = preferences.image_path
+    if image_path is None:
+        msg = "image_path must be set for Celeba"
+        raise ValueError(msg)
+    train_dataset = CelebaDataset(dataframe=dataset, image_path=image_path)
+    return DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
 
 
 def prepare_celeba_for_cross_silo(
     preferences: Preferences, partition: pd.DataFrame, partition_id: int
-) -> DataLoader:
+) -> fl.client.Client:
     partition_train_test = partition.train_test_split(
         test_size=0.2, seed=preferences.seed
     )
     if preferences.sweep:
-        print("[Preparing data for cross-silo for sweep...]")
-
         partition_loader_train_val = partition_train_test["train"].train_test_split(
             test_size=0.2, seed=preferences.node_shuffle_seed
         )
@@ -118,7 +120,6 @@ def prepare_celeba_for_cross_silo(
             preferences=preferences,
             partition_id=partition_id,
         ).to_client()
-    print("[Preparing data for cross-silo...]")
 
     train = partition_train_test["train"]
     test = partition_train_test["test"]
