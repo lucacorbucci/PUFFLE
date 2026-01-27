@@ -22,5 +22,6 @@ train_ds
 agent.md
 code-style.md
 changelog_cleanup.md
-
+*.txt
 ! examples/
+.coverage
