@@ -217,3 +217,5 @@ class TestLambdaConstraints:
         assert 0.0 <= puffle.lambda_regularization <= 1.0, (
             f"Lambda out of bounds after training: {puffle.lambda_regularization}"
         )
+        # Verify metrics were collected
+        assert len(metrics["train_loss"]) == 3
