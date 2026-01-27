@@ -24,6 +24,7 @@ class AbaloneDataset(Dataset):
 
         Returns:
             None
+
         """
         self.x = torch.FloatTensor(x)
         self.y = torch.FloatTensor(y).view(-1, 1)
@@ -37,6 +38,7 @@ class AbaloneDataset(Dataset):
 
         Returns:
             int: Number of samples in the dataset.
+
         """
         return len(self.X)
 
@@ -51,6 +53,7 @@ class AbaloneDataset(Dataset):
 
         Returns:
             tuple[Any, Any, Any]: (feature tensor, -1, target tensor)
+
         """
         return self.X[idx], -1, self.y[idx]
 
@@ -77,6 +80,7 @@ def get_abalone_scaler(
 
     Raises:
         ValueError: If abalone_df is None or not a DataFrame.
+
     """
     if abalone_df is None:
         error = "abalone_df cannot be None"
@@ -109,10 +113,13 @@ def prepare_abalone(
 
     Raises:
         ValueError: If DataFrame is invalid.
+
     """
     # Separate features and target
     x = abalone_df.drop("Rings", axis=1)
-    y_train = abalone_df["Rings"].values  # Age = Rings + 1.5, but we'll predict rings directly
+    y_train = abalone_df[
+        "Rings"
+    ].values  # Age = Rings + 1.5, but we'll predict rings directly
 
     # Encode categorical variable (Sex)
     le = LabelEncoder()
@@ -131,7 +138,9 @@ def prepare_abalone(
     return x_train, np.array(y_train), scaler
 
 
-def prepare_abalone_for_cross_silo(preferences: Preferences, partition: Any, partition_id: int) -> Any:
+def prepare_abalone_for_cross_silo(
+    preferences: Preferences, partition: Any, partition_id: int
+) -> Any:
     """
     Prepares Abalone data for cross-silo federated learning from a partition.
 
@@ -147,8 +156,11 @@ def prepare_abalone_for_cross_silo(preferences: Preferences, partition: Any, par
 
     Raises:
         ValueError: If data processing fails.
+
     """
-    partition_train_test = partition.train_test_split(test_size=0.2, seed=preferences.seed)
+    partition_train_test = partition.train_test_split(
+        test_size=0.2, seed=preferences.seed
+    )
     if preferences.sweep:
         print("[Preparing data for cross-silo for sweep...]")
 
@@ -177,11 +189,18 @@ def prepare_abalone_for_cross_silo(preferences: Preferences, partition: Any, par
             y=y_val,
         )
 
-        trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=preferences.batch_size, shuffle=False)
+        trainloader = DataLoader(
+            train_dataset, batch_size=preferences.batch_size, shuffle=True
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=preferences.batch_size, shuffle=False
+        )
 
         return FlowerClient(
-            trainloader=trainloader, valloader=val_loader, preferences=preferences, partition_id=partition
+            trainloader=trainloader,
+            valloader=val_loader,
+            preferences=preferences,
+            partition_id=partition,
         ).to_client()
     print("[Preparing data for cross-silo...]")
     train = partition_train_test["train"].to_pandas()
@@ -209,7 +228,13 @@ def prepare_abalone_for_cross_silo(preferences: Preferences, partition: Any, par
     print("Train dataset size:", len(train_dataset))
     print("Test dataset size:", len(test_dataset))
 
-    trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=preferences.batch_size, shuffle=False)
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=preferences.batch_size, shuffle=False
+    )
 
-    return FlowerClient(trainloader=trainloader, valloader=test_loader, preferences=preferences).to_client()
+    return FlowerClient(
+        trainloader=trainloader, valloader=test_loader, preferences=preferences
+    ).to_client()

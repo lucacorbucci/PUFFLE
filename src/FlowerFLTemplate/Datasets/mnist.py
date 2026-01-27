@@ -26,6 +26,7 @@ class ImageDataset(Dataset):
 
         Returns:
             None
+
         """
         self.data = data
         self.transform = transform
@@ -39,6 +40,7 @@ class ImageDataset(Dataset):
 
         Returns:
             int: Size of the dataset.
+
         """
         return len(self.data)
 
@@ -53,6 +55,7 @@ class ImageDataset(Dataset):
 
         Returns:
             tuple[torch.Tensor, int, int]: (transformed image tensor, sensitive attribute, label)
+
         """
         # Get the example at the given index
         example = self.data[idx]
@@ -83,12 +86,17 @@ def download_mnist(data_root: str = "../data/") -> Any:
 
     Raises:
         OSError: If directory creation or file saving fails.
+
     """
     print("Starting download of MNIST dataset...")
     # Download the training and testing datasets
     transformer = transforms.ToTensor()
-    mnist_train = torchvision.datasets.MNIST("../data", train=True, download=True, transform=transformer)
-    mnist_test = torchvision.datasets.MNIST("../data", train=False, download=True, transform=transformer)
+    mnist_train = torchvision.datasets.MNIST(
+        "../data", train=True, download=True, transform=transformer
+    )
+    mnist_test = torchvision.datasets.MNIST(
+        "../data", train=False, download=True, transform=transformer
+    )
 
     # Combine training and testing data for a complete dataset
     full_dataset = torch.utils.data.ConcatDataset([mnist_train, mnist_test])
@@ -135,18 +143,26 @@ def prepare_mnist(partition: Any, preferences: Preferences) -> DataLoader:
 
     Returns:
         DataLoader: Configured DataLoader for the partition.
+
     """
     train = partition
 
     train_dataset = ImageDataset(
-        train, transform=transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        train,
+        transform=transforms.Compose(
+            [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+        ),
     )
-    trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
 
     return trainloader
 
 
-def prepare_mnist_for_cross_silo(preferences: Preferences, partition: Any, partition_id: int) -> Any:
+def prepare_mnist_for_cross_silo(
+    preferences: Preferences, partition: Any, partition_id: int
+) -> Any:
     """
     Prepares MNIST data for cross-silo federated learning from a partition.
 
@@ -162,8 +178,11 @@ def prepare_mnist_for_cross_silo(preferences: Preferences, partition: Any, parti
 
     Raises:
         ValueError: If data splitting or processing fails.
+
     """
-    partition_train_test = partition.train_test_split(test_size=0.2, seed=preferences.seed)
+    partition_train_test = partition.train_test_split(
+        test_size=0.2, seed=preferences.seed
+    )
     if preferences.sweep:
         print("[Preparing data for cross-silo for sweep...]")
 
@@ -177,7 +196,10 @@ def prepare_mnist_for_cross_silo(preferences: Preferences, partition: Any, parti
         valloader = prepare_mnist(val, preferences)
 
         return FlowerClient(
-            trainloader=trainloader, valloader=valloader, preferences=preferences, partition_id=partition_id
+            trainloader=trainloader,
+            valloader=valloader,
+            preferences=preferences,
+            partition_id=partition_id,
         ).to_client()
     print("[Preparing data for cross-silo...]")
 
@@ -188,5 +210,8 @@ def prepare_mnist_for_cross_silo(preferences: Preferences, partition: Any, parti
     testloader = prepare_mnist(test, preferences)
 
     return FlowerClient(
-        trainloader=trainloader, valloader=testloader, preferences=preferences, partition_id=partition_id
+        trainloader=trainloader,
+        valloader=testloader,
+        preferences=preferences,
+        partition_id=partition_id,
     ).to_client()

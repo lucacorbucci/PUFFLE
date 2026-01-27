@@ -1,0 +1,91 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::__init__",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_apply_fairness_mask",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_prepare_data",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::compute_violation_with_argmax",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_get_group_metrics",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::compute_formula_components",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::violation_with_dataset",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_compute_pair_violation",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_calculate_group_error_rate",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_compute_analysis_dict",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::compute_probabilities",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 10,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::_get_all_group_metrics",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::forward",
+      "path": "error_rate_regularization_loss.py"
+    },
+    {
+      "complexity": 12,
+      "file_name": "error_rate_regularization_loss.py",
+      "function_name": "ErrorRateRegularizationLoss::compute_counters",
+      "path": "error_rate_regularization_loss.py"
+    }
+  ],
+  "targets": [
+    "/home/lcorbucci/PUFFLE/src/puffle/Regularization/error_rate_regularization_loss.py"
+  ]
+}

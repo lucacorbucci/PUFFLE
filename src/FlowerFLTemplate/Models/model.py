@@ -12,7 +12,11 @@ class Model(ABC):
     """
 
     def __init__(
-        self, model: nn.Module, optimizer: torch.optim.Optimizer, criterion: nn.Module, device: torch.device
+        self,
+        model: nn.Module,
+        optimizer: torch.optim.Optimizer,
+        criterion: nn.Module,
+        device: torch.device,
     ) -> None:
         """
         Initializes the model wrapper with PyTorch components.
@@ -25,6 +29,7 @@ class Model(ABC):
 
         Returns:
             None
+
         """
         self.model = model
         self.criterion = criterion
@@ -46,8 +51,8 @@ class Model(ABC):
 
         Raises:
             NotImplementedError: If not overridden.
+
         """
-        pass
 
     @abstractmethod
     def evaluate(self) -> None:
@@ -64,5 +69,5 @@ class Model(ABC):
 
         Raises:
             NotImplementedError: If not overridden.
+
         """
-        pass

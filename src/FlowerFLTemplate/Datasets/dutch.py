@@ -22,6 +22,7 @@ class DutchDataset(Dataset):
 
         Returns:
             None
+
         """
         self.samples = x
         self.sensitive_features = z
@@ -37,6 +38,7 @@ class DutchDataset(Dataset):
 
         Returns:
             int: Size of the dataset.
+
         """
         return len(self.samples)
 
@@ -51,6 +53,7 @@ class DutchDataset(Dataset):
 
         Returns:
             tuple[Any, Any, Any]: (feature sample, sensitive sample, target sample)
+
         """
         x_sample = self.samples[idx]
         z_sample = self.sensitive_features[idx]
@@ -81,6 +84,7 @@ def get_dutch_scaler(
 
     Raises:
         ValueError: If dutch_df is None.
+
     """
     if dutch_df is None:
         raise ValueError("dutch_df cannot be None")
@@ -109,6 +113,7 @@ def prepare_dutch(
 
     Raises:
         ValueError: If missing values persist after filling.
+
     """
     # check the columns with missign values:
     missing_values_columns = dutch_df.columns[dutch_df.isna().any()].tolist()
@@ -137,7 +142,9 @@ def prepare_dutch(
     return x_train, np.array(z_train), np.array(y_train), scaler
 
 
-def prepare_dutch_for_cross_silo(preferences: Preferences, partition: Any, partition_id: int) -> Any:
+def prepare_dutch_for_cross_silo(
+    preferences: Preferences, partition: Any, partition_id: int
+) -> Any:
     """
     Prepares Dutch data for cross-silo federated learning from a partition.
 
@@ -153,15 +160,14 @@ def prepare_dutch_for_cross_silo(preferences: Preferences, partition: Any, parti
 
     Raises:
         ValueError: If data processing fails.
+
     """
-    partition_train_test = partition.train_test_split(test_size=0.2, seed=preferences.seed)
+    partition_train_test = partition.train_test_split(
+        test_size=0.2, seed=preferences.seed
+    )
 
     test = partition_train_test["test"]
-    if partition_id == 0:
-        print(f"partition Id {partition_id} - Test set size: {len(test)}")
-        print(f"Test set columns: {test.column_names}")
-        print(f"Test set example:\n{test[0]}")
-    elif partition_id == 1:
+    if partition_id == 0 or partition_id == 1:
         print(f"partition Id {partition_id} - Test set size: {len(test)}")
         print(f"Test set columns: {test.column_names}")
         print(f"Test set example:\n{test[0]}")
@@ -196,11 +202,18 @@ def prepare_dutch_for_cross_silo(preferences: Preferences, partition: Any, parti
             y=y_val.astype(np.float32),
         )
 
-        trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=preferences.batch_size, shuffle=False)
+        trainloader = DataLoader(
+            train_dataset, batch_size=preferences.batch_size, shuffle=True
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=preferences.batch_size, shuffle=False
+        )
 
         return FlowerClient(
-            trainloader=trainloader, valloader=val_loader, preferences=preferences, partition_id=partition_id
+            trainloader=trainloader,
+            valloader=val_loader,
+            preferences=preferences,
+            partition_id=partition_id,
         ).to_client()
     print("[Preparing data for cross-silo...]")
     train = partition_train_test["train"].to_pandas()
@@ -230,9 +243,16 @@ def prepare_dutch_for_cross_silo(preferences: Preferences, partition: Any, parti
     print("Train dataset size:", len(train_dataset))
     print("Test dataset size:", len(test_dataset))
 
-    trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=preferences.batch_size, shuffle=False)
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=preferences.batch_size, shuffle=False
+    )
 
     return FlowerClient(
-        trainloader=trainloader, valloader=test_loader, preferences=preferences, partition_id=partition_id
+        trainloader=trainloader,
+        valloader=test_loader,
+        preferences=preferences,
+        partition_id=partition_id,
     ).to_client()

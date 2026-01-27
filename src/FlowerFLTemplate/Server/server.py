@@ -48,7 +48,9 @@ class Server:
         strategy: Strategy | None = None,
     ) -> None:
         self._client_manager: SimpleClientManager = client_manager
-        self.parameters: Parameters = Parameters(tensors=[], tensor_type="numpy.ndarray")
+        self.parameters: Parameters = Parameters(
+            tensors=[], tensor_type="numpy.ndarray"
+        )
         self.strategy: Strategy = strategy if strategy is not None else FedAvg()
         self.max_workers: int | None = None
         self.preferences = preferences
@@ -102,7 +104,9 @@ class Server:
                 parameters_prime, fit_metrics, _ = res_fit  # fit_metrics_aggregated
                 if parameters_prime:
                     self.parameters = parameters_prime
-                history.add_metrics_distributed_fit(server_round=current_round, metrics=fit_metrics)
+                history.add_metrics_distributed_fit(
+                    server_round=current_round, metrics=fit_metrics
+                )
 
             # Evaluate model using strategy implementation
             res_cen = self.strategy.evaluate(current_round, parameters=self.parameters)
@@ -117,23 +121,35 @@ class Server:
                     timeit.default_timer() - start_time,
                 )
                 history.add_loss_centralized(server_round=current_round, loss=loss_cen)
-                history.add_metrics_centralized(server_round=current_round, metrics=metrics_cen)
+                history.add_metrics_centralized(
+                    server_round=current_round, metrics=metrics_cen
+                )
 
             # Evaluate model on a sample of available clients
             if self.preferences.sweep:
-                res_fed = self.evaluate_round(server_round=current_round, timeout=timeout)
+                res_fed = self.evaluate_round(
+                    server_round=current_round, timeout=timeout
+                )
                 if res_fed is not None:
                     loss_fed, evaluate_metrics_fed, _ = res_fed
                     if loss_fed is not None:
-                        history.add_loss_distributed(server_round=current_round, loss=loss_fed)
-                        history.add_metrics_distributed(server_round=current_round, metrics=evaluate_metrics_fed)
+                        history.add_loss_distributed(
+                            server_round=current_round, loss=loss_fed
+                        )
+                        history.add_metrics_distributed(
+                            server_round=current_round, metrics=evaluate_metrics_fed
+                        )
             else:
                 res_fed = self.test_round(server_round=current_round, timeout=timeout)
                 if res_fed is not None:
                     loss_fed, evaluate_metrics_fed, _ = res_fed
                     if loss_fed is not None:
-                        history.add_loss_distributed(server_round=current_round, loss=loss_fed)
-                        history.add_metrics_distributed(server_round=current_round, metrics=evaluate_metrics_fed)
+                        history.add_loss_distributed(
+                            server_round=current_round, loss=loss_fed
+                        )
+                        history.add_metrics_distributed(
+                            server_round=current_round, metrics=evaluate_metrics_fed
+                        )
 
         # Bookkeeping
         end_time = timeit.default_timer()
@@ -289,10 +305,14 @@ class Server:
             timeout=timeout,
         )
 
-    def _get_initial_parameters(self, server_round: int, timeout: float | None) -> Parameters:
+    def _get_initial_parameters(
+        self, server_round: int, timeout: float | None
+    ) -> Parameters:
         """Get initial parameters from one of the available clients."""
         # Server-side parameter initialization
-        parameters: Parameters | None = self.strategy.initialize_parameters(client_manager=self._client_manager)
+        parameters: Parameters | None = self.strategy.initialize_parameters(
+            client_manager=self._client_manager
+        )
         if parameters is not None:
             log(INFO, "Using initial global parameters provided by strategy")
             return parameters
@@ -301,7 +321,9 @@ class Server:
         log(INFO, "Requesting initial parameters from one random client")
         random_client = self._client_manager.sample(1)[0]
         ins = GetParametersIns(config={})
-        get_parameters_res = random_client.get_parameters(ins=ins, timeout=timeout, group_id=server_round)
+        get_parameters_res = random_client.get_parameters(
+            ins=ins, timeout=timeout, group_id=server_round
+        )
         if get_parameters_res.status.code == Code.OK:
             log(INFO, "Received initial parameters from one random client")
         else:
@@ -320,7 +342,8 @@ def reconnect_clients(
     """Instruct clients to disconnect and never reconnect."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         submitted_fs = {
-            executor.submit(reconnect_client, client_proxy, ins, timeout) for client_proxy, ins in client_instructions
+            executor.submit(reconnect_client, client_proxy, ins, timeout)
+            for client_proxy, ins in client_instructions
         }
         finished_fs, _ = concurrent.futures.wait(
             fs=submitted_fs,
@@ -375,11 +398,15 @@ def fit_clients(
     results: list[tuple[ClientProxy, FitRes]] = []
     failures: list[tuple[ClientProxy, FitRes] | BaseException] = []
     for future in finished_fs:
-        _handle_finished_future_after_fit(future=future, results=results, failures=failures)
+        _handle_finished_future_after_fit(
+            future=future, results=results, failures=failures
+        )
     return results, failures
 
 
-def fit_client(client: ClientProxy, ins: FitIns, timeout: float | None, group_id: int) -> tuple[ClientProxy, FitRes]:
+def fit_client(
+    client: ClientProxy, ins: FitIns, timeout: float | None, group_id: int
+) -> tuple[ClientProxy, FitRes]:
     """Refine parameters on a single client."""
     fit_res = client.fit(ins, timeout=timeout, group_id=group_id)
     return client, fit_res
@@ -432,7 +459,9 @@ def evaluate_clients(
     results: list[tuple[ClientProxy, EvaluateRes]] = []
     failures: list[tuple[ClientProxy, EvaluateRes] | BaseException] = []
     for future in finished_fs:
-        _handle_finished_future_after_evaluate(future=future, results=results, failures=failures)
+        _handle_finished_future_after_evaluate(
+            future=future, results=results, failures=failures
+        )
     return results, failures
 
 
@@ -478,7 +507,9 @@ def run_fl(
     config: ServerConfig,
 ) -> History:
     """Train a model on the given server and return the History object."""
-    hist, elapsed_time = server.fit(num_rounds=config.num_rounds, timeout=config.round_timeout)
+    hist, elapsed_time = server.fit(
+        num_rounds=config.num_rounds, timeout=config.round_timeout
+    )
 
     log(INFO, "")
     log(INFO, "[SUMMARY]")

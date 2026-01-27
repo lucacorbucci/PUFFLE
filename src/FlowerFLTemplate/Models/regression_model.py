@@ -15,7 +15,11 @@ class RegressionModel(Model):
     """
 
     def __init__(
-        self, model: nn.Module, optimizer: torch.optim.Optimizer, criterion: nn.Module, device: torch.device
+        self,
+        model: nn.Module,
+        optimizer: torch.optim.Optimizer,
+        criterion: nn.Module,
+        device: torch.device,
     ) -> None:
         """
         Initializes the RegressionModel wrapper for PyTorch models.
@@ -30,6 +34,7 @@ class RegressionModel(Model):
 
         Returns:
             None
+
         """
         self.model = model
         self.criterion = criterion
@@ -56,6 +61,7 @@ class RegressionModel(Model):
 
         Raises:
             RuntimeError: If training fails due to device or tensor issues.
+
         """
         # Initialize tracking metrics
 
@@ -88,6 +94,7 @@ class RegressionModel(Model):
 
         Raises:
             RuntimeError: If evaluation fails due to device or tensor issues.
+
         """
         self.model.to(self.device)
         self.model.eval()

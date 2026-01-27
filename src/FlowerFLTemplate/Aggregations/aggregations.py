@@ -20,15 +20,22 @@ class Aggregation:
 
         Returns:
             dict: Aggregated metrics dictionary with keys like "Test Loss", "Test_Accuracy" or regression equivalents, and "FL Round".
+
         """
         total_examples = sum([n_examples for n_examples, _ in metrics])
 
-        loss_test = sum([n_examples * metric["loss"] for n_examples, metric in metrics]) / total_examples
+        loss_test = (
+            sum([n_examples * metric["loss"] for n_examples, metric in metrics])
+            / total_examples
+        )
 
         agg_metrics = {}
 
         if metrics[0][1].get("accuracy"):
-            accuracy_test = sum([n_examples * metric["accuracy"] for n_examples, metric in metrics]) / total_examples
+            accuracy_test = (
+                sum([n_examples * metric["accuracy"] for n_examples, metric in metrics])
+                / total_examples
+            )
             log(
                 INFO,
                 f"Test Accuracy: {accuracy_test} - Test Loss {loss_test}",
@@ -39,10 +46,22 @@ class Aggregation:
             agg_metrics["FL Round"] = server_round
 
         if metrics[0][1].get("rmse"):
-            rmse_test = sum([n_examples * metric["rmse"] for n_examples, metric in metrics]) / total_examples
-            mae_test = sum([n_examples * metric["mae"] for n_examples, metric in metrics]) / total_examples
-            r2_test = sum([n_examples * metric["r2"] for n_examples, metric in metrics]) / total_examples
-            mse_test = sum([n_examples * metric["mse"] for n_examples, metric in metrics]) / total_examples
+            rmse_test = (
+                sum([n_examples * metric["rmse"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            mae_test = (
+                sum([n_examples * metric["mae"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            r2_test = (
+                sum([n_examples * metric["r2"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            mse_test = (
+                sum([n_examples * metric["mse"] for n_examples, metric in metrics])
+                / total_examples
+            )
 
             agg_metrics["Test Loss"] = loss_test
             agg_metrics["rmse_test"] = rmse_test
@@ -57,7 +76,9 @@ class Aggregation:
         return agg_metrics
 
     @staticmethod
-    def agg_metrics_evaluation(metrics: list, server_round: int, wandb_run: Any) -> dict:
+    def agg_metrics_evaluation(
+        metrics: list, server_round: int, wandb_run: Any
+    ) -> dict:
         """
         Aggregates validation (evaluation) metrics from multiple clients using weighted averages.
 
@@ -71,23 +92,40 @@ class Aggregation:
 
         Returns:
             dict: Aggregated metrics dictionary with keys like "Validation Loss", "Validation_Accuracy" or regression equivalents, and "FL Round".
+
         """
         total_examples = sum([n_examples for n_examples, _ in metrics])
         agg_metrics = {}
-        loss_evaluation = sum([n_examples * metric["loss"] for n_examples, metric in metrics]) / total_examples
+        loss_evaluation = (
+            sum([n_examples * metric["loss"] for n_examples, metric in metrics])
+            / total_examples
+        )
         if metrics[0][1].get("accuracy"):
             accuracy_evaluation = (
-                sum([n_examples * metric["accuracy"] for n_examples, metric in metrics]) / total_examples
+                sum([n_examples * metric["accuracy"] for n_examples, metric in metrics])
+                / total_examples
             )
 
             agg_metrics["Validation Loss"] = loss_evaluation
             agg_metrics["Validation_Accuracy"] = accuracy_evaluation
             agg_metrics["FL Round"] = server_round
         if metrics[0][1].get("rmse"):
-            rmse_evaluation = sum([n_examples * metric["rmse"] for n_examples, metric in metrics]) / total_examples
-            mae_evaluation = sum([n_examples * metric["mae"] for n_examples, metric in metrics]) / total_examples
-            r2_evaluation = sum([n_examples * metric["r2"] for n_examples, metric in metrics]) / total_examples
-            mse_evaluation = sum([n_examples * metric["mse"] for n_examples, metric in metrics]) / total_examples
+            rmse_evaluation = (
+                sum([n_examples * metric["rmse"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            mae_evaluation = (
+                sum([n_examples * metric["mae"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            r2_evaluation = (
+                sum([n_examples * metric["r2"] for n_examples, metric in metrics])
+                / total_examples
+            )
+            mse_evaluation = (
+                sum([n_examples * metric["mse"] for n_examples, metric in metrics])
+                / total_examples
+            )
 
             agg_metrics["Validation Loss"] = loss_evaluation
             agg_metrics["rmse_evaluation"] = rmse_evaluation
@@ -102,7 +140,9 @@ class Aggregation:
         return agg_metrics
 
     @staticmethod
-    def agg_metrics_train(metrics: list, server_round: int, fed_dir: Any, wandb_run: Any) -> dict:
+    def agg_metrics_train(
+        metrics: list, server_round: int, fed_dir: Any, wandb_run: Any
+    ) -> dict:
         """
         Aggregates training metrics from multiple clients using weighted averages.
 
@@ -117,6 +157,7 @@ class Aggregation:
 
         Returns:
             dict: Aggregated metrics dictionary with "Train Loss", optional "Train Accuracy", and "FL Round".
+
         """
         # Collect the losses logged during each epoch in each client
         total_examples = sum([n_examples for n_examples, _ in metrics])
@@ -141,8 +182,6 @@ class Aggregation:
                     to_be_logged,
                 )
 
-        
-
         if accuracy_log:
             log(
                 INFO,
@@ -165,9 +204,9 @@ class Aggregation:
                 "Train Loss": sum(losses) / total_examples,
                 "FL Round": server_round,
             }
-        
+
         if statistics:
-            statistics = [stat[-1] for stat in statistics ]
+            statistics = [stat[-1] for stat in statistics]
             counter_z = sum([stat["counter_z"] for stat in statistics])
             counter_not_z = sum([stat["counter_not_z"] for stat in statistics])
             counter_y_z = sum([stat["counter_y_z"] for stat in statistics])
@@ -182,7 +221,7 @@ class Aggregation:
             )
 
             agg_metrics["Disparity"] = disparity
-            
+
         if wandb_run:
             wandb_run.log(agg_metrics)
 

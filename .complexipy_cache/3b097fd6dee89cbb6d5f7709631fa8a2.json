@@ -1,0 +1,73 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::__init__",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::_apply_fairness_mask",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::_prepare_data",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::violation_with_dataset",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::compute_probabilities",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::evaluate_violation",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::_update_global_counters",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::forward",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 6,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::compute_violation_with_argmax",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 7,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::_estimate_violation",
+      "path": "disparity_loss.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "disparity_loss.py",
+      "function_name": "DisparityRegularizationLoss::_compute_violation_term",
+      "path": "disparity_loss.py"
+    }
+  ],
+  "targets": [
+    "/home/lcorbucci/PUFFLE/src/puffle/Regularization/disparity_loss.py"
+  ]
+}

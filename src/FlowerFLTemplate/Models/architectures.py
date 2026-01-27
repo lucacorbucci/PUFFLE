@@ -1,5 +1,5 @@
-import torch.nn.functional as functional
 from torch import Tensor, nn
+from torch.nn import functional
 
 
 class LinearClassificationNet(nn.Module):
@@ -17,6 +17,7 @@ class LinearClassificationNet(nn.Module):
 
         Returns:
             None
+
         """
         super().__init__()
         self.layer1 = nn.Linear(input_size, output_size, bias=False)
@@ -30,6 +31,7 @@ class LinearClassificationNet(nn.Module):
 
         Returns:
             Tensor: Output logits of shape (batch_size, output_size).
+
         """
         x = self.layer1(x.float())
         return x
@@ -38,7 +40,12 @@ class LinearClassificationNet(nn.Module):
 class AbaloneNet(nn.Module):
     """Neural Network for Abalone age prediction"""
 
-    def __init__(self, input_size: int, hidden_sizes: list[int] | None = None, dropout_rate: float = 0.2) -> None:
+    def __init__(
+        self,
+        input_size: int,
+        hidden_sizes: list[int] | None = None,
+        dropout_rate: float = 0.2,
+    ) -> None:
         """
         Initializes a multi-layer feedforward network for Abalone regression.
 
@@ -51,6 +58,7 @@ class AbaloneNet(nn.Module):
 
         Returns:
             None
+
         """
         if hidden_sizes is None:
             hidden_sizes = [128, 64, 32]
@@ -61,7 +69,12 @@ class AbaloneNet(nn.Module):
 
         for hidden_size in hidden_sizes:
             layers.extend(
-                [nn.Linear(prev_size, hidden_size), nn.ReLU(), nn.BatchNorm1d(hidden_size), nn.Dropout(dropout_rate)]
+                [
+                    nn.Linear(prev_size, hidden_size),
+                    nn.ReLU(),
+                    nn.BatchNorm1d(hidden_size),
+                    nn.Dropout(dropout_rate),
+                ]
             )
             prev_size = hidden_size
 
@@ -79,6 +92,7 @@ class AbaloneNet(nn.Module):
 
         Returns:
             Tensor: Output prediction of shape (batch_size, 1).
+
         """
         return self.network(x)
 
@@ -99,6 +113,7 @@ class SimpleMNISTModel(nn.Module):
 
         Returns:
             None
+
         """
         super().__init__()
 
@@ -114,6 +129,7 @@ class SimpleMNISTModel(nn.Module):
 
         Returns:
             Tensor: Output logits of shape (batch_size, num_classes).
+
         """
         # Flatten the input
         x = x.view(-1, 28 * 28)
@@ -146,6 +162,7 @@ class CelebaNet(nn.Module):
 
         Returns:
             None
+
         """
         super().__init__()
         self.cnn1 = nn.Conv2d(
@@ -173,6 +190,7 @@ class CelebaNet(nn.Module):
 
         Returns:
             Tensor: Output logits of shape (batch_size, num_classes).
+
         """
         out = self.gn_relu(self.cnn1(input_data))
         out = self.gn_relu(self.cnn2(out))

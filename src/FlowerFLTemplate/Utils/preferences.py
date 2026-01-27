@@ -3,6 +3,7 @@ Dataclass holding all configuration parameters for federated learning setup.
 
 Includes client numbers, rounds, device/silo settings, sampling fractions, seeds, dataset info, partitioning, training hyperparameters, and preprocessors (scaler/encoder).
 """
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,7 +42,7 @@ class Preferences:
     optimizer: str = "adam"
     momentum: float = 0.9
 
-    image_path : str | None = None
+    image_path: str | None = None
 
     # Unfairness reduction parameters
     unfairness_reduction: bool = False
@@ -52,7 +53,7 @@ class Preferences:
     alpha: float | None = None
     weight_decay_alpha: float | None = None
 
-    private_training : bool = False
+    private_training: bool = False
     epsilon: float | None = None
     noise_multiplier: float = 0.0
     max_grad_norm: float = 1000000

@@ -22,18 +22,25 @@ def get_params(model: torch.nn.Module) -> NDArrays:
     return [val.cpu().numpy() for _, val in model.state_dict().items()]
 
 
-def get_optimizer(model: torch.nn.Module, preferences: Preferences) -> torch.optim.Optimizer:
+def get_optimizer(
+    model: torch.nn.Module, preferences: Preferences
+) -> torch.optim.Optimizer:
     match preferences.optimizer.lower():
         case "sgd":
-            return torch.optim.SGD(model.parameters(), lr=preferences.lr, momentum=preferences.momentum)
+            return torch.optim.SGD(
+                model.parameters(), lr=preferences.lr, momentum=preferences.momentum
+            )
         case "adam":
             return torch.optim.Adam(
                 model.parameters(),
                 lr=preferences.lr,
-                weight_decay=preferences.weight_decay if hasattr(preferences, "weight_decay") else 0,
+                weight_decay=preferences.weight_decay
+                if hasattr(preferences, "weight_decay")
+                else 0,
             )
         case _:
             raise ValueError(f"Unsupported optimizer: {preferences.optimizer}")
+
 
 def seed_everything(seed: int) -> None:
     torch.manual_seed(seed)

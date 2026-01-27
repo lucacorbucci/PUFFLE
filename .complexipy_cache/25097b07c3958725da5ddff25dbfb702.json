@@ -1,0 +1,121 @@
+{
+  "functions": [
+    {
+      "complexity": 0,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_initialize_metrics_dict",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::predict",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::predict_proba",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::save",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 0,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::update_alpha",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::__init__",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_compute_metrics",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_run_training_loop",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_update_metrics_dict",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 1,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::update_lambda",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_execute_training_loop",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_get_effective_batch_size",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 2,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::load",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 3,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_train_batch",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 4,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_validate_and_test_epoch",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 5,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_log_wandb_epoch",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::_train_one_epoch",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 9,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::evaluate",
+      "path": "puffle_model.py"
+    },
+    {
+      "complexity": 11,
+      "file_name": "puffle_model.py",
+      "function_name": "PUFFLEModel::train",
+      "path": "puffle_model.py"
+    }
+  ],
+  "targets": [
+    "/home/lcorbucci/PUFFLE/src/puffle/PUFFLEModel/puffle_model.py"
+  ]
+}

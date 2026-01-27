@@ -24,6 +24,7 @@ class IncomeDataset(Dataset):
 
         Returns:
             None
+
         """
         self.samples = x
         self.sensitive_features = z
@@ -39,6 +40,7 @@ class IncomeDataset(Dataset):
 
         Returns:
             int: Size of the dataset.
+
         """
         return len(self.samples)
 
@@ -53,6 +55,7 @@ class IncomeDataset(Dataset):
 
         Returns:
             tuple[Any, Any, Any]: (feature sample, sensitive sample, target sample)
+
         """
         x_sample = self.samples[idx]
         z_sample = self.sensitive_features[idx]
@@ -83,6 +86,7 @@ def get_income_scaler(
 
     Raises:
         ValueError: If df is None or not a DataFrame.
+
     """
     if df is None:
         error = "df cannot be None"
@@ -117,6 +121,7 @@ def prepare_income(
 
     Raises:
         ValueError: If DataFrame is invalid.
+
     """
     # Separate features and target
 
@@ -135,7 +140,9 @@ def prepare_income(
     )
 
     if encoder is None:
-        encoder = TargetEncoder(smooth="auto").fit(df[categorical_columns], target_attributes)
+        encoder = TargetEncoder(smooth="auto").fit(
+            df[categorical_columns], target_attributes
+        )
     df[categorical_columns] = encoder.transform(df[categorical_columns])
 
     # normalize the continuous using standard scaler
@@ -146,7 +153,13 @@ def prepare_income(
     # convert to numpy arrays
     x_train = df.to_numpy(dtype=np.float32)
 
-    return x_train, np.array(sensitive_attributes), np.array(target_attributes), scaler, encoder
+    return (
+        x_train,
+        np.array(sensitive_attributes),
+        np.array(target_attributes),
+        scaler,
+        encoder,
+    )
 
 
 def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -> Any:
@@ -165,6 +178,7 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
     Raises:
         FileNotFoundError: If CSV files not found in partition directory.
         ValueError: If data processing fails.
+
     """
     path = f"{preferences.dataset_path}/{partition_id}/"
     for file in os.listdir(path):
@@ -177,7 +191,9 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
     if preferences.sweep:
         print("[Preparing data for cross-silo for sweep...]")
 
-        train, val = train_test_split(train, test_size=0.2, random_state=preferences.node_shuffle_seed)
+        train, val = train_test_split(
+            train, test_size=0.2, random_state=preferences.node_shuffle_seed
+        )
 
         x_train, z_train, y_train, _, _ = prepare_income(
             df=train,
@@ -202,11 +218,18 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
             y=y_val.astype(np.float32),
         )
 
-        trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=preferences.batch_size, shuffle=False)
+        trainloader = DataLoader(
+            train_dataset, batch_size=preferences.batch_size, shuffle=True
+        )
+        val_loader = DataLoader(
+            val_dataset, batch_size=preferences.batch_size, shuffle=False
+        )
 
         return FlowerClient(
-            trainloader=trainloader, valloader=val_loader, preferences=preferences, partition_id=partition_id
+            trainloader=trainloader,
+            valloader=val_loader,
+            preferences=preferences,
+            partition_id=partition_id,
         ).to_client()
     print("[Preparing data for cross-silo...]")
 
@@ -236,7 +259,13 @@ def prepare_income_for_cross_silo(preferences: Preferences, partition_id: int) -
     print("Train dataset size:", len(train_dataset))
     print("Test dataset size:", len(test_dataset))
 
-    trainloader = DataLoader(train_dataset, batch_size=preferences.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=preferences.batch_size, shuffle=False)
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=preferences.batch_size, shuffle=False
+    )
 
-    return FlowerClient(trainloader=trainloader, valloader=test_loader, preferences=preferences).to_client()
+    return FlowerClient(
+        trainloader=trainloader, valloader=test_loader, preferences=preferences
+    ).to_client()

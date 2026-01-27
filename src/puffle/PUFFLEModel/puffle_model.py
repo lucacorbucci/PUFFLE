@@ -102,6 +102,7 @@ class PUFFLEModel:
 
         """
         self.model.eval()
+        self.model = self.model.to(self.device)
         with torch.no_grad():
             outputs = self.model(x.to(self.device))
             _, predicted = torch.max(outputs.data, 1)
@@ -243,6 +244,7 @@ class PUFFLEModel:
         verbose: bool,
     ) -> tuple[dict, list]:
         statistics = []
+        self.model = self.model.to(self.device)
         for epoch in range(epochs):
             # Training
             train_metrics = self._train_one_epoch(
@@ -307,6 +309,7 @@ class PUFFLEModel:
         if test_loader:
             test_metrics = self.evaluate(test_loader)
             self._update_metrics_dict(metrics, "test", test_metrics)
+            self._log_wandb_epoch(test_metrics, epoch, mode="test")
 
     def _train_one_epoch(
         self,
@@ -563,11 +566,11 @@ class PUFFLEModel:
     def update_lambda(self, unfairness_loss: float) -> None:
         """Update the lambda parameter for tunable lambda."""
         if self.target is not None:
-            self.lambda_regularization = max(
-                0.0,
-                self.lambda_regularization
-                + self.alpha * (unfairness_loss - self.target),
+            new_lambda = self.lambda_regularization + self.alpha * (
+                unfairness_loss - self.target
             )
+            # Constrain lambda to [0.0, 1.0]
+            self.lambda_regularization = max(0.0, min(1.0, new_lambda))
 
     def update_alpha(self, *, current_epoch: int) -> None:  # noqa: ARG002
         """Update the alpha parameter."""
