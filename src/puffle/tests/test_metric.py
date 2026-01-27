@@ -2,7 +2,10 @@ import numpy as np
 import pytest
 import torch
 
-from puffle.FairReg.Utils.metric import compute_demographic_disparity, compute_differentiable_demographic_disparity
+from puffle.Utils.metric import (
+    compute_demographic_disparity,
+    compute_differentiable_demographic_disparity,
+)
 
 
 class TestMetrics:
@@ -18,7 +21,7 @@ class TestMetrics:
         # Max disparity = 2/3
         expected_disparity = 2 / 3
 
-        result = compute_demographic_disparity(z, y)
+        result, _ = compute_demographic_disparity(z, y)
 
         assert np.isclose(result, expected_disparity, atol=1e-6)
 
@@ -34,7 +37,7 @@ class TestMetrics:
         # Max disparity = 0
         expected_disparity = 0.0
 
-        result = compute_demographic_disparity(z, y)
+        result, _ = compute_demographic_disparity(z, y)
 
         assert np.isclose(result, expected_disparity, atol=1e-6)
 
@@ -50,7 +53,7 @@ class TestMetrics:
         # Max disparity = 1
         expected_disparity = 1.0
 
-        result = compute_demographic_disparity(z, y)
+        result, _ = compute_demographic_disparity(z, y)
 
         assert np.isclose(result, expected_disparity, atol=1e-6)
 
@@ -76,7 +79,7 @@ class TestMetrics:
         # Max disparity = 0.5
         expected_disparity = 0.5
 
-        result = compute_demographic_disparity(z, y)
+        result, _ = compute_demographic_disparity(z, y)
 
         assert np.isclose(result, expected_disparity, atol=1e-6)
 
@@ -85,9 +88,8 @@ class TestMetrics:
         z = torch.tensor([])
         y = torch.tensor([])
 
-        # Empty tensors should return 0 disparity (no data = no disparity)
+        # Empty tensors should raise ValueError based on implementation checks
         with pytest.raises(ValueError):
-            # This should raise a RuntimeError as we'll try to compute mean of empty tensor
             compute_demographic_disparity(z, y)
 
     def test_compute_demographic_disparity_single_value(self):
@@ -96,62 +98,35 @@ class TestMetrics:
         z = torch.tensor([1, 1, 1])
         y = torch.tensor([0, 1, 0])
 
-        # When all Z values are the same, there is no "Z!=z" group to compare with
-        # This should return 0 disparity
+        # When all Z values are the same, it might raise ValueError or return 0
+        # The current implementation might raise ValueError or handle it.
+        # Let's check the code: it does mean().item() on (y[z != z_val] == y_val)
+        # if z != z_val is empty, mean() of empty tensor is NaN.
+        # When all Z values are the same, it might raise ValueError or return 0
+        # The current implementation might raise ValueError or handle it.
+        # In the existing test it was raises(ValueError). Let's keep it.
+
+        # In the existing test it was raises(ValueError). Let's keep it.
         with pytest.raises(ValueError):
-            # This should raise a RuntimeError as we can't compute P(Y|Z!=z) when all Z are the same
             compute_demographic_disparity(z, y)
 
     def test_compute_differentiable_demographic_disparity_basic(self):
         """Test the basic functionality of compute_differentiable_demographic_disparity."""
-        # Create a simple test case
         predictions_argmax = torch.tensor([0, 0, 1, 1, 1, 1])
         sensitive_attributes = torch.tensor([0, 0, 0, 1, 1, 1])
-        # Softmax output for two classes (class 0 and class 1)
         softmax_output = torch.tensor(
             [
-                [0.9, 0.1],  # Predicted class 0 with high confidence
-                [0.8, 0.2],  # Predicted class 0 with high confidence
-                [0.3, 0.7],  # Predicted class 1 with medium confidence
-                [0.2, 0.8],  # Predicted class 1 with high confidence
-                [0.1, 0.9],  # Predicted class 1 with high confidence
-                [0.0, 1.0],  # Predicted class 1 with full confidence
+                [0.9, 0.1],
+                [0.8, 0.2],
+                [0.3, 0.7],
+                [0.2, 0.8],
+                [0.1, 0.9],
+                [0.0, 1.0],
             ]
         )
 
-        # Expected calculation:
-        # For target=0, sensitive_attribute=0:
-        # Y_eq_k_and_Z_eq_z = 0.9 + 0.8 = 1.7
-        # Y_eq_k_and_Z_not_eq_z = 0 (no predictions of class 0 for Z=1)
-        # Z_eq_z = 0.9 + 0.8 + 0.3 = 2.0
-        # Z_not_eq_z = 0.2 + 0.1 + 0.0 = 0.3
-        # violation = |1.7/2.0 - 0/0.3| = |0.85 - 0| = 0.85
-
-        # For target=0, sensitive_attribute=1:
-        # Y_eq_k_and_Z_eq_z = 0 (no predictions of class 0 for Z=1)
-        # Y_eq_k_and_Z_not_eq_z = 0.9 + 0.8 = 1.7
-        # Z_eq_z = 0.2 + 0.1 + 0.0 = 0.3
-        # Z_not_eq_z = 0.9 + 0.8 + 0.3 = 2.0
-        # violation = |0/0.3 - 1.7/2.0| = |0 - 0.85| = 0.85
-
-        # For target=1, sensitive_attribute=0:
-        # Y_eq_k_and_Z_eq_z = 0.7 (only one prediction of class 1 for Z=0)
-        # Y_eq_k_and_Z_not_eq_z = 0.8 + 0.9 + 1.0 = 2.7
-        # Z_eq_z = 0.1 + 0.2 + 0.7 = 1.0
-        # Z_not_eq_z = 0.8 + 0.9 + 1.0 = 2.7
-        # violation = |0.7/1.0 - 2.7/2.7| = |0.7 - 1.0| = 0.3
-
-        # For target=1, sensitive_attribute=1:
-        # Y_eq_k_and_Z_eq_z = 0.8 + 0.9 + 1.0 = 2.7
-        # Y_eq_k_and_Z_not_eq_z = 0.7 (only one prediction of class 1 for Z=0)
-        # Z_eq_z = 0.8 + 0.9 + 1.0 = 2.7
-        # Z_not_eq_z = 0.1 + 0.2 + 0.7 = 1.0
-        # violation = |2.7/2.7 - 0.7/1.0| = |1.0 - 0.7| = 0.3
-
-        # Max violation = 0.85
         expected_disparity = 0.85
 
-        torch.device("cpu")
         result = compute_differentiable_demographic_disparity(
             predictions_argmax=predictions_argmax,
             sensitive_attributes=sensitive_attributes,
@@ -161,25 +136,21 @@ class TestMetrics:
         assert torch.isclose(result, torch.tensor(expected_disparity), atol=1e-6)
 
     def test_compute_differentiable_demographic_disparity_no_disparity(self):
-        """Test when there is no demographic disparity in the differentiable version."""
-        # Create a test case with no disparity
+        """Test when there is no demographic disparity."""
         predictions_argmax = torch.tensor([0, 1, 0, 1])
         sensitive_attributes = torch.tensor([0, 0, 1, 1])
 
-        # Softmax output for two classes (class 0 and class 1)
         softmax_output = torch.tensor(
             [
-                [0.8, 0.2],  # Predicted class 0 with high confidence
-                [0.2, 0.8],  # Predicted class 1 with high confidence
-                [0.8, 0.2],  # Predicted class 0 with high confidence
-                [0.2, 0.8],  # Predicted class 1 with high confidence
+                [0.8, 0.2],
+                [0.2, 0.8],
+                [0.8, 0.2],
+                [0.2, 0.8],
             ]
         )
 
-        # With perfect balance, the disparity should be 0
         expected_disparity = 0.0
 
-        torch.device("cpu")
         result = compute_differentiable_demographic_disparity(
             predictions_argmax=predictions_argmax,
             sensitive_attributes=sensitive_attributes,
@@ -190,9 +161,8 @@ class TestMetrics:
 
     def test_compute_differentiable_demographic_disparity_errors(self):
         """Test error cases for the differentiable version."""
-        # Test with empty inputs
-        predictions_argmax_empty = torch.tensor([])
-        sensitive_attributes_empty = torch.tensor([])
+        predictions_argmax_empty = torch.tensor([], dtype=torch.long)
+        sensitive_attributes_empty = torch.tensor([], dtype=torch.long)
         softmax_output_empty = torch.tensor([])
 
         with pytest.raises(ValueError):
@@ -202,7 +172,6 @@ class TestMetrics:
                 softmax_output=softmax_output_empty,
             )
 
-        # Test with single value for sensitive attribute
         predictions_argmax_single = torch.tensor([0, 1, 0])
         sensitive_attributes_single = torch.tensor([1, 1, 1])
         softmax_output_single = torch.tensor([[0.8, 0.2], [0.2, 0.8], [0.7, 0.3]])
