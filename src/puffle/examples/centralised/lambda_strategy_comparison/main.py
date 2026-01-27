@@ -2,7 +2,7 @@
 Lambda Strategy Comparison Experiment
 
 Compares three lambda update strategies (momentum, gradient, PID) under
-distribution shift scenarios to evaluate adaptability and stability.
+distribution shift scenarios using pre-generated datasets.
 """
 
 import argparse
@@ -32,47 +32,6 @@ def setup_wandb(project_name: str, run_name: str | None):
     )
 
 
-def inject_distribution_shift(dataset, shift_type="increase_bias", shift_magnitude=0.3):
-    """
-    Inject distribution shift into dataset by modifying sensitive attributes.
-
-    Args:
-        dataset: PyTorch dataset
-        shift_type: Type of shift ("increase_bias", "decrease_bias", "flip_labels")
-        shift_magnitude: Magnitude of shift (0.0 to 1.0)
-
-    Returns:
-        Modified dataset
-
-    """
-    import numpy as np
-
-    if shift_type == "increase_bias":
-        # Increase correlation between sensitive attribute and label
-        for i in range(len(dataset)):
-            _x, z, y = dataset[i]
-            if np.random.rand() < shift_magnitude:
-                # Make z more predictive of y
-                if y == 1 and z == 0:
-                    dataset.sensitive_features[i] = 1
-                elif y == 0 and z == 1:
-                    dataset.sensitive_features[i] = 0
-
-    elif shift_type == "decrease_bias":
-        # Decrease correlation
-        for i in range(len(dataset)):
-            if np.random.rand() < shift_magnitude:
-                dataset.sensitive_features[i] = 1 - dataset.sensitive_features[i]
-
-    elif shift_type == "flip_labels":
-        # Flip some labels to create sudden accuracy drop
-        for i in range(len(dataset)):
-            if np.random.rand() < shift_magnitude:
-                dataset.targets[i] = 1 - dataset.targets[i]
-
-    return dataset
-
-
 def check_input(args):
     if args.regularization_lambda < 0 or args.regularization_lambda > 1:
         msg = "Lambda must be between 0 and 1."
@@ -100,12 +59,48 @@ if __name__ == "__main__":
 
     # Training parameters
     parser.add_argument("--lr", type=float, required=True)
-    parser.add_argument("--epochs", type=int, required=True)
+    parser.add_argument(
+        "--epochs_before_shift",
+        type=int,
+        required=True,
+        help="Number of epochs to train on original dataset",
+    )
+    parser.add_argument(
+        "--epochs_after_shift",
+        type=int,
+        required=True,
+        help="Number of epochs to train on shifted dataset",
+    )
     parser.add_argument("--batch_size", type=int, required=True)
     parser.add_argument("--optimizer", type=str, required=True)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--validation_seed", type=int, default=None)
-    parser.add_argument("--csv_path", type=str, default=None)
+
+    # Dataset paths
+    parser.add_argument(
+        "--csv_path_before",
+        type=str,
+        required=True,
+        help="Path to directory containing dataset BEFORE shift",
+    )
+    parser.add_argument(
+        "--csv_path_after",
+        type=str,
+        default=None,
+        help="Path to directory containing dataset AFTER shift (optional)",
+    )
+    parser.add_argument(
+        "--dataset_name_before",
+        type=str,
+        default="dutch_census_2001.csv",
+        help="Filename of dataset before shift",
+    )
+    parser.add_argument(
+        "--dataset_name_after",
+        type=str,
+        default=None,
+        help="Filename of dataset after shift",
+    )
 
     # WandB parameters
     parser.add_argument("--wandb", type=bool, default=True)
@@ -133,26 +128,6 @@ if __name__ == "__main__":
     parser.add_argument("--lambda_ki", type=float, default=0.001)
     parser.add_argument("--lambda_kd", type=float, default=0.005)
 
-    # Distribution shift parameters
-    parser.add_argument(
-        "--shift_epoch",
-        type=int,
-        default=None,
-        help="Epoch at which to inject distribution shift (None = no shift)",
-    )
-    parser.add_argument(
-        "--shift_type",
-        type=str,
-        default="increase_bias",
-        choices=["increase_bias", "decrease_bias", "flip_labels"],
-    )
-    parser.add_argument(
-        "--shift_magnitude",
-        type=float,
-        default=0.3,
-        help="Magnitude of distribution shift (0.0 to 1.0)",
-    )
-
     args = parser.parse_args()
 
     if args.validation_seed is None:
@@ -161,6 +136,12 @@ if __name__ == "__main__":
 
     check_input(args)
     private_training = bool(args.noise_multiplier > 0 or args.epsilon is not None)
+
+    # Determine if we have a distribution shift
+    has_shift = args.csv_path_after is not None and args.dataset_name_after is not None
+    total_epochs = args.epochs_before_shift + (
+        args.epochs_after_shift if has_shift else 0
+    )
 
     wandb_run = (
         setup_wandb(
@@ -171,20 +152,32 @@ if __name__ == "__main__":
         else None
     )
 
-    # Log strategy and shift configuration
+    # Log configuration
     if wandb_run:
         wandb_run.config.update(
             {
                 "lambda_update_strategy": args.lambda_update_strategy,
-                "shift_epoch": args.shift_epoch,
-                "shift_type": args.shift_type if args.shift_epoch else "none",
-                "shift_magnitude": args.shift_magnitude if args.shift_epoch else 0.0,
+                "has_distribution_shift": has_shift,
+                "shift_epoch": args.epochs_before_shift if has_shift else None,
+                "dataset_before": args.dataset_name_before,
+                "dataset_after": args.dataset_name_after if has_shift else "none",
+                "total_epochs": total_epochs,
             }
         )
 
+    # Phase 1: Train on original dataset
+    print(f"\n{'=' * 60}")
+    print("PHASE 1: Training on original dataset")
+    print(f"Dataset: {args.dataset_name_before}")
+    print(f"Epochs: {args.epochs_before_shift}")
+    print(f"{'=' * 60}\n")
+
     seed_everything(args.seed)
     dutch_train, dutch_test, dutch_val = prepare_dutch(
-        args.csv_path, sweep=args.sweep, validation_seed=args.validation_seed
+        args.csv_path_before,
+        sweep=args.sweep,
+        validation_seed=args.validation_seed,
+        dataset_name=args.dataset_name_before,
     )
     seed_everything(args.seed)
 
@@ -216,7 +209,6 @@ if __name__ == "__main__":
         val_loader = None
 
     lr = args.lr
-    epochs = args.epochs
     MAX_PHYSICAL_BATCH_SIZE = 1024
 
     privacy_engine = PrivacyEngine()
@@ -262,50 +254,89 @@ if __name__ == "__main__":
         lambda_kd=args.lambda_kd,
     )
 
-    # Training loop with distribution shift injection
-    for epoch in range(epochs):
-        # Inject distribution shift at specified epoch
-        if args.shift_epoch is not None and epoch == args.shift_epoch:
-            print(f"\n{'=' * 60}")
-            print(f"INJECTING DISTRIBUTION SHIFT AT EPOCH {epoch}")
-            print(f"Type: {args.shift_type}, Magnitude: {args.shift_magnitude}")
-            print(f"{'=' * 60}\n")
+    # Train on original dataset
+    puffle_model.train(
+        train_loader=train_loader_gc,
+        epochs=args.epochs_before_shift,
+        val_loader=val_loader if dutch_val is not None else None,
+        test_loader=test_loader if dutch_test is not None else None,
+        verbose=True,
+        average_probabilities=None,
+        max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,
+    )
 
-            dutch_train = inject_distribution_shift(
-                dutch_train,
-                shift_type=args.shift_type,
-                shift_magnitude=args.shift_magnitude,
+    # Phase 2: Train on shifted dataset (if provided)
+    if has_shift:
+        print(f"\n{'=' * 60}")
+        print("PHASE 2: DISTRIBUTION SHIFT - Switching to shifted dataset")
+        print(f"Dataset: {args.dataset_name_after}")
+        print(f"Epochs: {args.epochs_after_shift}")
+        print(f"{'=' * 60}\n")
+
+        if wandb_run:
+            wandb_run.log(
+                {
+                    "distribution_shift_occurred": 1,
+                    "epoch": args.epochs_before_shift,
+                }
             )
 
-            # Recreate data loader with shifted data
-            train_loader = torch.utils.data.DataLoader(
-                dutch_train,
+        # Load shifted dataset
+        seed_everything(args.seed)
+        dutch_train_shifted, dutch_test_shifted, dutch_val_shifted = prepare_dutch(
+            args.csv_path_after,
+            sweep=args.sweep,
+            validation_seed=args.validation_seed,
+            dataset_name=args.dataset_name_after,
+        )
+        seed_everything(args.seed)
+
+        # Create new data loaders
+        train_loader_shifted = torch.utils.data.DataLoader(
+            dutch_train_shifted,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=True,
+        )
+
+        test_loader_shifted = torch.utils.data.DataLoader(
+            dutch_test_shifted,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=True,
+        )
+
+        if dutch_val_shifted is not None:
+            val_loader_shifted = torch.utils.data.DataLoader(
+                dutch_val_shifted,
                 batch_size=args.batch_size,
-                shuffle=True,
+                shuffle=False,
                 num_workers=0,
                 pin_memory=True,
             )
+        else:
+            val_loader_shifted = None
 
-            _, _, _, train_loader_gc = privacy_engine.make_private(
-                module=model_gc,
-                optimizer=optimizer_gc,
-                data_loader=train_loader,
-                noise_multiplier=args.noise_multiplier,
-                max_grad_norm=args.max_grad_norm,
-                criterion=criterion_gc,
-                grad_sample_mode="ghost",
-                poisson_sampling=bool(private_training),
-            )
+        # Make shifted loader private
+        _, _, _, train_loader_shifted_gc = privacy_engine.make_private(
+            module=model_gc,
+            optimizer=optimizer_gc,
+            data_loader=train_loader_shifted,
+            noise_multiplier=args.noise_multiplier,
+            max_grad_norm=args.max_grad_norm,
+            criterion=criterion_gc,
+            grad_sample_mode="ghost",
+            poisson_sampling=bool(private_training),
+        )
 
-            if wandb_run:
-                wandb_run.log({"distribution_shift_injected": 1, "epoch": epoch})
-
-        # Train for one epoch
+        # Continue training on shifted dataset
         puffle_model.train(
-            train_loader=train_loader_gc,
-            epochs=1,
-            val_loader=val_loader if dutch_val is not None else None,
-            test_loader=test_loader if dutch_test is not None else None,
+            train_loader=train_loader_shifted_gc,
+            epochs=args.epochs_after_shift,
+            val_loader=val_loader_shifted if dutch_val_shifted is not None else None,
+            test_loader=test_loader_shifted if dutch_test_shifted is not None else None,
             verbose=True,
             average_probabilities=None,
             max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,
@@ -313,3 +344,10 @@ if __name__ == "__main__":
 
     if wandb_run:
         wandb_run.finish()
+
+    print(f"\n{'=' * 60}")
+    print("Training complete!")
+    print(f"Total epochs: {total_epochs}")
+    if has_shift:
+        print(f"Distribution shift at epoch: {args.epochs_before_shift}")
+    print(f"{'=' * 60}\n")

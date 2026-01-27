@@ -116,8 +116,10 @@ class TabularDataset(Dataset):
         return x_sample, z_sample, y_sample, self.indexes[idx], idx
 
 
-def prepare_dutch(base_path, sweep, validation_seed=None):
-    df, cols, meta = load_dutch(dataset_path=base_path)
+def prepare_dutch(
+    base_path, sweep, validation_seed=None, dataset_name="dutch_census.arff"
+):
+    df, cols, meta = load_dutch(dataset_path=base_path, dataset_name=dataset_name)
     tmp = dataset_to_numpy(df, cols, meta, num_sensitive_features=1)
 
     x = tmp[0]
@@ -180,15 +182,29 @@ def prepare_dutch(base_path, sweep, validation_seed=None):
     return train_dataset, test_dataset, val_dataset
 
 
-def load_dutch(dataset_path):
-    data = arff.loadarff(dataset_path + "dutch_census.arff")
-    dutch_df = pd.DataFrame(data[0]).astype("int32")
+def load_dutch(dataset_path, dataset_name="dutch_census.arff"):
+    """Load Dutch census dataset from ARFF or CSV format."""
+    import os
 
-    dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
-    dutch_df["occupation_binary"] = np.where(dutch_df["occupation"] >= 300, 1, 0)
+    file_path = os.path.join(dataset_path, dataset_name)
 
-    del dutch_df["sex"]
-    del dutch_df["occupation"]
+    # Check if CSV or ARFF
+    if dataset_name.endswith(".csv"):
+        # Load CSV format (for shifted datasets)
+        dutch_df = pd.read_csv(file_path)
+    else:
+        # Load ARFF format (original)
+        data = arff.loadarff(file_path)
+        dutch_df = pd.DataFrame(data[0]).astype("int32")
+
+    # Process columns if they don't already exist
+    if "sex_binary" not in dutch_df.columns:
+        dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
+        del dutch_df["sex"]
+
+    if "occupation_binary" not in dutch_df.columns:
+        dutch_df["occupation_binary"] = np.where(dutch_df["occupation"] >= 300, 1, 0)
+        del dutch_df["occupation"]
 
     dutch_df_feature_columns = [
         "age",

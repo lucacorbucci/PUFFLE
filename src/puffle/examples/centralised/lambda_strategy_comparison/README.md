@@ -8,134 +8,140 @@ This experiment compares three lambda update strategies under distribution shift
 
 ## Experiment Design
 
-### Distribution Shift Scenario
+### Distribution Shift Using Pre-Generated Datasets
 
-- **Training**: 20 epochs total
-- **Distribution Shift**: Injected at epoch 10
-- **Shift Type**: Increase bias (makes sensitive attribute more predictive of label)
-- **Shift Magnitude**: 0.3 (30% of training data affected)
+Instead of injecting shifts at runtime, this experiment uses **pre-generated CSV datasets** for maximum control and reproducibility.
 
-### Metrics Tracked
+**Workflow:**
+1. Generate shifted datasets using `generate_shifted_datasets.py`
+2. Train on original dataset for N epochs
+3. Switch to shifted dataset and continue training
+4. Compare how each strategy adapts
 
-- Lambda trajectory over time
-- Adaptation speed after distribution shift
-- Steady-state error
-- Fairness-accuracy tradeoff
-- Overshoot and oscillation
+## Step 1: Generate Shifted Datasets
 
-## Running the Experiment
-
-### Option 1: Hyperparameter Tuning (Recommended)
-
-Run WandB sweeps to find optimal hyperparameters for each strategy:
+First, create datasets with distribution shifts:
 
 ```bash
-# Momentum strategy
+cd src/puffle/examples
+
+# Generate dataset with increased bias
+uv run python generate_shifted_datasets.py \
+  --input_path ../data/dutch/ \
+  --output_path ../data/dutch_shifted/ \
+  --shift_type increase_bias \
+  --shift_magnitude 0.3 \
+  --seed 42
+```
+
+This creates:
+- `dutch_shifted/dutch_census_2001_original.csv` - Copy of original
+- `dutch_shifted/dutch_census_2001_shifted_increase_bias_0.3.csv` - Shifted version
+- `dutch_shifted/shift_metadata_increase_bias_0.3.json` - Metrics and metadata
+
+**Shift Types:**
+- `increase_bias` - Makes sensitive attribute more predictive of label
+- `decrease_bias` - Makes sensitive attribute less predictive
+- `flip_labels` - Flips labels to create accuracy drop
+- `class_imbalance` - Creates class imbalance
+
+## Step 2: Run Experiments
+
+### Option 1: Quick Test
+
+```bash
 cd src/puffle/examples/centralised/lambda_strategy_comparison
+
+# Test gradient strategy with distribution shift
+uv run python main.py \
+  --lr 0.05 \
+  --epochs_before_shift 10 \
+  --epochs_after_shift 10 \
+  --batch_size 732 \
+  --optimizer adam \
+  --project_name LambdaStrategyTest \
+  --run_name "gradient_with_shift" \
+  --target 0.05 \
+  --lambda_update_strategy gradient \
+  --alpha 0.01 \
+  --csv_path_before ../../data/dutch_shifted/ \
+  --csv_path_after ../../data/dutch_shifted/ \
+  --dataset_name_before dutch_census_2001_original.csv \
+  --dataset_name_after dutch_census_2001_shifted_increase_bias_0.3.csv
+```
+
+### Option 2: Hyperparameter Tuning
+
+Update the YAML files with your dataset paths, then run:
+
+```bash
 wandb sweep momentum_strategy.yaml
 wandb agent <sweep-id>
-
-# Gradient strategy
-wandb sweep gradient_strategy.yaml
-wandb agent <sweep-id>
-
-# PID strategy
-wandb sweep pid_strategy.yaml
-wandb agent <sweep-id>
-```
-
-### Option 2: Quick Test with Default Parameters
-
-```bash
-# Test momentum strategy
-uv run python main.py \
-  --lr 0.05 \
-  --epochs 20 \
-  --batch_size 732 \
-  --optimizer adam \
-  --project_name LambdaStrategyTest \
-  --target 0.05 \
-  --lambda_update_strategy momentum \
-  --momentum 0.9 \
-  --alpha 0.5 \
-  --shift_epoch 10 \
-  --shift_type increase_bias \
-  --shift_magnitude 0.3 \
-  --csv_path ../../data/dutch/
-
-# Test gradient strategy
-uv run python main.py \
-  --lr 0.05 \
-  --epochs 20 \
-  --batch_size 732 \
-  --optimizer adam \
-  --project_name LambdaStrategyTest \
-  --target 0.05 \
-  --lambda_update_strategy gradient \
-  --alpha 0.01 \
-  --shift_epoch 10 \
-  --shift_type increase_bias \
-  --shift_magnitude 0.3 \
-  --csv_path ../../data/dutch/
-
-# Test PID strategy
-uv run python main.py \
-  --lr 0.05 \
-  --epochs 20 \
-  --batch_size 732 \
-  --optimizer adam \
-  --project_name LambdaStrategyTest \
-  --target 0.05 \
-  --lambda_update_strategy pid \
-  --lambda_kp 0.01 \
-  --lambda_ki 0.001 \
-  --lambda_kd 0.005 \
-  --shift_epoch 10 \
-  --shift_type increase_bias \
-  --shift_magnitude 0.3 \
-  --csv_path ../../data/dutch/
-```
-
-### Option 3: No Distribution Shift (Baseline)
-
-Omit `--shift_epoch` to run without distribution shift:
-
-```bash
-uv run python main.py \
-  --lr 0.05 \
-  --epochs 20 \
-  --batch_size 732 \
-  --optimizer adam \
-  --project_name LambdaStrategyBaseline \
-  --target 0.05 \
-  --lambda_update_strategy gradient \
-  --alpha 0.01 \
-  --csv_path ../../data/dutch/
 ```
 
 ## Configuration Files
 
-### momentum_strategy.yaml
+The YAML files need to be updated with your specific dataset paths. Example:
 
-Tunes:
-- `momentum` (0.1 to 0.99)
-- `alpha` (0.001 to 2.0)
-- `weight_decay_alpha` (0.5 to 0.99)
-- Plus standard training hyperparameters
+```yaml
+command:
+  - ${env}
+  - uv 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --project_name 
+  - LambdaStrategyComparison
+  - --target
+  - "0.05"
+  - --epochs_before_shift
+  - "10"
+  - --epochs_after_shift
+  - "10"
+  - --lambda_update_strategy
+  - gradient
+  - --csv_path_before
+  - ../../data/dutch_shifted/
+  - --csv_path_after
+  - ../../data/dutch_shifted/
+  - --dataset_name_before
+  - dutch_census_2001_original.csv
+  - --dataset_name_after
+  - dutch_census_2001_shifted_increase_bias_0.3.csv
+```
 
-### gradient_strategy.yaml
+## Command Line Arguments
 
-Tunes:
-- `alpha` (0.001 to 2.0)
-- Plus standard training hyperparameters
+### Required Arguments
 
-### pid_strategy.yaml
+- `--lr` - Learning rate
+- `--epochs_before_shift` - Epochs on original dataset
+- `--epochs_after_shift` - Epochs on shifted dataset
+- `--batch_size` - Batch size
+- `--optimizer` - Optimizer (adam/sgd)
+- `--project_name` - WandB project name
+- `--target` - Target unfairness value
+- `--lambda_update_strategy` - Strategy (momentum/gradient/pid)
+- `--csv_path_before` - Path to original dataset directory
+- `--csv_path_after` - Path to shifted dataset directory (optional, omit for no shift)
+- `--dataset_name_before` - Filename of original dataset
+- `--dataset_name_after` - Filename of shifted dataset (optional)
 
-Tunes:
-- `lambda_kp` (0.001 to 0.1) - Proportional gain
-- `lambda_ki` (0.0001 to 0.01) - Integral gain
-- `lambda_kd` (0.001 to 0.05) - Derivative gain
-- Plus standard training hyperparameters
+### Strategy-Specific Parameters
+
+**Momentum:**
+- `--momentum` (default: 0.9)
+- `--alpha` (default: 0.01)
+- `--weight_decay_alpha` (default: 0.99)
+
+**Gradient:**
+- `--alpha` (default: 0.01)
+
+**PID:**
+- `--lambda_kp` (default: 0.01) - Proportional gain
+- `--lambda_ki` (default: 0.001) - Integral gain
+- `--lambda_kd` (default: 0.005) - Derivative gain
 
 ## Expected Results
 
@@ -158,7 +164,7 @@ Tunes:
 
 1. **Lambda Trajectory**: Plot `lambda_regularization` over epochs
    - Look for smoothness, overshoot, oscillations
-   - Mark epoch 10 (distribution shift point)
+   - Mark the shift point (end of `epochs_before_shift`)
 
 2. **Adaptation Metrics**:
    - Time to re-converge after shift
@@ -168,23 +174,6 @@ Tunes:
 3. **Fairness-Accuracy Tradeoff**:
    - Plot test accuracy vs test disparity
    - Compare Pareto frontiers across strategies
-
-4. **Statistical Comparison**:
-   - Run multiple seeds for each strategy
-   - Compare mean ± std for key metrics
-
-## Distribution Shift Types
-
-You can experiment with different shift types:
-
-- `increase_bias`: Makes sensitive attribute more predictive (default)
-- `decrease_bias`: Makes sensitive attribute less predictive
-- `flip_labels`: Flips labels to create sudden accuracy drop
-
-Example:
-```bash
---shift_type decrease_bias --shift_magnitude 0.5
-```
 
 ## For Research Paper
 
