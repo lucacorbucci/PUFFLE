@@ -18,7 +18,11 @@ warnings.filterwarnings("ignore")
 
 
 def setup_wandb(project_name: str, run_name: str | None):
-    return wandb.init(project=project_name, name=run_name) if run_name else wandb.init(project=project_name)
+    return (
+        wandb.init(project=project_name, name=run_name)
+        if run_name
+        else wandb.init(project=project_name)
+    )
 
 
 def check_input(args):
@@ -42,7 +46,9 @@ def check_input(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run Puffle with specified configuration.")
+    parser = argparse.ArgumentParser(
+        description="Run Puffle with specified configuration."
+    )
 
     # privacy parameters
     parser.add_argument("--epsilon", type=str, default=None)
@@ -140,7 +146,7 @@ if __name__ == "__main__":
         else optim.Adam(model.parameters(), lr=lr)
     )
 
-    model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(
+    model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(  # type: ignore
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
@@ -154,15 +160,19 @@ if __name__ == "__main__":
     puffle_model = PUFFLEModel(
         model=model_gc,
         optimizer=optimizer_gc,
-        criterion=criterion_gc,
-        device=torch.device("cpu") if not torch.cuda.is_available() else torch.device("cuda"),
+        criterion=criterion_gc,  # type: ignore
+        device=torch.device("cpu")
+        if not torch.cuda.is_available()
+        else torch.device("cuda"),
         lambda_regularization=args.regularization_lambda,
         wandb_run=wandb_run,
         target=args.target,
         tunable_lambda=args.regularization_mode == "tunable",
-        momentum=args.momentum if args.momentum is not None else None,
-        alpha=args.alpha if args.alpha is not None else None,
-        weight_decay_alpha=args.weight_decay_alpha if args.weight_decay_alpha is not None else None,
+        momentum=args.momentum if args.momentum is not None else 0.9,
+        alpha=args.alpha if args.alpha is not None else 0.01,
+        weight_decay_alpha=args.weight_decay_alpha
+        if args.weight_decay_alpha is not None
+        else 0.99,
     )
 
     puffle_model.train(

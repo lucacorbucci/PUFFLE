@@ -9,6 +9,7 @@ import torch
 def seed_everything(seed):
     torch.manual_seed(seed)
     random.seed(seed)
+    # np.random.seed(seed) is legacy, but used for global state here
     np.random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     if torch.cuda.is_available():

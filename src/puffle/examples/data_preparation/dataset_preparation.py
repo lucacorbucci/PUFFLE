@@ -1,3 +1,6 @@
+# ABOUTME: Utility functions for loading and preparing CelebA and Dutch Census datasets.
+# ABOUTME: Handles data splitting, normalization, and sensitive attribute processing.
+
 import random
 
 import numpy as np
@@ -13,23 +16,24 @@ from puffle.examples.data_preparation.celeba import CelebaDataset
 def prepare_celeba_centralised(
     debug: bool = True,
     train_csv: str = "train.csv",
-    base_path: str = "../../data/celeba",
+    base_path: str = "./data",
     sweep: bool = False,
     validation_seed: int = 42,
     seed: int = 490,
-) -> tuple[CelebaDataset, CelebaDataset]:
+) -> tuple[CelebaDataset, CelebaDataset, CelebaDataset]:
     """
-    This function downloads the celeba dataset.
+    Download and prepare the CelebA dataset.
 
     Args:
-        train_csv (str): name of the train_csv
-        test_csv (str): name of the test csv
-        base_path (str, optional): base path where the dataset is stored.
-        Defaults to "/mnt/NAS/user/luca.corbucci/data/celeba".
+        debug (bool): Whether to run in debug mode. Defaults to True.
+        train_csv (str): Filename of the training CSV. Defaults to "train.csv".
+        base_path (str, optional): Base path where the dataset is stored.
+        sweep (bool): Whether to perform a hyperparameter sweep split. Defaults to False.
+        validation_seed (int): Seed for validation split. Defaults to 42.
+        seed (int): Global random seed. Defaults to 490.
 
     Returns:
-        Tuple[torchvision.datasets.MNIST, torchvision.datasets.MNIST]:
-        the train and test dataset
+        tuple: (train_dataset, test_dataset, val_dataset)
 
     """
     transform = transforms.Compose(
@@ -113,8 +117,8 @@ class TabularDataset(Dataset):
 
 
 def prepare_dutch(base_path, sweep, validation_seed=None):
-    tmp = load_dutch(dataset_path=base_path)
-    tmp = dataset_to_numpy(*tmp, num_sensitive_features=1)
+    df, cols, meta = load_dutch(dataset_path=base_path)
+    tmp = dataset_to_numpy(df, cols, meta, num_sensitive_features=1)
 
     x = tmp[0]
     y = tmp[2]
@@ -135,7 +139,12 @@ def prepare_dutch(base_path, sweep, validation_seed=None):
     if sweep:
         random.seed(validation_seed)
         # shuffle the data
-        x_train, y_train, z_train = zip(*random.sample(list(zip(x_train, y_train, z_train, strict=False)), len(x_train)), strict=False)
+        x_train, y_train, z_train = zip(
+            *random.sample(
+                list(zip(x_train, y_train, z_train, strict=False)), len(x_train)
+            ),
+            strict=False,
+        )
 
         val_size = int(len(x_train) * 0.2)
 
@@ -212,45 +221,52 @@ def dataset_to_numpy(
     _feature_cols: list,
     _metadata: dict,
     num_sensitive_features: int = 1,
+    *,
     sensitive_features_last: bool = True,
 ):
     """
+    Convert a dataframe to numpy arrays for features, sensitive attributes, and targets.
+
     Args:
-    _df: pandas dataframe
-    _feature_cols: list of feature column names
-    _metadata: dictionary with metadata
-    num_sensitive_features: number of sensitive features to use
-    sensitive_features_last: if True, then sensitive features are encoded as last columns
+        _df (pd.DataFrame): Input dataframe.
+        _feature_cols (list): List of feature column names.
+        _metadata (dict): Metadata containing protected attribute information.
+        num_sensitive_features (int): Number of sensitive features to extract.
+        sensitive_features_last (bool, optional): Whether to place sensitive features last. Defaults to True.
 
     """
     # transform features to 1-hot
-    _X = _df[_feature_cols]
+    x_raw = _df[_feature_cols]
     # take sensitive features separately
-    num_sensitive_features = min(num_sensitive_features, len(_metadata["protected_atts"]))
-    _Z = _X[_metadata["protected_atts"][:num_sensitive_features]]
-    _X = _X.drop(columns=_metadata["protected_atts"][:num_sensitive_features])
+    num_sensitive_features = min(
+        num_sensitive_features, len(_metadata["protected_atts"])
+    )
+    z_raw = x_raw[_metadata["protected_atts"][:num_sensitive_features]]
+    x_raw = x_raw.drop(columns=_metadata["protected_atts"][:num_sensitive_features])
     # 1-hot encode and scale features
     dummy_cols = _metadata.get("dummy_cols")
-    _X2 = pd.get_dummies(_X, columns=dummy_cols, drop_first=False)
+    x_dummies = pd.get_dummies(x_raw, columns=dummy_cols, drop_first=False)
     esc = MinMaxScaler()
-    _X = esc.fit_transform(_X2)
+    x_scaled = esc.fit_transform(x_dummies)
 
     # current implementation assumes each sensitive feature is binary
-    for i, tmp in enumerate(_metadata["protected_atts"][:num_sensitive_features]):
-        if len(_Z[tmp].unique()) != 2:
+    for _i, tmp in enumerate(_metadata["protected_atts"][:num_sensitive_features]):
+        if len(z_raw[tmp].unique()) != 2:
             msg = "Sensitive feature is not binary!"
             raise ValueError(msg)
 
-    # 1-hot sensitive features, (optionally) swap ordering so privileged class feature == 1 is always last, preceded by the corresponding unprivileged feature
-    _Z2 = pd.get_dummies(_Z, columns=_Z.columns, drop_first=False)
+    # 1-hot sensitive features, (optionally) swap ordering
+    z_dummies = pd.get_dummies(z_raw, columns=z_raw.columns, drop_first=False)
     if sensitive_features_last:
-        for i, tmp in enumerate(_Z.columns):
-            if _metadata["protected_att_values"][i] not in _Z[tmp].unique():
+        for i, tmp in enumerate(z_raw.columns):
+            if _metadata["protected_att_values"][i] not in z_raw[tmp].unique():
                 msg = "Protected attribute value not found in data!"
                 raise ValueError(msg)
             if not np.allclose(float(_metadata["protected_att_values"][i]), 0):
                 # swap columns
-                _Z2.iloc[:, [2 * i, 2 * i + 1]] = _Z2.iloc[:, [2 * i + 1, 2 * i]]
+                z_dummies.iloc[:, [2 * i, 2 * i + 1]] = z_dummies.iloc[
+                    :, [2 * i + 1, 2 * i]
+                ]
     # change booleans to floats
-    _y = _df[_metadata["target_variable"]].values
-    return _X, np.array([sv[0] for sv in _Z.values]), _y
+    y_values = _df[_metadata["target_variable"]].to_numpy()
+    return x_scaled, np.array([sv[0] for sv in z_raw.to_numpy()]), y_values

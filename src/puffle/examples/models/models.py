@@ -15,13 +15,13 @@ class LinearClassificationNet(nn.Module):
 
 
 class CNN(nn.Module):
-    """This class defines the CNN."""
+    """Define the CNN."""
 
     def __init__(
         self,
         in_channels: int = 3,
-        num_classes: int = 2,
-        dropout_rate: float = 0,
+        _num_classes: int = 2,
+        _dropout_rate: float = 0,
     ) -> None:
         """
         Initializes the CNN network.
