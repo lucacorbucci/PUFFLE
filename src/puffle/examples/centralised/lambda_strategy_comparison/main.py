@@ -17,9 +17,12 @@ from torch import nn, optim
 from puffle.examples.data_preparation.dataset_preparation import prepare_dutch
 from puffle.examples.models.models import LinearClassificationNet
 from puffle.examples.utils.utils import seed_everything
-from puffle.PUFFLEModel.puffle_model import PUFFLEModel
+from puffle.PUFFLEModel.puffle_model import (
+    PUFFLEModel,
+)
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
+from puffle.Utils.config import PUFFLEConfig
 
 warnings.filterwarnings("ignore")
 
@@ -223,7 +226,7 @@ if __name__ == "__main__":
         else optim.Adam(model.parameters(), lr=lr)
     )
 
-    model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(
+    model_gc, optimizer_gc, criterion_gc, train_loader_gc = privacy_engine.make_private(  # type: ignore
         module=model,
         optimizer=optimizer,
         data_loader=train_loader,
@@ -237,21 +240,23 @@ if __name__ == "__main__":
     puffle_model = PUFFLEModel(
         model=model_gc,
         optimizer=optimizer_gc,
-        criterion=criterion_gc,
+        criterion=criterion_gc,  # type: ignore
         device=torch.device("cpu")
         if not torch.cuda.is_available()
         else torch.device("cuda"),
-        lambda_regularization=args.regularization_lambda,
         wandb_run=wandb_run,
-        target=args.target,
-        tunable_lambda=True,
-        lambda_update_strategy=args.lambda_update_strategy,
-        momentum=args.momentum,
-        alpha=args.alpha,
-        weight_decay_alpha=args.weight_decay_alpha,
-        lambda_kp=args.lambda_kp,
-        lambda_ki=args.lambda_ki,
-        lambda_kd=args.lambda_kd,
+        config=PUFFLEConfig(
+            lambda_regularization=args.regularization_lambda,
+            target=args.target,
+            tunable_lambda=True,
+            lambda_update_strategy=args.lambda_update_strategy,
+            momentum=args.momentum,
+            alpha=args.alpha,
+            weight_decay_alpha=args.weight_decay_alpha,
+            lambda_kp=args.lambda_kp,
+            lambda_ki=args.lambda_ki,
+            lambda_kd=args.lambda_kd,
+        ),
     )
 
     # Train on original dataset
@@ -320,7 +325,7 @@ if __name__ == "__main__":
             val_loader_shifted = None
 
         # Make shifted loader private
-        _, _, _, train_loader_shifted_gc = privacy_engine.make_private(
+        _, _, _, train_loader_shifted_gc = privacy_engine.make_private(  # type: ignore
             module=model_gc,
             optimizer=optimizer_gc,
             data_loader=train_loader_shifted,

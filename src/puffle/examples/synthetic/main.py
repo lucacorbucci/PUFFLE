@@ -13,6 +13,8 @@ from puffle.examples.synthetic.synthetic_dataset import (
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
+from puffle.Utils.config import PUFFLEConfig
+from puffle.Utils.modes import MetricMode
 
 
 def train_example():
@@ -58,15 +60,15 @@ def train_example():
         model=model_std,
         optimizer=optimizer_std,
         criterion=StandardLoss(),
-        lambda_regularization=0.0,
+        config=PUFFLEConfig(lambda_regularization=0.0),
     )
 
     std_metrics = puffle_std.train(
         train_loader, epochs=10, val_loader=val_loader, verbose=False
     )
 
-    final_acc_std = std_metrics["val_accuracy"][-1]
-    final_disp_std = std_metrics["val_disparity"][-1]
+    final_acc_std = std_metrics[f"{MetricMode.VALIDATION}_accuracy"][-1]
+    final_disp_std = std_metrics[f"{MetricMode.VALIDATION}_disparity"][-1]
     print(
         f"Standard Model - Accuracy: {final_acc_std:.4f}, Disparity: {final_disp_std:.4f}"
     )
@@ -87,8 +89,10 @@ def train_example():
         model=model_fair,
         optimizer=optimizer_fair,
         criterion=fair_criterion,
-        lambda_regularization=0.8,
-        tunable_lambda=False,
+        config=PUFFLEConfig(
+            lambda_regularization=0.8,
+            tunable_lambda=False,
+        ),
     )
 
     fair_metrics = puffle_fair.train(
@@ -98,8 +102,8 @@ def train_example():
         verbose=False,
     )
 
-    final_acc_fair = fair_metrics["val_accuracy"][-1]
-    final_disp_fair = fair_metrics["val_disparity"][-1]
+    final_acc_fair = fair_metrics[f"{MetricMode.VALIDATION}_accuracy"][-1]
+    final_disp_fair = fair_metrics[f"{MetricMode.VALIDATION}_disparity"][-1]
     print(
         f"Fair Model     - Accuracy: {final_acc_fair:.4f}, Disparity: {final_disp_fair:.4f}"
     )

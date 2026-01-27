@@ -1,10 +1,12 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
+
+from puffle.Regularization.base_fairness_loss import BaseFairnessLoss
+from puffle.Utils.constants import DEFAULT_ESTIMATION
+from puffle.Utils.tensor_utils import ensure_tensor
 
 
-class DisparityRegularizationLoss(nn.Module):
+class DisparityRegularizationLoss(BaseFairnessLoss):
     """
     Defines the regularization loss as proposed in
     https://arxiv.org/abs/2302.09183.
@@ -14,11 +16,14 @@ class DisparityRegularizationLoss(nn.Module):
     """
 
     def __init__(
-        self, _weight=None, *, _size_average: bool = True, estimation: float = 0.5
+        self,
+        _weight=None,
+        *,
+        _size_average: bool = True,
+        estimation: float = DEFAULT_ESTIMATION,
     ) -> None:
         """Initialization of the regularization loss."""
-        super().__init__()
-        self.estimation = estimation
+        super().__init__(estimation=estimation)
 
     def forward(
         self,
@@ -100,10 +105,9 @@ class DisparityRegularizationLoss(nn.Module):
     ):
         """Prepare data for disparity computation."""
         softmax_ = F.softmax(predictions, dim=1)
-        # convert the list of sensitive attributes to a tensor and move it to the device
-        sensitive_attribute_list = torch.tensor(
-            [int(item) for item in sensitive_attribute_list]
-        ).to(device)
+        sensitive_attribute_list = self._prepare_sensitive_attributes(
+            sensitive_attribute_list, device
+        )
 
         # We compute the argmax of the predictions
         predictions_argmax = torch.argmax(predictions.detach().clone(), dim=1).to(
@@ -196,32 +200,17 @@ class DisparityRegularizationLoss(nn.Module):
 
         if average_probabilities and average_probabilities.get(prob_key) is not None:
             if is_z_zero:
-                return torch.abs(
+                return abs(
                     average_probabilities[prob_key]
                     - known_numerator / known_denominator
                 )
-            return torch.abs(
+            return abs(
                 (known_numerator / known_denominator) - average_probabilities[prob_key]
             )
 
         # Default fallback: return 0 if no estimation available
         val = known_numerator / known_denominator
         return torch.abs(val) - torch.abs(val)
-
-    def _apply_fairness_mask(self, fairness_violations, device):
-        """Apply max violation mask for gradient routing."""
-        fairness_violations_ = [
-            item.item() if isinstance(item, torch.Tensor) else item
-            for item in fairness_violations
-        ]
-
-        index = fairness_violations_.index(max(fairness_violations_))
-        fairness_violations = torch.stack(fairness_violations)
-        mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(
-            device
-        )
-        mask[index] = 1
-        return torch.sum(mask.to(device) * fairness_violations.to(device))
 
     def _update_global_counters(self, global_counters, json_file):
         """Update global counters based on json_file info."""
@@ -410,14 +399,12 @@ class DisparityRegularizationLoss(nn.Module):
         )
 
         if z_eq_z == 0 and z_not_eq_z != 0:
-            return np.abs(y_eq_k_and_z_not_eq_z / z_not_eq_z).item()
+            return abs(y_eq_k_and_z_not_eq_z / z_not_eq_z)
         if z_eq_z != 0 and z_not_eq_z == 0:
-            return np.abs(y_eq_k_and_z_eq_z / z_eq_z).item()
+            return abs(y_eq_k_and_z_eq_z / z_eq_z)
         if z_eq_z == 0 and z_not_eq_z == 0:
-            return 0
-        return np.abs(
-            y_eq_k_and_z_eq_z / z_eq_z - y_eq_k_and_z_not_eq_z / z_not_eq_z
-        ).item()
+            return 0.0
+        return abs(y_eq_k_and_z_eq_z / z_eq_z - y_eq_k_and_z_not_eq_z / z_not_eq_z)
 
     @staticmethod
     def compute_probabilities(
@@ -451,10 +438,7 @@ class DisparityRegularizationLoss(nn.Module):
             device
         )
 
-        sensitive_attribute_list = torch.tensor(
-            [int(item) for item in sensitive_attribute_list]
-        )
-        sensitive_attribute_list = sensitive_attribute_list.to(device)
+        sensitive_attribute_list = ensure_tensor(sensitive_attribute_list, device)
 
         probabilities = {}
         counters = {}

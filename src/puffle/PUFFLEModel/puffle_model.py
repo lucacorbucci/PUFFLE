@@ -1,4 +1,8 @@
-from typing import NamedTuple
+# ABOUTME: Core PUFFLE model class for fairness-aware training.
+# ABOUTME: Implements the training loop, metrics computation, and lambda updates.
+
+from contextlib import contextmanager
+from typing import Any, NamedTuple
 
 import numpy as np
 import torch
@@ -8,8 +12,13 @@ from sklearn.metrics import f1_score
 from torch import nn
 from torch.utils.data import DataLoader
 
-from puffle.Utils.lambda_updater import LambdaUpdater, LambdaUpdateStrategy
+from puffle.Utils.config import PUFFLEConfig
+from puffle.Utils.fairness_metrics import FairnessMetrics
+from puffle.Utils.lambda_updater import LambdaUpdater
 from puffle.Utils.metric import compute_demographic_disparity
+from puffle.Utils.modes import MetricMode
+from puffle.Utils.tensor_utils import ensure_tensor
+from puffle.Utils.types import DeviceType, MetricsDict
 
 
 class TrainingBatchResult(NamedTuple):
@@ -23,21 +32,21 @@ class TrainingBatchResult(NamedTuple):
 
 
 class PUFFLEModel:
-    def _initialize_metrics_dict(self) -> dict[str, list]:
+    def _initialize_metrics_dict(self) -> MetricsDict:
         """Initialize tracking metrics dictionary."""
         return {
-            "train_loss": [],
-            "train_accuracy": [],
-            "train_f1": [],
-            "train_disparity": [],
-            "val_loss": [],
-            "val_accuracy": [],
-            "val_f1": [],
-            "val_disparity": [],
-            "test_loss": [],
-            "test_accuracy": [],
-            "test_f1": [],
-            "test_disparity": [],
+            f"{MetricMode.TRAIN.value}_loss": [],
+            f"{MetricMode.TRAIN.value}_accuracy": [],
+            f"{MetricMode.TRAIN.value}_f1": [],
+            f"{MetricMode.TRAIN.value}_disparity": [],
+            f"{MetricMode.VALIDATION.value}_loss": [],
+            f"{MetricMode.VALIDATION.value}_accuracy": [],
+            f"{MetricMode.VALIDATION.value}_f1": [],
+            f"{MetricMode.VALIDATION.value}_disparity": [],
+            f"{MetricMode.TEST.value}_loss": [],
+            f"{MetricMode.TEST.value}_accuracy": [],
+            f"{MetricMode.TEST.value}_f1": [],
+            f"{MetricMode.TEST.value}_disparity": [],
         }
 
     def __init__(
@@ -45,21 +54,9 @@ class PUFFLEModel:
         model: nn.Module,
         optimizer: torch.optim.Optimizer | None = None,
         criterion: nn.Module | None = None,
-        device: torch.device | str = "cpu",
-        lambda_regularization: float = 0.0,
-        wandb_run=None,
-        target: float | None = None,
-        momentum: float = 0.9,
-        alpha: float = 0.01,
-        weight_decay_alpha: float = 0.99,
-        *,
-        tunable_lambda: bool = False,
-        lambda_update_strategy: LambdaUpdateStrategy
-        | str = LambdaUpdateStrategy.GRADIENT,
-        # PID-specific parameters (only used if strategy is PID)
-        lambda_kp: float = 0.01,
-        lambda_ki: float = 0.001,
-        lambda_kd: float = 0.005,
+        device: DeviceType = "cpu",
+        wandb_run: Any | None = None,
+        config: PUFFLEConfig | None = None,
     ) -> None:
         """
         Initialization of the PUFFLE model.
@@ -69,48 +66,58 @@ class PUFFLEModel:
             optimizer (torch.optim.Optimizer, optional): The optimizer to be used. Defaults to None.
             criterion (nn.Module, optional): The criterion to be used. Defaults to None.
             device (torch.device | str, optional): The device. Defaults to "cpu".
-            lambda_regularization (float, optional): The lambda regularization parameter. Defaults to 0.0.
             wandb_run (Any, optional): WandB run for logging. Defaults to None.
-            target (float, optional): Target for tunable lambda. Defaults to None.
-            momentum (float, optional): Momentum for tunable lambda (momentum strategy). Defaults to 0.9.
-            alpha (float, optional): Alpha parameter for tunable lambda (gradient/momentum). Defaults to 0.01.
-            weight_decay_alpha (float, optional): Weight decay for alpha. Defaults to 0.99.
-            tunable_lambda (bool): Whether to use a tunable lambda.
-            lambda_update_strategy (LambdaUpdateStrategy | str): Strategy for lambda updates.
-                Options: "momentum", "gradient", "pid". Defaults to "gradient".
-            lambda_kp (float): Proportional gain for PID controller. Defaults to 0.01.
-            lambda_ki (float): Integral gain for PID controller. Defaults to 0.001.
-            lambda_kd (float): Derivative gain for PID controller. Defaults to 0.005.
+            config (PUFFLEConfig, optional): Configuration for hyperparameters. Defaults to None (uses defaults).
 
         """
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
         self.device = torch.device(device)
-        self.lambda_regularization = lambda_regularization
         self.wandb_run = wandb_run
-        self.target = target
-        self.momentum = momentum
-        self.alpha = alpha
-        self.weight_decay_alpha = weight_decay_alpha
-        self.tunable_lambda = tunable_lambda
-        self.fairness_weight = (
-            lambda_regularization  # For backward compatibility if needed
-        )
-        self.fairness_regularizer = True if lambda_regularization > 0 else None
 
-        # Initialize lambda updater with selected strategy
-        if isinstance(lambda_update_strategy, str):
-            lambda_update_strategy = LambdaUpdateStrategy(lambda_update_strategy)
+        # Initialize config
+        self.config = config or PUFFLEConfig()
+
+        # Initialize internal state from config
+        self.lambda_regularization = self.config.lambda_regularization
+        self.target = self.config.target
+        self.momentum = self.config.momentum
+        self.alpha = self.config.alpha
+        self.weight_decay_alpha = self.config.weight_decay_alpha
+        self.tunable_lambda = self.config.tunable_lambda
 
         self.lambda_updater = LambdaUpdater(
-            strategy=lambda_update_strategy,
-            alpha=alpha,
-            momentum=momentum,
-            kp=lambda_kp,
-            ki=lambda_ki,
-            kd=lambda_kd,
+            strategy=self.config.lambda_update_strategy,
+            alpha=self.alpha,
+            momentum=self.momentum,
+            kp=self.config.lambda_kp,
+            ki=self.config.lambda_ki,
+            kd=self.config.lambda_kd,
         )
+
+    @contextmanager
+    def evaluation_mode(self):
+        """Context manager to set model to evaluation mode and disable gradients."""
+        was_training = self.model.training
+        self.model.eval()
+        try:
+            with torch.no_grad():
+                yield
+        finally:
+            if was_training:
+                self.model.train()
+
+    @property
+    def fairness_regularizer(self) -> bool | None:
+        """
+        Check if fairness regularization is active.
+
+        Returns:
+            bool | None: True if lambda_regularization > 0, else None.
+
+        """
+        return True if self.lambda_regularization > 0 else None
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -123,9 +130,8 @@ class PUFFLEModel:
             torch.Tensor: The predicted classes.
 
         """
-        self.model.eval()
         self.model = self.model.to(self.device)
-        with torch.no_grad():
+        with self.evaluation_mode():
             outputs = self.model(x.to(self.device))
             _, predicted = torch.max(outputs.data, 1)
         return predicted.cpu()
@@ -141,8 +147,7 @@ class PUFFLEModel:
             torch.Tensor: The predicted probabilities.
 
         """
-        self.model.eval()
-        with torch.no_grad():
+        with self.evaluation_mode():
             outputs = self.model(x.to(self.device))
             probs = F.softmax(outputs, dim=1)
         return probs.cpu()
@@ -276,9 +281,9 @@ class PUFFLEModel:
             )
 
             # Store and log training metrics
-            self._update_metrics_dict(metrics, "train", train_metrics)
+            self._update_metrics_dict(metrics, MetricMode.TRAIN, train_metrics)
             statistics.append(train_metrics.get("statistics", {}))
-            self._log_wandb_epoch(train_metrics, epoch, mode="train")
+            self._log_wandb_epoch(train_metrics, epoch, mode=MetricMode.TRAIN)
 
             # Validation and Testing
             self._validate_and_test_epoch(
@@ -287,25 +292,35 @@ class PUFFLEModel:
 
         return metrics, statistics
 
-    def _update_metrics_dict(self, metrics: dict, prefix: str, epoch_metrics: dict):
+    def _update_metrics_dict(
+        self,
+        metrics: dict,
+        prefix: str | MetricMode,
+        epoch_metrics: FairnessMetrics | dict,
+    ):
         """Update metrics dictionary with epoch results."""
+        # Ensure prefix is string
+        prefix_str = prefix.value if isinstance(prefix, MetricMode) else prefix
         for key in ["loss", "accuracy", "f1", "disparity"]:
-            metrics[f"{prefix}_{key}"].append(epoch_metrics[key])
+            metrics[f"{prefix_str}_{key}"].append(epoch_metrics[key])
 
-    def _log_wandb_epoch(self, epoch_metrics: dict, epoch: int, mode: str = "train"):
+    def _log_wandb_epoch(
+        self, epoch_metrics: dict, epoch: int, mode: MetricMode = MetricMode.TRAIN
+    ):
         """Log epoch metrics to WandB."""
         if not self.wandb_run:
             return
 
+        prefix = mode.value
         log_data = {
-            f"{mode}_loss": epoch_metrics["loss"],
-            f"{mode}_accuracy": epoch_metrics["accuracy"],
-            f"{mode}_f1": epoch_metrics["f1"],
-            f"{mode}_disparity": epoch_metrics["disparity"],
+            f"{prefix}_loss": epoch_metrics["loss"],
+            f"{prefix}_accuracy": epoch_metrics["accuracy"],
+            f"{prefix}_f1": epoch_metrics["f1"],
+            f"{prefix}_disparity": epoch_metrics["disparity"],
             "epoch": epoch + 1,
         }
 
-        if mode == "val" and self.target:
+        if mode == MetricMode.VALIDATION and self.target:
             distance = self.target - epoch_metrics["disparity"]
             penalty = 0 if distance > 0 else -1e10
             log_data["Custom_metric"] = epoch_metrics["accuracy"] + penalty
@@ -318,20 +333,20 @@ class PUFFLEModel:
         """Perform validation and testing for the current epoch."""
         if val_loader:
             val_metrics = self.evaluate(val_loader)
-            self._update_metrics_dict(metrics, "val", val_metrics)
-            self._log_wandb_epoch(val_metrics, epoch, mode="val")
+            self._update_metrics_dict(metrics, MetricMode.VALIDATION, val_metrics)
+            self._log_wandb_epoch(val_metrics, epoch, mode=MetricMode.VALIDATION)
 
             if verbose:
                 print(
                     f"Epoch {epoch + 1}/{epochs} - "
-                    f"Train loss: {metrics['train_loss'][-1]:.4f}, "
+                    f"Train loss: {metrics[f'{MetricMode.TRAIN.value}_loss'][-1]:.4f}, "
                     f"Val loss: {val_metrics['loss']:.4f}"
                 )
 
         if test_loader:
             test_metrics = self.evaluate(test_loader)
-            self._update_metrics_dict(metrics, "test", test_metrics)
-            self._log_wandb_epoch(test_metrics, epoch, mode="test")
+            self._update_metrics_dict(metrics, MetricMode.TEST, test_metrics)
+            self._log_wandb_epoch(test_metrics, epoch, mode=MetricMode.TEST)
 
     def _train_one_epoch(
         self,
@@ -431,14 +446,9 @@ class PUFFLEModel:
             loss, metrics, and batch data.
 
         """
-        x_batch, z_batch, y_batch = batch[0], batch[1], batch[2]
-
-        # Move to device
-        x_batch = x_batch.to(self.device)
-        y_batch = y_batch.to(self.device)
-        z_batch = (
-            z_batch.to(self.device) if isinstance(z_batch, torch.Tensor) else z_batch
-        )
+        x_batch = ensure_tensor(batch[0], self.device, dtype=torch.float32)
+        z_batch = ensure_tensor(batch[1], self.device)
+        y_batch = ensure_tensor(batch[2], self.device)
 
         # Forward pass
         optimizer.zero_grad()
@@ -483,36 +493,30 @@ class PUFFLEModel:
 
     def evaluate(
         self, data_loader: DataLoader, *, _is_validation: bool = False
-    ) -> dict[str, float]:
+    ) -> FairnessMetrics:
         """
         Evaluate the model on a dataset.
 
         Args:
             data_loader (DataLoader): DataLoader for evaluation data.
-            is_validation (bool): Whether evaluation is for validation. Defaults to False.
+            _is_validation (bool): Whether evaluation is for validation. Defaults to False.
 
         Returns:
-            dict[str, float]: Evaluation metrics.
+            FairnessMetrics: Evaluation metrics.
 
         """
-        self.model.eval()
         total_loss = 0.0
         correct = 0
         total = 0
-        y_true = []
-        y_pred = []
+        y_true_list = []
+        y_pred_list = []
         sensitive_attributes_list = []
 
-        with torch.no_grad():
+        with self.evaluation_mode():
             for batch in data_loader:
-                x_batch, z_batch, y_batch = batch[0], batch[1], batch[2]
-                x_batch = x_batch.to(self.device)
-                y_batch = y_batch.to(self.device)
-                z_batch = (
-                    z_batch.to(self.device)
-                    if isinstance(z_batch, torch.Tensor)
-                    else z_batch
-                )
+                x_batch = ensure_tensor(batch[0], self.device, dtype=torch.float32)
+                z_batch = ensure_tensor(batch[1], self.device)
+                y_batch = ensure_tensor(batch[2], self.device)
 
                 outputs = self.model(x_batch)
                 if self.criterion:
@@ -527,20 +531,21 @@ class PUFFLEModel:
                 total += y_batch.size(0)
                 correct += (predicted == y_batch).sum().item()
 
-                y_true.extend(y_batch.cpu().numpy())
-                y_pred.extend(predicted.cpu().numpy())
-                sensitive_attributes_list.extend(
-                    z_batch.cpu().numpy()
-                    if isinstance(z_batch, torch.Tensor)
-                    else z_batch
-                )
+                y_true_list.append(y_batch.detach().cpu())
+                y_pred_list.append(predicted.detach().cpu())
+                sensitive_attributes_list.append(z_batch.detach().cpu())
+
+        # Concatenate and convert to numpy once at the end
+        y_true = torch.cat(y_true_list).numpy().tolist()
+        y_pred = torch.cat(y_pred_list).numpy().tolist()
+        sensitive_attributes = torch.cat(sensitive_attributes_list).numpy().tolist()
 
         return self._compute_metrics(
             total_loss / len(data_loader),
             correct / total,
             y_true,
             y_pred,
-            sensitive_attributes_list,
+            sensitive_attributes,
         )
 
     def _compute_metrics(
@@ -550,7 +555,7 @@ class PUFFLEModel:
         y_true: list,
         y_pred: list,
         sensitive_attributes: list,
-    ) -> dict[str, float]:
+    ) -> FairnessMetrics:
         """
         Compute all metrics.
 
@@ -568,8 +573,8 @@ class PUFFLEModel:
         f1 = f1_score(y_true, y_pred, average="weighted")
 
         # Convert to tensors for disparity computation
-        z_tensor = torch.tensor(sensitive_attributes)
-        y_tensor = torch.tensor(y_pred)
+        z_tensor = ensure_tensor(sensitive_attributes, self.device)
+        y_tensor = ensure_tensor(y_pred, self.device)
 
         try:
             disparity, statistics = compute_demographic_disparity(z_tensor, y_tensor)
@@ -577,13 +582,13 @@ class PUFFLEModel:
             disparity = 0.0
             statistics = {}
 
-        return {
-            "loss": loss,
-            "accuracy": accuracy,
-            "f1": f1,
-            "disparity": disparity,
-            "statistics": statistics,
-        }
+        return FairnessMetrics(
+            loss=loss,
+            accuracy=accuracy,
+            f1=float(f1),
+            disparity=float(disparity),
+            statistics=statistics,
+        )
 
     def update_lambda(self, unfairness_loss: float) -> None:
         """Update the lambda parameter using the configured strategy."""

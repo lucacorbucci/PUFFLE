@@ -1,11 +1,17 @@
-from unittest.mock import patch
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 
-from puffle.PUFFLEModel.puffle_model import PUFFLEModel, TrainingBatchResult
+from puffle.PUFFLEModel.puffle_model import (
+    PUFFLEModel,
+    TrainingBatchResult,
+)
+from puffle.Utils.config import PUFFLEConfig
+from puffle.Utils.modes import MetricMode
 
 
 # Create a simple model for testing
@@ -78,7 +84,7 @@ class TestPUFFLEModel:
             model=simple_model,
             optimizer=optimizer,
             criterion=criterion,
-            lambda_regularization=0.0,
+            config=PUFFLEConfig(lambda_regularization=0.0),
         )
 
     @pytest.fixture
@@ -87,7 +93,7 @@ class TestPUFFLEModel:
             model=simple_model,
             optimizer=optimizer,
             criterion=criterion,
-            lambda_regularization=0.1,
+            config=PUFFLEConfig(lambda_regularization=0.1),
         )
 
     def test_initialization(self, simple_model, optimizer, criterion):
@@ -106,9 +112,28 @@ class TestPUFFLEModel:
             model=simple_model,
             optimizer=optimizer,
             criterion=criterion,
-            lambda_regularization=0.1,
+            config=PUFFLEConfig(lambda_regularization=0.1),
         )
         assert model.lambda_regularization == 0.1
+
+    def test_initialization_with_config(self, simple_model, optimizer, criterion):
+        """Test initialization with explicit PUFFLEConfig object."""
+        config = PUFFLEConfig(
+            lambda_regularization=0.5, target=0.1, alpha=0.02, tunable_lambda=True
+        )
+
+        model = PUFFLEModel(
+            model=simple_model,
+            optimizer=optimizer,
+            criterion=criterion,
+            config=config,
+        )
+
+        assert model.config == config
+        assert model.lambda_regularization == 0.5
+        assert model.target == 0.1
+        assert model.alpha == 0.02
+        assert model.tunable_lambda is True
 
     def test_evaluate(self, puffle_model, simple_dataset):
         """Test evaluation of the model."""
@@ -174,9 +199,9 @@ class TestPUFFLEModel:
         metrics = puffle_model.train(train_loader=train_loader, epochs=1, verbose=False)
 
         # Check that metrics were tracked
-        assert len(metrics["train_loss"]) == 1
-        assert "train_accuracy" in metrics
-        assert "train_disparity" in metrics
+        assert len(metrics[f"{MetricMode.TRAIN}_loss"]) == 1
+        assert f"{MetricMode.TRAIN}_accuracy" in metrics
+        assert f"{MetricMode.TRAIN}_disparity" in metrics
 
     @patch("puffle.PUFFLEModel.puffle_model.BatchMemoryManager")
     def test_train_one_epoch(self, mock_memory_manager, puffle_model, simple_dataset):
@@ -245,9 +270,9 @@ class TestPUFFLEModel:
         """Test the _initialize_metrics_dict method."""
         metrics = puffle_model._initialize_metrics_dict()
         assert isinstance(metrics, dict)
-        assert "train_loss" in metrics
-        assert isinstance(metrics["train_loss"], list)
-        assert len(metrics["train_loss"]) == 0
+        assert f"{MetricMode.TRAIN}_loss" in metrics
+        assert isinstance(metrics[f"{MetricMode.TRAIN}_loss"], list)
+        assert len(metrics[f"{MetricMode.TRAIN}_loss"]) == 0
 
     def test_update_metrics_dict(self, puffle_model):
         """Test the _update_metrics_dict method."""
@@ -258,11 +283,11 @@ class TestPUFFLEModel:
             "f1": 0.75,
             "disparity": 0.1,
         }
-        puffle_model._update_metrics_dict(metrics, "train", epoch_metrics)
-        assert metrics["train_loss"] == [0.5]
-        assert metrics["train_accuracy"] == [0.8]
-        assert metrics["train_f1"] == [0.75]
-        assert metrics["train_disparity"] == [0.1]
+        puffle_model._update_metrics_dict(metrics, MetricMode.TRAIN, epoch_metrics)
+        assert metrics[f"{MetricMode.TRAIN}_loss"] == [0.5]
+        assert metrics[f"{MetricMode.TRAIN}_accuracy"] == [0.8]
+        assert metrics[f"{MetricMode.TRAIN}_f1"] == [0.75]
+        assert metrics[f"{MetricMode.TRAIN}_disparity"] == [0.1]
 
     def test_get_effective_batch_size(self, puffle_model):
         """Test _get_effective_batch_size."""
@@ -339,6 +364,188 @@ class TestPUFFLEModel:
         probs = puffle_model.predict_proba(x)
         assert probs.shape == (5, 2)
         assert torch.allclose(probs.sum(dim=1), torch.ones(5))
+
+    def test_wandb_logging(self, simple_model):
+        wandb_mock = MagicMock()
+        puffle_model = PUFFLEModel(
+            model=simple_model,
+            device="cpu",
+            wandb_run=wandb_mock,
+            config=PUFFLEConfig(tunable_lambda=True, target=0.1),
+        )
+
+        metrics = {"loss": 0.5, "accuracy": 0.8, "f1": 0.7, "disparity": 0.2}
+        puffle_model._log_wandb_epoch(metrics, epoch=0, mode=MetricMode.TRAIN)
+        wandb_mock.log.assert_called_with(
+            {
+                f"{MetricMode.TRAIN}_loss": 0.5,
+                f"{MetricMode.TRAIN}_accuracy": 0.8,
+                f"{MetricMode.TRAIN}_f1": 0.7,
+                f"{MetricMode.TRAIN}_disparity": 0.2,
+                "epoch": 1,
+            }
+        )
+
+    def test_update_lambda_wandb(self, simple_model):
+        wandb_mock = MagicMock()
+        puffle_model = PUFFLEModel(
+            model=simple_model,
+            wandb_run=wandb_mock,
+            config=PUFFLEConfig(tunable_lambda=True, target=0.1),
+        )
+        puffle_model.update_lambda(unfairness_loss=0.5)
+        assert puffle_model.lambda_regularization > 0
+
+    def test_bmm_logic(self, simple_model, optimizer):
+        puffle_model = PUFFLEModel(model=simple_model, optimizer=optimizer)
+        # BMM requires optimizer.signal_skip_step
+        optimizer.signal_skip_step = MagicMock()
+
+        x = torch.randn(32, 2)
+        z = torch.zeros(32)
+        y = torch.zeros(32)
+        train_loader = DataLoader(TensorDataset(x, z, y), batch_size=32)
+
+        with (
+            patch.object(puffle_model, "_run_training_loop", return_value=({}, [])),
+            patch("puffle.PUFFLEModel.puffle_model.BatchMemoryManager") as mock_bmm,
+        ):
+            puffle_model.train(train_loader, epochs=1, max_physical_batch_size=16)
+            assert mock_bmm.called
+
+    def test_verbose_validation(self, simple_model):
+        puffle_model = PUFFLEModel(model=simple_model)
+        metrics = {f"{MetricMode.TRAIN}_loss": [0.5]}
+        v_loader = [1]
+        with (
+            patch.object(
+                puffle_model,
+                "evaluate",
+                return_value={
+                    "loss": 0.1,
+                    "accuracy": 0.9,
+                    "f1": 0.9,
+                    "disparity": 0.0,
+                },
+            ) as mock_eval,
+            patch.object(puffle_model, "_update_metrics_dict"),
+            patch.object(puffle_model, "_log_wandb_epoch"),
+        ):
+            puffle_model._validate_and_test_epoch(
+                epoch=0,
+                epochs=1,
+                metrics=metrics,
+                val_loader=v_loader,
+                test_loader=None,
+                verbose=True,
+            )
+            assert mock_eval.called
+
+    def test_train_no_criterion(self, simple_model, optimizer):
+        puffle = PUFFLEModel(
+            model=simple_model, optimizer=optimizer, config=PUFFLEConfig()
+        )
+        x = torch.randn(10, 2)
+        z = torch.randint(0, 2, (10,))
+        y = torch.randint(0, 2, (10,))
+        dataset = TensorDataset(x, z, y)
+        loader = DataLoader(dataset, batch_size=5)
+        with pytest.raises(ValueError, match="Criterion must be provided for training"):
+            puffle.train(loader, epochs=1)
+
+    def test_evaluate_no_criterion(self, simple_model):
+        puffle = PUFFLEModel(model=simple_model, config=PUFFLEConfig())
+        x = torch.randn(10, 2)
+        z = torch.randint(0, 2, (10,))
+        y = torch.randint(0, 2, (10,))
+        dataset = TensorDataset(x, z, y)
+        loader = DataLoader(dataset, batch_size=5)
+        metrics = puffle.evaluate(loader)
+        assert metrics.loss == 0.0
+
+    def test_train_with_test_loader(self, simple_model, optimizer):
+        # Mock criterion to handle tuple
+        class MockCrit(nn.Module):
+            def forward(self, inputs, targets):
+                outputs, _, _ = inputs
+                return nn.CrossEntropyLoss()(outputs, targets)
+
+        mock_crit = MockCrit()
+
+        puffle = PUFFLEModel(
+            model=simple_model,
+            optimizer=optimizer,
+            criterion=mock_crit,
+            config=PUFFLEConfig(),
+        )
+        x = torch.randn(10, 2)
+        z = torch.randint(0, 2, (10,))
+        y = torch.randint(0, 2, (10,))
+        dataset = TensorDataset(x, z, y)
+        loader = DataLoader(dataset, batch_size=5)
+        metrics = puffle.train(loader, epochs=1, test_loader=loader)
+        assert "test_loss" in metrics
+
+    def test_train_one_epoch_list_z_batch(self, simple_model, optimizer):
+        # Mock criterion to handle tuple
+        class MockCrit(nn.Module):
+            def forward(self, inputs, targets):
+                outputs, _, _ = inputs
+                return nn.CrossEntropyLoss()(outputs, targets)
+
+        mock_crit = MockCrit()
+
+        puffle = PUFFLEModel(
+            model=simple_model,
+            optimizer=optimizer,
+            criterion=mock_crit,
+            config=PUFFLEConfig(),
+        )
+        x = torch.randn(10, 2)
+        z = torch.randint(0, 2, (10,))
+        y = torch.randint(0, 2, (10,))
+        dataset = TensorDataset(x, z, y)
+        loader = DataLoader(dataset, batch_size=10)
+        original_train_batch = puffle._train_batch
+
+        def mock_train_batch(*args, **kwargs):
+            result = original_train_batch(*args, **kwargs)
+            return TrainingBatchResult(
+                loss=result.loss,
+                correct=result.correct,
+                total=result.total,
+                y_batch=result.y_batch,
+                predicted=result.predicted,
+                z_batch=cast("Any", result.z_batch).tolist()
+                if hasattr(result.z_batch, "tolist")
+                else result.z_batch,
+                unfairness=result.unfairness,
+            )
+
+        puffle._train_batch = mock_train_batch  # type: ignore[invalid-assignment]
+        metrics = puffle._train_one_epoch(loader, current_epoch=0)
+        assert metrics is not None
+
+    def test_fairness_regularizer_property(self, simple_model):
+        puffle = PUFFLEModel(
+            model=simple_model, config=PUFFLEConfig(lambda_regularization=0.0)
+        )
+        assert puffle.fairness_regularizer is None
+        puffle = PUFFLEModel(
+            model=simple_model, config=PUFFLEConfig(lambda_regularization=0.5)
+        )
+        assert puffle.fairness_regularizer is True
+
+    def test_metrics_tensor_conversion(self, simple_model):
+        puffle = PUFFLEModel(model=simple_model)
+        metrics = {"loss": [torch.tensor(1.0), 2.0], "acc": 0.8}
+        puffle._execute_training_loop = MagicMock(return_value=(metrics, []))  # type: ignore[invalid-assignment]
+        loader = DataLoader(
+            TensorDataset(torch.randn(1, 2), torch.zeros(1), torch.zeros(1))
+        )
+        result = puffle.train(loader, epochs=1)
+        assert isinstance(result["loss"][0], float)
+        assert result["loss"][0] == 1.0
 
 
 if __name__ == "__main__":

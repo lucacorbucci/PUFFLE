@@ -6,8 +6,11 @@ from puffle.examples.data_preparation.synthetic import (
     SyntheticDataset,
     generate_synthetic_data,
 )
-from puffle.PUFFLEModel.puffle_model import PUFFLEModel
+from puffle.PUFFLEModel.puffle_model import (
+    PUFFLEModel,
+)
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
+from puffle.Utils.config import PUFFLEConfig
 
 
 def train_example():
@@ -41,7 +44,7 @@ def train_example():
         model=model,
         optimizer=optimizer,
         criterion=SimplePUFFLELoss(),
-        lambda_regularization=0.0,
+        config=PUFFLEConfig(lambda_regularization=0.0),
     )
 
     std_metrics = puffle_std.train(
@@ -75,7 +78,7 @@ def train_example():
         model=model,
         optimizer=optimizer,
         criterion=fair_criterion,
-        lambda_regularization=0.5,
+        config=PUFFLEConfig(lambda_regularization=0.5),
     )
 
     fair_metrics = puffle_fair.train(

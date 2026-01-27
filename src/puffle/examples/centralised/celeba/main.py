@@ -15,6 +15,7 @@ from puffle.examples.utils.utils import seed_everything
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
 from puffle.Regularization.mix_loss import MixLoss
+from puffle.Utils.config import PUFFLEConfig
 
 warnings.filterwarnings("ignore")
 
@@ -169,15 +170,17 @@ if __name__ == "__main__":
         device=torch.device("cpu")
         if not torch.cuda.is_available()
         else torch.device("cuda"),
-        lambda_regularization=args.regularization_lambda,
         wandb_run=wandb_run,
-        target=args.target,
-        tunable_lambda=args.regularization_mode == "tunable",
-        momentum=args.momentum if args.momentum is not None else 0.9,
-        alpha=args.alpha if args.alpha is not None else 0.01,
-        weight_decay_alpha=args.weight_decay_alpha
-        if args.weight_decay_alpha is not None
-        else 0.99,
+        config=PUFFLEConfig(
+            lambda_regularization=args.regularization_lambda,
+            target=args.target,
+            tunable_lambda=args.regularization_mode == "tunable",
+            momentum=args.momentum if args.momentum is not None else 0.9,
+            alpha=args.alpha if args.alpha is not None else 0.01,
+            weight_decay_alpha=args.weight_decay_alpha
+            if args.weight_decay_alpha is not None
+            else 0.99,
+        ),
     )
 
     puffle_model.train(

@@ -1,16 +1,22 @@
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
+
+from puffle.Regularization.base_fairness_loss import BaseFairnessLoss
+from puffle.Regularization.formula_components import FormulaComponents
+from puffle.Utils.constants import DEFAULT_ESTIMATION
+from puffle.Utils.tensor_utils import ensure_tensor
 
 
-class ErrorRateRegularizationLoss(nn.Module):
+class ErrorRateRegularizationLoss(BaseFairnessLoss):
     def __init__(
-        self, weight=None, *, size_average: bool = True, estimation: float = 0.5
+        self,
+        weight=None,
+        *,
+        size_average: bool = True,
+        estimation: float = DEFAULT_ESTIMATION,
     ) -> None:
         """Initialization of the regularization loss."""
-        super().__init__()
-        self.estimation = estimation
+        super().__init__(estimation=estimation)
 
     @staticmethod
     def compute_counters(
@@ -26,14 +32,13 @@ class ErrorRateRegularizationLoss(nn.Module):
             raise ValueError(msg)
 
         # Ensure inputs are tensors
-        if isinstance(sensitive_attribute_list, list):
-            sensitive_attribute_list = torch.tensor(
-                [int(x) for x in sensitive_attribute_list], device=predictions.device
-            )
+        sensitive_attribute_list = ensure_tensor(
+            sensitive_attribute_list, predictions.device
+        )
 
         # Vectorized counting
-        target_0 = torch.tensor(true_targets, device=predictions.device) == 0
-        target_1 = torch.tensor(true_targets, device=predictions.device) == 1
+        target_0 = ensure_tensor(true_targets, predictions.device) == 0
+        target_1 = ensure_tensor(true_targets, predictions.device) == 1
         pred_0 = predictions_argmax == 0
         pred_1 = predictions_argmax == 1
         group_mask = sensitive_attribute_list == group
@@ -67,15 +72,8 @@ class ErrorRateRegularizationLoss(nn.Module):
         # We need to handle list vs tensor for true_targets and sensitive_list
         device = softmax_.device
 
-        if not isinstance(true_targets, torch.Tensor):
-            t_targets = torch.tensor(true_targets, device=device)
-        else:
-            t_targets = true_targets.to(device)
-
-        if not isinstance(sensitive_attribute_list, torch.Tensor):
-            t_sensitive = torch.tensor(sensitive_attribute_list, device=device)
-        else:
-            t_sensitive = sensitive_attribute_list.to(device)
+        t_targets = ensure_tensor(true_targets, device)
+        t_sensitive = ensure_tensor(sensitive_attribute_list, device)
 
         # Mask: (Y=y) & (Pred=pred) & (Z=group)
         mask = (
@@ -179,24 +177,24 @@ class ErrorRateRegularizationLoss(nn.Module):
         # We return an empty dict to maintain signature compatibility.
         analysis_dict = {}
 
-        return (
-            results["fp_unprivileged_group"],
-            results["fp_privileged_group"],
-            results["tn_privileged_group"],
-            results["tn_unprivileged_group"],
-            results["tp_unprivileged_group"],
-            results["tp_privileged_group"],
-            results["fn_unprivileged_group"],
-            results["fn_privileged_group"],
-            analysis_dict,
-            results["fp_unprivileged_group_argmax"],
-            results["fp_privileged_group_argmax"],
-            results["tn_privileged_group_argmax"],
-            results["tn_unprivileged_group_argmax"],
-            results["tp_unprivileged_group_argmax"],
-            results["tp_privileged_group_argmax"],
-            results["fn_unprivileged_group_argmax"],
-            results["fn_privileged_group_argmax"],
+        return FormulaComponents(
+            fp_unprivileged=results["fp_unprivileged_group"],
+            fp_privileged=results["fp_privileged_group"],
+            tn_privileged=results["tn_privileged_group"],
+            tn_unprivileged=results["tn_unprivileged_group"],
+            tp_unprivileged=results["tp_unprivileged_group"],
+            tp_privileged=results["tp_privileged_group"],
+            fn_unprivileged=results["fn_unprivileged_group"],
+            fn_privileged=results["fn_privileged_group"],
+            fp_unprivileged_argmax=results["fp_unprivileged_group_argmax"],
+            fp_privileged_argmax=results["fp_privileged_group_argmax"],
+            tn_privileged_argmax=results["tn_privileged_group_argmax"],
+            tn_unprivileged_argmax=results["tn_unprivileged_group_argmax"],
+            tp_unprivileged_argmax=results["tp_unprivileged_group_argmax"],
+            tp_privileged_argmax=results["tp_privileged_group_argmax"],
+            fn_unprivileged_argmax=results["fn_unprivileged_group_argmax"],
+            fn_privileged_argmax=results["fn_privileged_group_argmax"],
+            analysis_dict=analysis_dict,
         )
 
     def forward(
@@ -307,11 +305,10 @@ class ErrorRateRegularizationLoss(nn.Module):
     ):
         """Prepare data for violation computation."""
         softmax_ = F.softmax(predictions, dim=1)
-        # convert the list of sensitive attributes to a tensor and move it to the device
-        sensitive_attribute_list = torch.tensor(
-            [int(item) for item in sensitive_attribute_list]
-        ).to(device)
-        true_targets = torch.tensor([int(item) for item in true_targets]).to(device)
+        sensitive_attribute_list = self._prepare_sensitive_attributes(
+            sensitive_attribute_list, device
+        )
+        true_targets = ensure_tensor(true_targets, device)
 
         # We compute the argmax of the predictions
         predictions_argmax = torch.argmax(predictions.detach().clone(), dim=1).to(
@@ -362,16 +359,14 @@ class ErrorRateRegularizationLoss(nn.Module):
             unprivileged_group=unprivileged,
         )
 
-        (
-            fp_unpriv,
-            fp_priv,
-            tn_priv,
-            tn_unpriv,
-            tp_unpriv,
-            tp_priv,
-            fn_unpriv,
-            fn_priv,
-        ) = components[:8]
+        fp_unpriv = components.fp_unprivileged
+        fp_priv = components.fp_privileged
+        tn_priv = components.tn_privileged
+        tn_unpriv = components.tn_unprivileged
+        tp_unpriv = components.tp_unprivileged
+        tp_priv = components.tp_privileged
+        fn_unpriv = components.fn_unprivileged
+        fn_priv = components.fn_privileged
 
         err_unpriv = self._calculate_group_error_rate(
             unprivileged,
@@ -425,40 +420,6 @@ class ErrorRateRegularizationLoss(nn.Module):
             pass
         return None
 
-    def _apply_fairness_mask(self, fairness_violations, device):
-        """Apply max violation mask for gradient routing."""
-        fairness_violations_ = []
-        for item in fairness_violations:
-            if isinstance(item, torch.Tensor):
-                if item.numel() > 1:
-                    fairness_violations_.append(item.mean().item())
-                else:
-                    fairness_violations_.append(item.item())
-            else:
-                fairness_violations_.append(item)
-        if not fairness_violations_:
-            return torch.tensor(0.0).to(device)
-
-        index = fairness_violations_.index(max(fairness_violations_))
-
-        fairness_violations_tensors = []
-        for item in fairness_violations:
-            if isinstance(item, torch.Tensor):
-                if item.numel() > 1:
-                    fairness_violations_tensors.append(item.mean())
-                else:
-                    fairness_violations_tensors.append(item)
-            else:
-                fairness_violations_tensors.append(
-                    torch.tensor(item, dtype=torch.float32).to(device)
-                )
-
-        fairness_violations = torch.stack(fairness_violations_tensors)
-
-        mask = torch.full((len(fairness_violations),), 0.0).to(device)
-        mask[index] = 1
-        return torch.sum(mask * fairness_violations)
-
     def violation_with_dataset(
         self,
         model: torch.nn.Module,
@@ -509,7 +470,7 @@ class ErrorRateRegularizationLoss(nn.Module):
             sensitive_attribute_list=sensitive_attribute_list,
             device=device,
             predictions=predictions,
-            true_targets=np.array(targets),
+            true_targets=torch.tensor(targets, device=device),
             possible_sensitive_attributes=sensitive_attributes,
             possible_targets=target_list,
             average_probabilities=average_probabilities,
@@ -551,10 +512,7 @@ class ErrorRateRegularizationLoss(nn.Module):
             device
         )
 
-        sensitive_attribute_list = torch.tensor(
-            [int(item) for item in sensitive_attribute_list]
-        )
-        sensitive_attribute_list = sensitive_attribute_list.to(device)
+        sensitive_attribute_list = ensure_tensor(sensitive_attribute_list, device)
 
         counters = {}
         possible_targets = [int(item) for item in possible_targets]

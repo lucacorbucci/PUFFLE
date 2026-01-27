@@ -1,9 +1,19 @@
+from typing import Any, cast
+from unittest.mock import MagicMock, patch
+
 import numpy as np
+import pytest
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from puffle.Regularization.base_fairness_loss import BaseFairnessLoss
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
+
+
+class ConcreteFairnessLoss(BaseFairnessLoss):
+    def forward(self, *_args, **_kwargs):
+        return torch.tensor(0.0)
 
 
 class TestDisparityLoss:
@@ -281,3 +291,165 @@ class TestDisparityLoss:
         )
         assert isinstance(violation, torch.Tensor)
         assert violation >= 0
+
+    def test_estimate_violation_with_avg_probs(self):
+        loss = DisparityRegularizationLoss()
+        avg_probs = {"0|0": 0.3, "0|1": 0.7}
+
+        val = loss._estimate_violation(
+            target=0,
+            z=1,
+            known_numerator=torch.tensor(10.0),
+            known_denominator=torch.tensor(20.0),
+            average_probabilities=avg_probs,
+            is_z_zero=True,
+        )
+        assert val.item() == pytest.approx(0.2)
+
+    def test_update_global_counters_logic(self):
+        loss = DisparityRegularizationLoss()
+        global_counters = {}
+        json_file = {
+            "possible_z": [0, 1],
+            "missing_combinations": [("key_to_remove", 0)],
+        }
+        global_counters["0|0"] = 10
+        global_counters["1|0"] = 20
+        global_counters["key_to_remove"] = 999
+
+        updated = loss._update_global_counters(global_counters, json_file)
+        assert updated[0] == 30
+        assert "key_to_remove" not in updated
+
+    def test_argmax_zero_cases(self):
+        loss = DisparityRegularizationLoss()
+        sensitive = torch.tensor([1, 1, 1])
+        predictions = torch.tensor([0, 0, 0])
+
+        res_0 = loss.compute_violation_with_argmax(
+            predictions, sensitive, current_target=0, current_sensitive_feature=0
+        )
+        assert res_0 == 1.0
+
+        res_empty = loss.compute_violation_with_argmax(
+            torch.tensor([]), torch.tensor([]), 0, 0
+        )
+        assert res_empty == 0
+
+    def test_evaluate_violation_tensor_handling(self):
+        loss = DisparityRegularizationLoss()
+        with patch.object(loss, "compute_violation_with_argmax") as mock_method:
+            mock_method.return_value = torch.tensor([0.5, 0.6])
+            preds = torch.tensor([[0.1, 0.9], [0.9, 0.1]])
+            sens = torch.tensor([0, 1])
+            res = loss.evaluate_violation(preds, sens, [0], [0])
+            assert res.item() == pytest.approx(0.55)
+
+    def test_compute_violation_term_zero_cases(self):
+        loss = DisparityRegularizationLoss()
+        softmax_ = torch.tensor([[0.8, 0.2], [0.2, 0.8], [0.1, 0.9]])
+        preds_argmax = torch.tensor([0, 1, 1])
+        sens = torch.tensor([0, 1, 1])
+        avg_probs = {"1|0": 0.5}
+
+        term, _ = loss._compute_violation_term(
+            target=1,
+            z=0,
+            softmax_=softmax_,
+            predictions_argmax=preds_argmax,
+            sensitive_attribute_list=sens,
+            average_probabilities=avg_probs,
+        )
+        assert term >= 0
+
+        term2, _ = loss._compute_violation_term(
+            target=0,
+            z=0,
+            softmax_=softmax_,
+            predictions_argmax=preds_argmax,
+            sensitive_attribute_list=sens,
+            average_probabilities=avg_probs,
+        )
+        assert term2 >= 0
+
+    def test_forward_global_computation(self):
+        loss = DisparityRegularizationLoss()
+        loss._prepare_data = MagicMock(
+            return_value=(
+                torch.tensor([]),
+                torch.tensor([]),
+                torch.tensor([]),
+                [0],
+                [0],
+            )
+        )
+        loss._compute_violation_term = MagicMock(return_value=(torch.tensor(0.5), 10))
+        loss._apply_fairness_mask = MagicMock(return_value=torch.tensor(0.5))
+        loss._update_global_counters = MagicMock(return_value={"test": 1})
+
+        res = loss.forward(
+            sensitive_attribute_list=[],
+            device=torch.device("cpu"),
+            predictions=torch.tensor([]),
+            possible_sensitive_attributes=[],
+            possible_targets=[],
+            global_computation=True,
+        )
+        assert isinstance(res, tuple)
+        assert res[1] == {"test": 1}
+        assert cast("Any", loss._update_global_counters).called
+
+    def test_base_fairness_loss_empty_violations(self):
+        loss = ConcreteFairnessLoss()
+        res = loss._apply_fairness_mask([], "cpu")
+        assert res.item() == 0.0
+        assert res.device.type == "cpu"
+
+    def test_estimate_violation_not_z_zero(self):
+        loss = DisparityRegularizationLoss()
+        avg_probs = {"1|0": 0.3}
+        res = loss._estimate_violation(
+            target=1,
+            z=1,
+            known_numerator=0.5,
+            known_denominator=1.0,
+            average_probabilities=avg_probs,
+            is_z_zero=False,
+        )
+        assert res == pytest.approx(0.2)
+
+    def test_update_global_counters_no_json(self):
+        loss = DisparityRegularizationLoss()
+        counters = {"a": 1}
+        res = loss._update_global_counters(counters, None)
+        assert res == counters
+
+    def test_update_global_counters_exception(self):
+        loss = DisparityRegularizationLoss()
+        json_file = {"possible_z": [[1, 2]]}
+        global_counters = {}
+        res = loss._update_global_counters(global_counters, json_file)
+        assert res == {}
+
+    def test_compute_violation_with_argmax_single_group(self):
+        loss = DisparityRegularizationLoss()
+        predictions_argmax = torch.tensor([1, 1, 1])
+        sensitive_attribute_list = torch.tensor([0, 0, 0])
+        res = loss.compute_violation_with_argmax(
+            predictions_argmax, sensitive_attribute_list, 1, 0
+        )
+        assert res == 1.0
+
+    def test_evaluate_violation_scalar_tensors(self):
+        loss = DisparityRegularizationLoss()
+
+        def mock_compute(*_args, **_kwargs):
+            return torch.tensor(0.5)
+
+        loss.compute_violation_with_argmax = mock_compute  # type: ignore[unresolved-attribute]
+        predictions_argmax = torch.tensor([1, 0])
+        sensitive_attribute_list = torch.tensor([1, 0])
+        res = loss.evaluate_violation(
+            predictions_argmax, sensitive_attribute_list, [0, 1], [0, 1]
+        )
+        assert res.item() == 0.5

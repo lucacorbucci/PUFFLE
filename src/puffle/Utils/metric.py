@@ -121,59 +121,52 @@ def compute_differentiable_demographic_disparity(
         msg = "Input tensors sensitive_attributes and predictions_argmax must be of type torch.Tensor."
         raise TypeError(msg)
 
-    unique_sensitive_attributes = torch.unique(sensitive_attributes)
-    unique_targets = torch.unique(predictions_argmax)
+    unique_z = torch.unique(sensitive_attributes)
+    unique_y = torch.unique(predictions_argmax)
 
-    if len(unique_sensitive_attributes) == 0 or len(unique_targets) == 0:
+    if len(unique_z) == 0 or len(unique_y) == 0:
         msg = "Input tensors sensitive_attributes and predictions_argmax must not be empty."
         raise ValueError(msg)
-    if len(unique_sensitive_attributes) == 1 or len(unique_targets) == 1:
+    if len(unique_z) == 1 or len(unique_y) == 1:
         msg = "Input tensors sensitive_attributes and predictions_argmax must have more than one unique value."
         raise ValueError(msg)
 
-    fairness_violations = []
-    for target in unique_targets:
-        for sensitive_attribute in unique_sensitive_attributes:
-            # We get the number of samples that are predicted with the target class
-            # target and that have the sensitive attribute equal to z:  |Y = k, Z = z|.
-            # In this case we just sum the columns of the rows that
-            # respect the previous constraint.
-            # Example: Given [[0.2, 0.8], [0.4, 0.6], [0.3, 0.7]], suppose
-            # that to compute Y_eq_k_and_Z_eq_z we have to consider only
-            # the first and the third row and that we are considering the class 1.
-            # In this case we will sum 0.8 and 0.7.
-            y_eq_k_and_z_eq_z = torch.sum(
-                softmax_output[
-                    (predictions_argmax == target)
-                    & (sensitive_attributes == sensitive_attribute)
-                ][:, target]
-            )
+    # Vectorized computation using broadcasting
+    # unique_y: [Y], unique_z: [Z]
+    # predictions_argmax: [N], sensitive_attributes: [N], softmax_output: [N, C]
 
-            # Here we compute |Y = k, Z != z| with the same strategy we used to
-            # compute |Y = k, Z = z|.
-            y_eq_k_and_z_not_eq_z = torch.sum(
-                softmax_output[
-                    (predictions_argmax == target)
-                    & (sensitive_attributes != sensitive_attribute)
-                ][:, target]
-            )
+    # Create masks: [Y, N] and [Z, N]
+    y_mask = (predictions_argmax.unsqueeze(0) == unique_y.unsqueeze(1)).float()
+    z_mask = (sensitive_attributes.unsqueeze(0) == unique_z.unsqueeze(1)).float()
 
-            z_eq_z = torch.sum(
-                softmax_output[(sensitive_attributes == sensitive_attribute)][:, target]
-            )
+    # Combined mask: [Y, Z, N]
+    joint_mask = y_mask.unsqueeze(1) * z_mask.unsqueeze(0)
 
-            z_not_eq_z = torch.sum(
-                softmax_output[(sensitive_attributes != sensitive_attribute)][:, target]
-            )
-            # TODO: we need to check if z_eq_z and z_not_eq_z are not equal to 0
-            # if they are equal to 0 we need to use the information present in the
-            # probabilities dictionary, if the probabilities dictionary is None
-            # then we need to raise an error
-            violation_term = torch.abs(
-                (y_eq_k_and_z_eq_z / z_eq_z) - (y_eq_k_and_z_not_eq_z / z_not_eq_z)
-            )
-            fairness_violations.append(violation_term)
+    # Extract relevant softmax columns for each unique target: [Y, N]
+    # We only care about columns corresponding to unique_y
+    softmax_y = softmax_output[:, unique_y].t()
 
-    fairness_violations = torch.stack(fairness_violations)
-    max_violation, _ = torch.max(fairness_violations, dim=0)
-    return max_violation
+    # Numerators: sum(softmax * joint_mask) for each y in Y, z in Z: [Y, Z]
+    # softmax_y.unsqueeze(1): [Y, 1, N], joint_mask: [Y, Z, N]
+    numerator = torch.sum(softmax_y.unsqueeze(1) * joint_mask, dim=2)
+
+    # Denominators: sum(softmax * z_mask) for each y in Y, z in Z: [Y, Z]
+    # softmax_y.unsqueeze(1): [Y, 1, N], z_mask.unsqueeze(0): [1, Z, N]
+    denominator = torch.sum(softmax_y.unsqueeze(1) * z_mask.unsqueeze(0), dim=2)
+
+    # P(Y=k|Z=z)
+    p_k_z = numerator / (denominator + 1e-10)
+
+    # For Z != z:
+    # total_k = sum(softmax * y_mask) for each k in Y: [Y]
+    total_k = torch.sum(softmax_y * y_mask, dim=1)
+    numerator_not_z = total_k.unsqueeze(1) - numerator
+
+    # total_den_k = sum(softmax) for each k in Y: [Y]
+    total_den_k = torch.sum(softmax_y, dim=1)
+    denominator_not_z = total_den_k.unsqueeze(1) - denominator
+
+    p_k_not_z = numerator_not_z / (denominator_not_z + 1e-10)
+
+    violation = torch.abs(p_k_z - p_k_not_z)
+    return violation.max()
