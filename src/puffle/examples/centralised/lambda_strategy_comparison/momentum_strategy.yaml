@@ -1,0 +1,52 @@
+program: main.py
+method: bayes
+metric:
+  name: Custom_metric
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  batch_size:
+    min: 512
+    max: 2028
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd"]
+  momentum:
+    min: 0.1
+    max: 0.99
+  alpha:
+    min: 0.001
+    max: 2.0
+  weight_decay_alpha:
+    min: 0.5
+    max: 0.99
+    
+command:
+  - ${env}
+  - uv 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --project_name 
+  - LambdaStrategyComparison
+  - --target
+  - "0.05"
+  - --epochs
+  - "20"
+  - --sweep
+  - "True"
+  - --lambda_update_strategy
+  - momentum
+  - --shift_epoch
+  - "10"
+  - --shift_type
+  - increase_bias
+  - --shift_magnitude
+  - "0.3"
+  - --csv_path
+  - ../../data/dutch/
