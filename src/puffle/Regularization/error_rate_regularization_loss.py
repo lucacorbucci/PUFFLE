@@ -1,6 +1,3 @@
-# ABOUTME: Implements the Error Rate Parity regularization loss for group fairness.
-# ABOUTME: Computes fairness violations based on error rate differences between sensitive groups.
-
 import numpy as np
 import torch
 import torch.nn.functional as F

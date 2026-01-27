@@ -1,6 +1,3 @@
-# ABOUTME: Utility functions for loading and preparing CelebA and Dutch Census datasets.
-# ABOUTME: Handles data splitting, normalization, and sensitive attribute processing.
-
 import random
 
 import numpy as np

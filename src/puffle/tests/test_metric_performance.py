@@ -1,6 +1,3 @@
-# ABOUTME: Performance and regression tests for metric optimization.
-# ABOUTME: Verifies that vectorized implementations match the original logic.
-
 import pytest
 import torch
 

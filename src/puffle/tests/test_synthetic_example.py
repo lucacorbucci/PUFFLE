@@ -1,6 +1,3 @@
-# ABOUTME: Integration test for the synthetic dataset example.
-# ABOUTME: Verifies that the Puffle model reduces disparity compared to a standard model.
-
 import random
 
 import numpy as np

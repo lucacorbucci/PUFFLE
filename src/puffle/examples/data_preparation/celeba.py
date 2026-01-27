@@ -1,6 +1,3 @@
-# ABOUTME: Custom Dataset class for the CelebA image dataset.
-# ABOUTME: Provides access to images and sensitive attributes for fairness research.
-
 import os
 from typing import Any
 

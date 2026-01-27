@@ -1,7 +1,4 @@
 import numpy as np
-
-# ABOUTME: Implements the Demographic Parity regularization loss for fairness-aware training.
-# ABOUTME: Uses differentiable softmax-based violations to optimize for model fairness.
 import torch
 import torch.nn.functional as F
 from torch import nn

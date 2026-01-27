@@ -1,6 +1,3 @@
-# ABOUTME: Generates a synthetic dataset for demonstrating group fairness issues.
-# ABOUTME: Includes biased target generation based on sensitive attributes to test Puffle regularizers.
-
 import numpy as np
 import pandas as pd
 import torch

@@ -1,6 +1,3 @@
-# ABOUTME: Tests for lambda regularization parameter constraints.
-# ABOUTME: Ensures lambda stays within [0.0, 1.0] bounds during tunable lambda updates.
-
 import torch
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset

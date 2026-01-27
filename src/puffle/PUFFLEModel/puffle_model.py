@@ -1,6 +1,3 @@
-# ABOUTME: Implements the PUFFLEModel wrapper for fairness-aware training.
-# ABOUTME: Handles the training loop, evaluation, and logging for the PUFFLE library.
-
 from typing import NamedTuple
 
 import numpy as np

@@ -1,6 +1,3 @@
-# ABOUTME: Provides utility functions for computing demographic disparity and fairness metrics.
-# ABOUTME: Includes both standard and differentiable implementations of group fairness metrics.
-
 import torch
 
 

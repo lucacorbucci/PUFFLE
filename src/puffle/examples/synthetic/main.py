@@ -1,6 +1,3 @@
-# ABOUTME: Demonstrates training a fairness-aware model with Puffle on synthetic data.
-# ABOUTME: Compares a standard model with a Puffle-regularized model to show fairness improvement.
-
 import os
 import random
 

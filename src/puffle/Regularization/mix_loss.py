@@ -1,6 +1,3 @@
-# ABOUTME: Implements a combined loss function for model accuracy and fairness.
-# ABOUTME: Integrates standard criterion with fairness regularization term.
-
 from torch import nn
 
 

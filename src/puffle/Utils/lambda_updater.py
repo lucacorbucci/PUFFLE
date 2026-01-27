@@ -1,6 +1,3 @@
-# ABOUTME: Defines lambda update strategies for tunable fairness regularization.
-# ABOUTME: Provides momentum-based, gradient-based, and PID controller approaches.
-
 from enum import Enum
 
 
