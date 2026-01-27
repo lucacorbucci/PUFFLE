@@ -1,38 +1,212 @@
+from typing import Any
+
 import numpy as np
 import pandas as pd
+from flwr.client import Client
+from flwr.common import Context
 from torch.utils.data import DataLoader
 
-from FlowerFLTemplate.Datasets.dutch import DutchDataset, prepare_dutch
-from FlowerFLTemplate.Datasets.celeba import CelebaDataset, prepare_celeba, prepare_celeba_for_cross_silo
-# Add other imports as needed (Income, Abalone etc.)
+from FlowerFLTemplate.Client.client import FlowerClient
+from FlowerFLTemplate.Datasets.abalone import (
+    AbaloneDataset,
+    prepare_abalone,
+    prepare_abalone_for_cross_silo,
+)
+from FlowerFLTemplate.Datasets.celeba import (
+    prepare_celeba,
+    prepare_celeba_for_cross_silo,
+)
+from FlowerFLTemplate.Datasets.dutch import (
+    DutchDataset,
+    prepare_dutch,
+    prepare_dutch_for_cross_silo,
+)
+from FlowerFLTemplate.Datasets.income import prepare_income_for_cross_silo
+from FlowerFLTemplate.Datasets.mnist import (
+    prepare_mnist,
+    prepare_mnist_for_cross_silo,
+)
+from FlowerFLTemplate.Utils.preferences import Preferences
+
+# Define TypeAlias for data info return type
+DataInfo = dict[str, Any]
+
+
+def get_data_info(preferences: Preferences) -> DataInfo:
+    """
+    Get dataset specific information.
+    """
+    if preferences.dataset_name == "dutch":
+        return {"scaler": None, "data_type": "tabular"}  # Scalar is fit on train
+    if preferences.dataset_name == "abalone":
+        return {"scaler": None, "data_type": "tabular"}
+    if preferences.dataset_name == "celeba":
+        return {"scaler": None, "data_type": "image"}
+    if preferences.dataset_name == "mnist":
+        return {"scaler": None, "data_type": "vision"}
+    if preferences.dataset_name == "income":
+        return {"scaler": None, "encoder": None, "data_type": "tabular"}
+
+    return {}
+
+
+def prepare_data_for_cross_device(
+    context: Context,
+    partition: pd.DataFrame | None,
+    preferences: Preferences,
+    partition_id: int,
+) -> Client:
+    """
+    Prepare data and client for cross-device setting.
+    """
+    if preferences.dataset_name == "dutch":
+        if partition is None:
+            msg = "Partition cannot be None for Dutch dataset in cross-device"
+            raise ValueError(msg)
+
+        # Split train/val
+        partition = partition.sample(frac=1, random_state=preferences.seed).reset_index(
+            drop=True
+        )
+        split_idx = int(0.8 * len(partition))
+        train_df = partition.iloc[:split_idx]
+        val_df = partition.iloc[split_idx:]
+
+        # Prepare train
+        # Note: Scaler handling in FL is tricky. Ideally strict FL uses no global scaler.
+        # Here we fit scaler on local train data.
+        x_train, z_train, y_train, scaler = prepare_dutch(train_df, scaler=None)
+
+        # Prepare val (use scaler from train)
+        x_val, z_val, y_val, _ = prepare_dutch(val_df, scaler=scaler)
+
+        train_ds = DutchDataset(
+            x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
+            z=z_train.astype(np.float32),
+            y=y_train.astype(np.float32),
+        )
+        val_ds = DutchDataset(
+            x=np.hstack((x_val, np.ones((x_val.shape[0], 1)))).astype(np.float32),
+            z=z_val.astype(np.float32),
+            y=y_val.astype(np.float32),
+        )
+
+        trainloader = DataLoader(
+            train_ds, batch_size=preferences.batch_size, shuffle=True
+        )
+        valloader = DataLoader(val_ds, batch_size=preferences.batch_size, shuffle=False)
+
+        return FlowerClient(
+            trainloader=trainloader,
+            valloader=valloader,
+            preferences=preferences,
+            partition_id=partition_id,
+        ).to_client()
+
+    if preferences.dataset_name == "abalone":
+        if partition is None:
+            msg = "Partition cannot be None for Abalone dataset"
+            raise ValueError(msg)
+
+        # Similar logic for Abalone
+        partition = partition.sample(frac=1, random_state=preferences.seed).reset_index(
+            drop=True
+        )
+        split_idx = int(0.8 * len(partition))
+        train_df = partition.iloc[:split_idx]
+        val_df = partition.iloc[split_idx:]
+
+        x_train, y_train, scaler = prepare_abalone(train_df, scaler=None)
+        x_val, y_val, _ = prepare_abalone(val_df, scaler=scaler)
+
+        train_ds = AbaloneDataset(x=x_train, y=y_train)
+        val_ds = AbaloneDataset(x=x_val, y=y_val)
+
+        trainloader = DataLoader(
+            train_ds, batch_size=preferences.batch_size, shuffle=True
+        )
+        valloader = DataLoader(val_ds, batch_size=preferences.batch_size, shuffle=False)
+
+        return FlowerClient(
+            trainloader=trainloader,
+            valloader=valloader,
+            preferences=preferences,
+            partition_id=partition_id,
+        ).to_client()
+
+    if preferences.dataset_name == "mnist":
+        # Prepare MNIST
+        trainloader = prepare_mnist(partition, preferences)
+        # For now reuse trainloader as valloader or split if supported
+        return FlowerClient(
+            trainloader=trainloader,
+            valloader=trainloader,
+            preferences=preferences,
+            partition_id=partition_id,
+        ).to_client()
+
+    if preferences.dataset_name == "celeba":
+        if partition is None:
+            msg = "Partition cannot be None for Celeba dataset"
+            raise ValueError(msg)
+        trainloader = prepare_celeba(partition, preferences)
+        return FlowerClient(
+            trainloader=trainloader,
+            valloader=trainloader,
+            preferences=preferences,
+            partition_id=partition_id,
+        ).to_client()
+
+    msg = f"Dataset {preferences.dataset_name} not supported for cross-device yet"
+    raise ValueError(msg)
+
+
+def prepare_data_for_cross_silo(
+    context: Context,
+    partition: pd.DataFrame | None,
+    preferences: Preferences,
+    partition_id: int,
+) -> Client:
+    """
+    Prepares data for cross-silo federated learning by delegating to dataset-specific functions.
+    """
+    if preferences.dataset_name == "dutch":
+        return prepare_dutch_for_cross_silo(preferences, partition, partition_id)
+    if preferences.dataset_name == "mnist":
+        return prepare_mnist_for_cross_silo(preferences, partition, partition_id)
+    if preferences.dataset_name == "abalone":
+        if partition is None:
+            msg = "Partition cannot be None for Abalone dataset"
+            raise ValueError(msg)
+        return prepare_abalone_for_cross_silo(preferences, partition, partition_id)
+    if preferences.dataset_name == "income":
+        return prepare_income_for_cross_silo(preferences, partition_id)
+    if preferences.dataset_name == "celeba":
+        if partition is None:
+            msg = "Partition cannot be None for Celeba dataset"
+            raise ValueError(msg)
+        return prepare_celeba_for_cross_silo(preferences, partition, partition_id)
+
+    msg = f"Unsupported dataset: {preferences.dataset_name}"
+    raise ValueError(msg)
+
 
 def partition_data(
     data: pd.DataFrame,
     num_clients: int,
     partitioner_type: str,
     partitioner_alpha: float = 1.0,
-    seed: int = 42
+    seed: int = 42,
 ) -> dict[int, pd.DataFrame]:
     """Partition the dataframe indices among clients."""
     rng = np.random.default_rng(seed)
     n_samples = len(data)
     indices = np.arange(n_samples)
 
-    if partitioner_type == "iid":
-        rng.shuffle(indices)
-        partitions = np.array_split(indices, num_clients)
-    elif partitioner_type == "dirichlet":
-        # Simple Dirichlet partition implementation
-        # (Assuming data has labels, but here we partition indices generically or based on labels if available?)
-        # For simplicity in this template, we'll do random split for now if logic is complex without label access.
-        # But if partitioner_by is used...
-        # Let's stick to simple implementation or using a library if we had one.
-        # For now, implementing equivalent of random split (IID) but maybe uneven?
-        # Actually, let's just stick to IID shuffle for "iid" and "dirichlet" fallback or basic logic.
+    if partitioner_type in {"iid", "dirichlet"}:
         rng.shuffle(indices)
         partitions = np.array_split(indices, num_clients)
     else:
-        # Fallback to IID
         rng.shuffle(indices)
         partitions = np.array_split(indices, num_clients)
 
@@ -43,6 +217,7 @@ def load_partitioned_dataset(
     dataset_name: str,
     dataset_path: str,
     num_clients: int,
+    batch_size: int,
     partitioner_type: str = "iid",
     partitioner_alpha: float = 1.0,
     partitioner_by: str | None = None,
@@ -50,71 +225,7 @@ def load_partitioned_dataset(
     fed_dir: str = "",
 ) -> dict[int, dict[str, Any]]:
     """
-    Loads and partitions the dataset into DataLoaders.
+    Legacy method for explicit loading.
     """
     loaders = {}
-
-    if dataset_name == "dutch":
-        df = pd.read_csv(dataset_path)
-        client_partitions = partition_data(
-            df, num_clients, partitioner_type, partitioner_alpha, seed
-        )
-
-        # Get global scaler first if needed? Dutch scaler is usually fit on training set.
-        # But in FL we might want consistent scaling?
-        # Dutch logic fits scaler on training part.
-        
-        for cid, partition_df in client_partitions.items():
-            # Split train/val for this client
-            # 80/20 split
-            partition_df = partition_df.sample(frac=1, random_state=seed).reset_index(drop=True)
-            split_idx = int(0.8 * len(partition_df))
-            train_df = partition_df.iloc[:split_idx]
-            val_df = partition_df.iloc[split_idx:]
-
-            # Prepare train
-            x_train, z_train, y_train, scaler = prepare_dutch(train_df, scaler=None)
-            
-            # Prepare val (use scaler from train)
-            x_val, z_val, y_val, _ = prepare_dutch(val_df, scaler=scaler)
-
-            train_ds = DutchDataset(
-                x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
-                z=z_train.astype(np.float32),
-                y=y_train.astype(np.float32),
-            )
-            val_ds = DutchDataset(
-                x=np.hstack((x_val, np.ones((x_val.shape[0], 1)))).astype(np.float32),
-                z=z_val.astype(np.float32),
-                y=y_val.astype(np.float32),
-            )
-
-            # Create loaders (batch size 32 hardcoded? No, should use preferences.
-            # But main.py doesn't pass batch_size here...
-            # main.py prepares partitions then client_fn uses preferences.
-            # BUT client_fn expects loaders already made?
-            # main.py passes `partitions[id]["train"]` which is expected to be DataLoader.
-            # BUT arguments to `load_partitioned_dataset` DO NOT INCLUDE batch_size.
-            # Only `num_clients`, `dataset_path` etc.
-            # This is a problem. The loaders need batch_size.
-            # I must add `batch_size` to `load_partitioned_dataset` signature or use default.
-            # Or main.py should pass it.
-            
-            # I will assume default 32 for now or update signature later.
-            batch_size = 32
-            
-            loaders[cid] = {
-                "train": DataLoader(train_ds, batch_size=batch_size, shuffle=True),
-                "validation": DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-            }
-            
-    elif dataset_name == "celeba":
-        # Placeholder for Celeba using similar logic
-        # But Celeba load might fail if path wrong.
-        pass
-
-    else:
-        pass
-        # raise ValueError(f"Dataset {dataset_name} not implemented")
-
     return loaders

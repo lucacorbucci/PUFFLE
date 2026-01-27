@@ -1,105 +1,120 @@
 import sys
-import tempfile
 from unittest.mock import MagicMock, patch
 
 import pytest
-import torch
-from torch.utils.data import DataLoader, TensorDataset
+from flwr.client import Client
+from flwr.common import Context
+from flwr.server import ServerAppComponents
 
-# Adjust path to allow imports from FlowerFLTemplate
-# This is needed because the template is not a proper package installed in site-packages
-sys.path.append("src/FlowerFLTemplate")
+# Adjust path to allow imports from FlowerFLTemplate src
+sys.path.append("src")
+# Need to inject preferences into main module namespace for client_fn/server_fn to work
+# since they rely on global `preferences`
+import FlowerFLTemplate.main as main_module
+from FlowerFLTemplate.ClientManager.client_manager import (
+    SimpleClientManager,
+)
 
-from FlowerFLTemplate.main import main as fl_main
+# Since we want to test main.py logic, we can import functions from main if possible
+# or test components individually.
+# Given complexity of main(), testing components (client_fn, server_fn) is better.
+# We will test that client_fn and server_fn (imported from main) work as expected
+# given initialized preferences.
+from FlowerFLTemplate.main import (
+    client_fn,
+    prepare_data,
+    server_fn,
+)
+from FlowerFLTemplate.Utils.preferences import Preferences
 
 
 @pytest.fixture
-def mock_dataset():
-    """Create dummy dataset loaders."""
-    x = torch.randn(10, 10)
-    z = torch.randint(0, 2, (10,))
-    y = torch.randint(0, 2, (10,))
-    dataset = TensorDataset(x, z, y)
-    loader = DataLoader(dataset, batch_size=5)
+def mock_preferences():
+    return Preferences(
+        num_clients=2,
+        num_rounds=1,
+        dataset_name="dutch",  # Use dutch to trigger specific logic
+        fl_setting="cross_device",
+        cross_device=True,  # Explicitly set according to fl_setting intention
+        partitioner_type="iid",  # Set partitioner type
+        batch_size=5,
+        model="LinearClassificationNet",
+        sampled_training_nodes_per_round=1.0,
+        sampled_validation_nodes_per_round=0.0,
+    )
 
-    # Mock partitions structure: {0: {'train': loader, 'validation': loader}, ...}
-    partitions = {
-        0: {"train": loader, "validation": loader},
-        1: {"train": loader, "validation": loader},
-    }
-    return partitions
+
+@patch("FlowerFLTemplate.main.prepare_data_for_cross_device")
+@patch("FlowerFLTemplate.main.partitioner")
+def test_client_fn(mock_partitioner, mock_prepare, mock_preferences):
+    """Test client_fn calls correct preparation function."""
+    # Setup global preferences
+    main_module.preferences = mock_preferences
+    mock_partitioner.load_partition.return_value = MagicMock()
+
+    # Mock context
+    context = MagicMock(spec=Context)
+    context.node_config = {"partition-id": "0"}
+
+    # Mock return
+    mock_prepare.return_value = MagicMock(spec=Client)
+
+    # Run
+    client = client_fn(context)
+
+    # Assert
+    mock_prepare.assert_called_once()
+    assert client is not None
 
 
-@patch("main.load_partitioned_dataset")
-@patch("main.fl.simulation.start_simulation")
-@patch("main.wandb")
-@patch("Client.client.dill.load")  # Mock pickle loading in client
-@patch("builtins.open")  # Mock open for pickle
-def test_fl_simulation_setup(
-    mock_open, mock_dill, mock_wandb, mock_start_simulation, mock_load, mock_dataset
-):
-    """Test that main.py sets up and calls start_simulation correctly."""
-    # Mock logic
-    mock_load.return_value = mock_dataset
-    mock_dill.return_value = {}  # Empty counter_sampling
+@patch("FlowerFLTemplate.main.get_model")
+@patch("FlowerFLTemplate.main.get_params")
+def test_server_fn(mock_get_params, mock_get_model, mock_preferences):
+    """Test server_fn initializes components correctly."""
+    # Setup global preferences and client_manager
+    main_module.preferences = mock_preferences
+    main_module.client_manager = MagicMock(spec=SimpleClientManager)
+    main_module.wandb_run = None
 
-    # Mock generic open to avoid file not found for counter_sampling.pkl
-    mock_open.return_value.__enter__.return_value = MagicMock()
+    # Mock model and params
+    mock_model = MagicMock()
+    mock_get_model.return_value = mock_model
+    mock_get_params.return_value = []  # lists of ndarrays
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Mock command line arguments
-        test_args = [
-            "main.py",
-            "--dataset_name",
-            "dummy",
-            "--num_clients",
-            "2",
-            "--num_rounds",
-            "1",
-            "--batch_size",
-            "5",
-            "--project_name",
-            "TestFL",  # Use wandb=False but just in case
-            "--sampled_training_nodes_per_round",
-            "1.0",
-            "--sampled_validation_nodes_per_round",
-            "0.0",
-            "--fed_dir",
-            temp_dir,
-            "--fairness_metric",
-            "disparity",
-            "--unfairness_reduction",
-            "True",
-            "--model",
-            "LinearClassificationNet",
-            "--in_channels",
-            "10",
-            "--num_classes",
-            "2",
-        ]
+    # Mock context
+    context = MagicMock(spec=Context)
 
-        with patch.object(sys, "argv", test_args):
-            # Run main
-            fl_main()
+    # Run
+    components = server_fn(context)
 
-    # Verify dataset was loaded
-    mock_load.assert_called_once()
+    # Assert
+    assert isinstance(components, ServerAppComponents)
+    assert components.server is not None
+    assert components.config is not None
+    assert components.config.num_rounds == 1
 
-    # Verify simulation started
-    mock_start_simulation.assert_called_once()
 
-    # Verify args passed to simulation
-    call_kwargs = mock_start_simulation.call_args[1]
-    assert call_kwargs["num_clients"] == 2  # noqa: S101
-    assert call_kwargs["config"].num_rounds == 1  # noqa: S101
-    assert call_kwargs["client_fn"] is not None  # noqa: S101
+import datasets
 
-    # Test client_fn (simulate one client creation)
-    client_fn = call_kwargs["client_fn"]
-    client = client_fn("0")
 
-    assert client is not None  # noqa: S101
-    assert client.partition_id == 0  # noqa: S101
-    # Verify initialization of PUFFLEModel wrapper
-    assert client.model is not None  # noqa: S101
-    assert client.model.config.lambda_regularization == 0.0  # noqa: S101 Default unless set
+def test_prepare_data_dutch(mock_preferences):
+    """Test prepare_data logic for dutch dataset."""
+    # Ensure preferences is set in main_module
+    main_module.preferences = mock_preferences
+
+    with (
+        patch("FlowerFLTemplate.main.get_data_info") as mock_get_info,
+        patch("FlowerFLTemplate.main.load_dataset") as mock_load_dataset,
+    ):
+        # Mock get_data_info
+        mock_get_info.return_value = {"scaler": MagicMock()}
+
+        # Mock load_dataset
+        mock_ds = MagicMock(spec=datasets.Dataset)
+        mock_ds.__len__.return_value = 100  # Ensure bool(mock_ds) is True
+        mock_load_dataset.return_value = {"train": mock_ds}
+
+        partitioner = prepare_data(mock_preferences)
+
+        mock_load_dataset.assert_called()
+        assert partitioner is not None

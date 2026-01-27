@@ -157,7 +157,8 @@ class SimpleClientManager(ClientManager):
         """
         Registers a Flower ClientProxy instance with the manager.
 
-        Assigns a unique random CID if needed, handles cross-device/silo sampling, saves sampled nodes to pickle files, and notifies waiting threads.
+        Assigns a unique random CID if needed, handles cross-device/silo sampling,
+        saves sampled nodes to pickle files, and notifies waiting threads.
 
         Args:
             client (ClientProxy): The client to register.
@@ -172,164 +173,147 @@ class SimpleClientManager(ClientManager):
         if client.cid in self.clients:
             return False
 
-        new_random_cid = str(random.randint(0, self.preferences.num_clients))
-        while new_random_cid in self.clients:
-            new_random_cid = str(random.randint(0, self.preferences.num_clients))
-        client.cid = new_random_cid
+        self._assign_unique_cid(client)
 
         self.clients[client.cid] = client
         self.clients_list.append(client.cid)
 
         if self.preferences.num_clients == len(self.clients_list):
-            if self.preferences.cross_device:
-                # In the cross device case, we want to sample the clients so that we have
-                # a training set of clients and a test set of clients.
-                # The test set of clients should always be the same both during the training and the testing.
-                # If we are doing an hyperparameter search, we want to sample the clients
-                # so that we have a training set of clients, a validation set of clients and
-                # a test set of clients.
-                self.validation_clients_list = None
-                self.clients_list = [
-                    str(client_id)
-                    for client_id in sorted(
-                        [int(client_id) for client_id in self.clients_list]
-                    )
-                ]
+            self._setup_simulation_sets()
 
-                # sample the test clients from the self.clients_list
-                self.test_clients_list = self.clients_list[
-                    : self.preferences.num_test_nodes
-                ]
-                sampled_nodes_test = self.sample_clients_per_round(
-                    fraction=self.preferences.sampled_test_nodes_per_round,
-                    client_list=self.test_clients_list,
-                )
-
-                with open(
-                    f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb"
-                ) as f:
-                    dill.dump(sampled_nodes_test, f)
-
-                with open(f"{self.preferences.fed_dir}/test_nodes_list.pkl", "wb") as f:
-                    dill.dump(self.test_clients_list, f)
-
-                remaining_nodes = self.clients_list[self.preferences.num_test_nodes :]
-
-                random.seed(self.preferences.node_shuffle_seed)
-                random.shuffle(remaining_nodes)
-
-                # Now we check if we need to create the validation set
-                if self.preferences.sweep and self.preferences.num_validation_nodes > 0:
-                    self.validation_clients_list = remaining_nodes[
-                        : self.preferences.num_validation_nodes
-                    ]
-                    remaining_nodes = remaining_nodes[
-                        self.preferences.num_validation_nodes :
-                    ]
-                    sampled_nodes_validation = self.sample_clients_per_round(
-                        fraction=self.preferences.sampled_validation_nodes_per_round,
-                        client_list=self.validation_clients_list,
-                    )
-                    with open(
-                        f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl",
-                        "wb",
-                    ) as f:
-                        dill.dump(sampled_nodes_validation, f)
-
-                    with open(
-                        f"{self.preferences.fed_dir}/validation_nodes_list.pkl", "wb"
-                    ) as f:
-                        dill.dump(self.validation_clients_list, f)
-
-                self.training_clients_list = remaining_nodes
-
-                sampled_nodes_train = self.sample_clients_per_round(
-                    fraction=self.preferences.sampled_training_nodes_per_round,
-                    client_list=self.training_clients_list,
-                )
-                with open(
-                    f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb"
-                ) as f:
-                    dill.dump(sampled_nodes_train, f)
-
-                with open(
-                    f"{self.preferences.fed_dir}/train_nodes_list.pkl", "wb"
-                ) as f:
-                    dill.dump(self.training_clients_list, f)
-
-                counter_sampling = {}
-                for sample_list in sampled_nodes_train.values():
-                    for node in sample_list:
-                        if node not in counter_sampling:
-                            counter_sampling[str(node)] = 0
-                        counter_sampling[str(node)] += 1
-
-                with open(
-                    f"{self.preferences.fed_dir}/counter_sampling.pkl", "wb"
-                ) as f:
-                    dill.dump(counter_sampling, f)
-
-                random.seed(self.preferences.seed)
-
-            else:
-                # In this case I'm in the cross-silo case
-                # This means that each node has training, validation and test data
-                # so each node could be used for training, validation and testing
-                if self.preferences.sampled_validation_nodes_per_round:
-                    random.seed(self.preferences.node_shuffle_seed)
-                    random.shuffle(self.clients_list)
-                    sampled_nodes_validation = self.pre_sample_clients(
-                        fraction=self.preferences.sampled_validation_nodes_per_round,
-                        client_list=self.clients_list,
-                    )
-                    with open(
-                        f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl",
-                        "wb",
-                    ) as f:
-                        dill.dump(sampled_nodes_validation, f)
-                    random.seed(self.preferences.seed)
-                else:
-                    pass
-
-                sampled_nodes_test = self.pre_sample_clients(
-                    fraction=self.preferences.sampled_test_nodes_per_round,
-                    client_list=self.clients_list,
-                )
-
-                with open(
-                    f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb"
-                ) as f:
-                    dill.dump(sampled_nodes_test, f)
-
-                sampled_nodes_train = self.pre_sample_clients(
-                    fraction=self.preferences.sampled_training_nodes_per_round,
-                    client_list=self.clients_list,
-                )
-                with open(
-                    f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb"
-                ) as f:
-                    dill.dump(sampled_nodes_train, f)
-
-                counter_sampling = {}
-                for sample_list in sampled_nodes_train.values():
-                    for node in sample_list:
-                        if node not in counter_sampling:
-                            counter_sampling[str(node)] = 0
-                        counter_sampling[str(node)] += 1
-
-                with open(
-                    f"{self.preferences.fed_dir}/counter_sampling.pkl", "wb"
-                ) as f:
-                    dill.dump(counter_sampling, f)
-
-                self.test_clients_list = self.clients_list
-                self.training_clients_list = self.clients_list
-                self.validation_clients_list = self.clients_list
-
-        with self._cv:
-            self._cv.notify_all()
+            with self._cv:
+                self._cv.notify_all()
 
         return True
+
+    def _assign_unique_cid(self, client: ClientProxy) -> None:
+        new_random_cid = str(random.randint(0, self.preferences.num_clients))
+        while new_random_cid in self.clients:
+            new_random_cid = str(random.randint(0, self.preferences.num_clients))
+        client.cid = new_random_cid
+
+    def _setup_simulation_sets(self) -> None:
+        if self.preferences.cross_device:
+            self._setup_cross_device()
+        else:
+            self._setup_cross_silo()
+
+    def _setup_cross_device(self) -> None:
+        # In the cross device case, we want to sample the clients so that we have
+        # a training set of clients and a test set of clients.
+        # The test set of clients should always be the same both during the training and the testing.
+        self.validation_clients_list = None
+        self.clients_list = [
+            str(client_id)
+            for client_id in sorted([int(client_id) for client_id in self.clients_list])
+        ]
+
+        # sample the test clients from the self.clients_list
+        self.test_clients_list = self.clients_list[: self.preferences.num_test_nodes]
+        sampled_nodes_test = self.sample_clients_per_round(
+            fraction=self.preferences.sampled_test_nodes_per_round,
+            client_list=self.test_clients_list,
+        )
+
+        with open(f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb") as f:
+            dill.dump(sampled_nodes_test, f)
+
+        with open(f"{self.preferences.fed_dir}/test_nodes_list.pkl", "wb") as f:
+            dill.dump(self.test_clients_list, f)
+
+        remaining_nodes = self.clients_list[self.preferences.num_test_nodes :]
+
+        random.seed(self.preferences.node_shuffle_seed)
+        random.shuffle(remaining_nodes)
+
+        # Now we check if we need to create the validation set
+        if self.preferences.sweep and self.preferences.num_validation_nodes > 0:
+            self.validation_clients_list = remaining_nodes[
+                : self.preferences.num_validation_nodes
+            ]
+            remaining_nodes = remaining_nodes[self.preferences.num_validation_nodes :]
+            sampled_nodes_validation = self.sample_clients_per_round(
+                fraction=self.preferences.sampled_validation_nodes_per_round,
+                client_list=self.validation_clients_list,
+            )
+            with open(
+                f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl",
+                "wb",
+            ) as f:
+                dill.dump(sampled_nodes_validation, f)
+
+            with open(
+                f"{self.preferences.fed_dir}/validation_nodes_list.pkl", "wb"
+            ) as f:
+                dill.dump(self.validation_clients_list, f)
+
+        self.training_clients_list = remaining_nodes
+
+        sampled_nodes_train = self.sample_clients_per_round(
+            fraction=self.preferences.sampled_training_nodes_per_round,
+            client_list=self.training_clients_list,
+        )
+        with open(f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb") as f:
+            dill.dump(sampled_nodes_train, f)
+
+        with open(f"{self.preferences.fed_dir}/train_nodes_list.pkl", "wb") as f:
+            dill.dump(self.training_clients_list, f)
+
+        self._save_counter_sampling(sampled_nodes_train)
+
+        random.seed(self.preferences.seed)
+
+    def _setup_cross_silo(self) -> None:
+        # In this case I'm in the cross-silo case
+        # This means that each node has training, validation and test data
+        # so each node could be used for training, validation and testing
+        if self.preferences.sampled_validation_nodes_per_round:
+            random.seed(self.preferences.node_shuffle_seed)
+            random.shuffle(self.clients_list)
+            sampled_nodes_validation = self.pre_sample_clients(
+                fraction=self.preferences.sampled_validation_nodes_per_round,
+                client_list=self.clients_list,
+            )
+            with open(
+                f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl",
+                "wb",
+            ) as f:
+                dill.dump(sampled_nodes_validation, f)
+            random.seed(self.preferences.seed)
+        else:
+            pass
+
+        sampled_nodes_test = self.pre_sample_clients(
+            fraction=self.preferences.sampled_test_nodes_per_round,
+            client_list=self.clients_list,
+        )
+
+        with open(f"{self.preferences.fed_dir}/test_nodes_per_round.pkl", "wb") as f:
+            dill.dump(sampled_nodes_test, f)
+
+        sampled_nodes_train = self.pre_sample_clients(
+            fraction=self.preferences.sampled_training_nodes_per_round,
+            client_list=self.clients_list,
+        )
+        with open(f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb") as f:
+            dill.dump(sampled_nodes_train, f)
+
+        self._save_counter_sampling(sampled_nodes_train)
+
+        self.test_clients_list = self.clients_list
+        self.training_clients_list = self.clients_list
+        self.validation_clients_list = self.clients_list
+
+    def _save_counter_sampling(self, sampled_nodes_train: dict[int, list[str]]) -> None:
+        counter_sampling: dict[str, int] = {}
+        for sample_list in sampled_nodes_train.values():
+            for node in sample_list:
+                if node not in counter_sampling:
+                    counter_sampling[str(node)] = 0
+                counter_sampling[str(node)] += 1
+
+        with open(f"{self.preferences.fed_dir}/counter_sampling.pkl", "wb") as f:
+            dill.dump(counter_sampling, f)
 
     def unregister(self, client: ClientProxy) -> None:
         """

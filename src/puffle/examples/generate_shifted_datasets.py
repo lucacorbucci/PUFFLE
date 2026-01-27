@@ -49,47 +49,69 @@ def create_distribution_shift(
     indices_to_modify = np.random.choice(n_samples, n_to_modify, replace=False)
 
     if shift_type == "increase_bias":
-        # Make sensitive attribute more predictive of target
-        # If target=1 and sensitive=0, flip sensitive to 1
-        # If target=0 and sensitive=1, flip sensitive to 0
-        for idx in indices_to_modify:
-            target_val = df_shifted.loc[idx, target_column]
-            sensitive_val = df_shifted.loc[idx, sensitive_column]
-
-            if target_val == 1 and sensitive_val == 0:
-                df_shifted.loc[idx, sensitive_column] = 1
-            elif target_val == 0 and sensitive_val == 1:
-                df_shifted.loc[idx, sensitive_column] = 0
-
-    elif shift_type == "decrease_bias":
-        # Make sensitive attribute less predictive of target
-        # Randomly flip sensitive attribute values
-        for idx in indices_to_modify:
-            current_val = df_shifted.loc[idx, sensitive_column]
-            df_shifted.loc[idx, sensitive_column] = 1 - current_val
-
-    elif shift_type == "flip_labels":
-        # Flip target labels to create sudden accuracy drop
-        for idx in indices_to_modify:
-            current_val = df_shifted.loc[idx, target_column]
-            df_shifted.loc[idx, target_column] = 1 - current_val
-
-    elif shift_type == "class_imbalance":
-        # Create class imbalance by removing samples from one class
-        target_to_remove = 0  # Remove class 0 samples
-        class_0_indices = df_shifted[
-            df_shifted[target_column] == target_to_remove
-        ].index
-        indices_to_remove = np.random.choice(
-            class_0_indices, min(n_to_modify, len(class_0_indices)), replace=False
+        _augment_increase_bias(
+            df_shifted, indices_to_modify, sensitive_column, target_column
         )
-        df_shifted = df_shifted.drop(indices_to_remove).reset_index(drop=True)
-
+    elif shift_type == "decrease_bias":
+        _augment_decrease_bias(df_shifted, indices_to_modify, sensitive_column)
+    elif shift_type == "flip_labels":
+        _augment_flip_labels(df_shifted, indices_to_modify, target_column)
+    elif shift_type == "class_imbalance":
+        df_shifted = _augment_class_imbalance(df_shifted, n_to_modify, target_column)
     else:
         msg = f"Unknown shift type: {shift_type}"
         raise ValueError(msg)
 
     return df_shifted
+
+
+def _augment_increase_bias(
+    df_shifted: pd.DataFrame,
+    indices_to_modify: np.ndarray,
+    sensitive_column: str,
+    target_column: str,
+) -> None:
+    for idx in indices_to_modify:
+        target_val = df_shifted.loc[idx, target_column]
+        sensitive_val = df_shifted.loc[idx, sensitive_column]
+
+        if target_val == 1 and sensitive_val == 0:
+            df_shifted.loc[idx, sensitive_column] = 1
+        elif target_val == 0 and sensitive_val == 1:
+            df_shifted.loc[idx, sensitive_column] = 0
+
+
+def _augment_decrease_bias(
+    df_shifted: pd.DataFrame,
+    indices_to_modify: np.ndarray,
+    sensitive_column: str,
+) -> None:
+    for idx in indices_to_modify:
+        current_val = df_shifted.loc[idx, sensitive_column]
+        df_shifted.loc[idx, sensitive_column] = 1 - current_val
+
+
+def _augment_flip_labels(
+    df_shifted: pd.DataFrame,
+    indices_to_modify: np.ndarray,
+    target_column: str,
+) -> None:
+    for idx in indices_to_modify:
+        current_val = df_shifted.loc[idx, target_column]
+        df_shifted.loc[idx, target_column] = 1 - current_val
+
+
+def _augment_class_imbalance(
+    df_shifted: pd.DataFrame,
+    n_to_modify: int,
+    target_column: str,
+) -> pd.DataFrame:
+    target_to_remove = 0  # Remove class 0 samples
+    class_0_indices = df_shifted[df_shifted[target_column] == target_to_remove].index
+    indices_to_remove = np.random.choice(
+        class_0_indices, min(n_to_modify, len(class_0_indices)), replace=False
+    )
+    return df_shifted.drop(indices_to_remove).reset_index(drop=True)
 
 
 def compute_bias_metrics(

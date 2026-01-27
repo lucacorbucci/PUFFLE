@@ -98,6 +98,7 @@ max-args = 12
 "src/puffle/PUFFLEModel/puffle_model.py" = ["T201", "PLR0913"]
 "src/FlowerFLTemplate/**/*" = ["N999", "ARG002", "PTH", "RET504", "PGH003", "NPY002", "INP001", "D404", "S301", "FBT001", "PD011", "PLR2004", "ARG001", "D417", "ERA001", "ARG004", "PLR0912", "PLR0915", "S311"]
 "src/FlowerFLTemplate/Datasets/*" = ["T201", "PTH"]
+"src/FlowerFLTemplate/tests/*" = ["S101", "PLR2004", "D101", "D102", "D103", "SLF001", "PT011"]
 "src/FlowerFLTemplate/main.py" = ["T201"]
 
 [tool.pyright]

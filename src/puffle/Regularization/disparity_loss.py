@@ -294,18 +294,29 @@ class DisparityRegularizationLoss(BaseFairnessLoss):
     ) -> torch.Tensor:
         """
         Compute violation using argmax.
-
-        Args:
-            predictions_argmax (torch.Tensor): Predictions (argmax).
-            sensitive_attribute_list (torch.Tensor): Sensitive attributes.
-            possible_sensitive_attributes (list): List of possible sensitive feature values.
-            possible_targets (list): List of possible target labels.
-            global_computation (bool, optional): Whether to perform global computation. Defaults to False.
-
-        Returns:
-            torch.Tensor: The disparity regularization loss.
-
         """
+        fairness_violations = self._compute_all_violations(
+            predictions_argmax,
+            sensitive_attribute_list,
+            possible_sensitive_attributes,
+            possible_targets,
+        )
+
+        fairness_violations_tensors = self._process_violations_to_tensors(
+            fairness_violations, predictions_argmax.device
+        )
+
+        return self._masked_max_violation(
+            fairness_violations_tensors, predictions_argmax.device
+        )
+
+    def _compute_all_violations(
+        self,
+        predictions_argmax: torch.Tensor,
+        sensitive_attribute_list: torch.Tensor | list,
+        possible_sensitive_attributes: list,
+        possible_targets: list,
+    ) -> list:
         fairness_violations = []
         for target in possible_targets:
             for z in possible_sensitive_attributes:
@@ -313,18 +324,11 @@ class DisparityRegularizationLoss(BaseFairnessLoss):
                     predictions_argmax, sensitive_attribute_list, target, z
                 )
                 fairness_violations.append(violation_term)
+        return fairness_violations
 
-        fairness_violations_ = []
-        for item in fairness_violations:
-            if isinstance(item, torch.Tensor):
-                if item.numel() > 1:
-                    fairness_violations_.append(item.mean().item())
-                else:
-                    fairness_violations_.append(item.item())
-            else:
-                fairness_violations_.append(item)
-
-        index = fairness_violations_.index(max(fairness_violations_))
+    def _process_violations_to_tensors(
+        self, fairness_violations: list, device: torch.device
+    ) -> torch.Tensor:
         fairness_violations_tensors = []
         for item in fairness_violations:
             if isinstance(item, torch.Tensor):
@@ -334,20 +338,36 @@ class DisparityRegularizationLoss(BaseFairnessLoss):
                     fairness_violations_tensors.append(item)
             else:
                 fairness_violations_tensors.append(
-                    torch.tensor(item, dtype=torch.float32).to(
-                        predictions_argmax.device
-                    )
+                    torch.tensor(item, dtype=torch.float32).to(device)
                 )
 
-        fairness_violations = torch.stack(fairness_violations_tensors)
+        return torch.stack(fairness_violations_tensors)
 
-        mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(
-            predictions_argmax.device
-        )
-        mask[index] = 1
-        mask = mask.to(predictions_argmax.device)
-        fairness_violations = fairness_violations.to(predictions_argmax.device)
-        return torch.sum(mask * fairness_violations)
+    def _masked_max_violation(
+        self, fairness_violations_tensors: torch.Tensor, device: torch.device
+    ) -> torch.Tensor:
+        # We need to find index of max.
+        # But wait, original code found max index from `fairness_violations_` (scalars)
+        # and applied mask to `fairness_violations` (tensors).
+        # We can find max from the detached CPU versions of tensors.
+
+        # More efficiently:
+        # fairness_violations_tensors is 1D tensor of violations.
+        # Logic: find index of max, create mask, sum.
+
+        # Wait, if we use values from tensors directly it works.
+        # Original code converted to float list, then found max.
+        # This is equivalent to argmax on the tensor if they are all scalars.
+
+        if fairness_violations_tensors.numel() == 0:
+            return torch.tensor(0.0).to(device)
+
+        index = torch.argmax(fairness_violations_tensors)
+
+        mask = torch.zeros_like(fairness_violations_tensors).to(device)
+        mask[index] = 1.0
+
+        return torch.sum(mask * fairness_violations_tensors)
 
     def compute_violation_with_argmax(
         self,

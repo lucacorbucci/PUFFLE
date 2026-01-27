@@ -19,9 +19,9 @@ class Preferences:
     num_validation_nodes: int | None = None
     num_train_nodes: int | None = None
     num_epochs: int = 1
-    sampled_validation_nodes_per_round: int | None = None
-    sampled_training_nodes_per_round: int | None = None
-    sampled_test_nodes_per_round: int | None = None
+    sampled_validation_nodes_per_round: float | None = None
+    sampled_training_nodes_per_round: float | None = None
+    sampled_test_nodes_per_round: float | None = None
     seed: int = 42
     node_shuffle_seed: int | None = None
     fed_dir: str | None = None
@@ -44,6 +44,7 @@ class Preferences:
     lr: float = 0.01
     optimizer: str = "adam"
     momentum: float = 0.9
+    weight_decay: float = 1e-5
 
     image_path: str | None = None
 
