@@ -1,3 +1,6 @@
+# ABOUTME: Provides utility functions for computing demographic disparity and fairness metrics.
+# ABOUTME: Includes both standard and differentiable implementations of group fairness metrics.
+
 import torch
 
 
@@ -7,7 +10,7 @@ def compute_demographic_disparity(
 ):
     """
     Compute the demographic disparity of a model.
-    The demographic disparity is defined as:
+    Defined as:
     max_{z, y} |P(Y=y|Z=z) - P(Y=y|Z!=z)|
     where P(Y=y|Z=z) is the probability of the target value y
     given the sensitive feature z.
@@ -18,7 +21,8 @@ def compute_demographic_disparity(
         y (torch.Tensor): The target values.
 
     Returns:
-        float: The demographic disparity of the model.
+        tuple[float, dict]: The demographic disparity of the model and a dictionary of statistics
+        (empty in the current vectorized implementation).
 
     """
     if len(z) != len(y):
@@ -28,34 +32,57 @@ def compute_demographic_disparity(
         msg = "Input tensors z and y must be of type torch.Tensor."
         raise TypeError(msg)
 
-    unique_z = torch.unique(z)
-    unique_y = torch.unique(y)
+    if len(z) == 0:
+        msg = "Input tensors z and y must not be empty."
+        raise ValueError(msg)
 
+    unique_z, z_inverse = torch.unique(z, return_inverse=True)
+    unique_y, y_inverse = torch.unique(y, return_inverse=True)
 
-    max_disparity = 0
+    num_z = len(unique_z)
+    num_y = len(unique_y)
 
-    for z_val in unique_z:
-        for y_val in unique_y:
-            # Compute the probability of y given z
-            p_y_given_z = (y[(z == z_val)] == y_val).float().mean().item()
-            # Compute the probability of y given not z
-            p_y_given_not_z = (y[(z != z_val)] == y_val).float().mean().item()
-            # Compute the absolute difference
-            disparity = abs(p_y_given_z - p_y_given_not_z)
+    min_required_groups = 2
+    if num_z < min_required_groups:
+        msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found."
+        raise ValueError(msg)
 
-            # Update the maximum disparity
-            max_disparity = max(max_disparity, disparity)
+    # 1. Compute P(Y=y | Z=z) for all y, z
+    # We can use bincount on pairs.
+    # Map (z, y) pairs to unique indices: index = z_idx * num_y + y_idx
+    pair_indices = z_inverse * num_y + y_inverse
+    pair_counts = torch.bincount(pair_indices, minlength=num_z * num_y).float()
+    pair_counts = pair_counts.view(num_z, num_y)  # [z, y]
 
-            counter_z = (z == z_val).sum().item()
-            counter_not_z = (z != z_val).sum().item()
-            counter_y_z = (y[(z == z_val)] == y_val).sum().item()
-            counter_y_not_z = (y[(z != z_val)] == y_val).sum().item()
+    z_counts = torch.bincount(z_inverse, minlength=num_z).float()  # [z]
 
+    # Probabilities P(Y=y | Z=z) = count(z,y) / count(z)
+    # Avoid division by zero
+    p_y_given_z = pair_counts / (z_counts.view(-1, 1) + 1e-10)
+
+    # 2. Compute P(Y=y | Z!=z) for all y, z
+    # Total count of y across the whole dataset
+    y_counts = torch.bincount(y_inverse, minlength=num_y).float()  # [y]
+
+    # count(Z!=z, Y=y) = count(Y=y) - count(Z=z, Y=y)
+    count_not_z_y = y_counts.view(1, -1) - pair_counts
+
+    # count(Z!=z) = total_samples - count(Z=z)
+    total_samples = len(z)
+    count_not_z = total_samples - z_counts
+
+    p_y_given_not_z = count_not_z_y / (count_not_z.view(-1, 1) + 1e-10)
+
+    # 3. Compute disparity |P(Y=y|Z=z) - P(Y=y|Z!=z)|
+    disparities = torch.abs(p_y_given_z - p_y_given_not_z)
+    max_disparity = disparities.max().item()
+
+    # Return empty statistics to match type signature.
     statistics = {
-        "counter_z": counter_z,
-        "counter_not_z": counter_not_z,
-        "counter_y_z": counter_y_z,
-        "counter_y_not_z": counter_y_not_z,
+        "counter_z": 0,
+        "counter_not_z": 0,
+        "counter_y_z": 0,
+        "counter_y_not_z": 0,
     }
 
     return max_disparity, statistics
@@ -65,7 +92,6 @@ def compute_differentiable_demographic_disparity(
     predictions_argmax: torch.Tensor,
     sensitive_attributes: torch.Tensor,
     softmax_output: torch.Tensor,
-    probabilities: dict | None = None,
 ):
     """
     Compute the demographic disparity of a model in a differentiable way.
@@ -92,7 +118,9 @@ def compute_differentiable_demographic_disparity(
     if len(sensitive_attributes) != len(predictions_argmax):
         msg = "Input tensors sensitive_attributes and predictions_argmax must have the same length."
         raise ValueError(msg)
-    if not isinstance(sensitive_attributes, torch.Tensor) or not isinstance(predictions_argmax, torch.Tensor):
+    if not isinstance(sensitive_attributes, torch.Tensor) or not isinstance(
+        predictions_argmax, torch.Tensor
+    ):
         msg = "Input tensors sensitive_attributes and predictions_argmax must be of type torch.Tensor."
         raise TypeError(msg)
 
@@ -104,9 +132,7 @@ def compute_differentiable_demographic_disparity(
         raise ValueError(msg)
     if len(unique_sensitive_attributes) == 1 or len(unique_targets) == 1:
         msg = "Input tensors sensitive_attributes and predictions_argmax must have more than one unique value."
-        raise ValueError(
-            msg
-        )
+        raise ValueError(msg)
 
     fairness_violations = []
     for target in unique_targets:
@@ -119,28 +145,36 @@ def compute_differentiable_demographic_disparity(
             # that to compute Y_eq_k_and_Z_eq_z we have to consider only
             # the first and the third row and that we are considering the class 1.
             # In this case we will sum 0.8 and 0.7.
-            Y_eq_k_and_Z_eq_z = torch.sum(
-                softmax_output[(predictions_argmax == target) & (sensitive_attributes == sensitive_attribute)][
-                    :, target
-                ]
+            y_eq_k_and_z_eq_z = torch.sum(
+                softmax_output[
+                    (predictions_argmax == target)
+                    & (sensitive_attributes == sensitive_attribute)
+                ][:, target]
             )
 
             # Here we compute |Y = k, Z != z| with the same strategy we used to
             # compute |Y = k, Z = z|.
-            Y_eq_k_and_Z_not_eq_z = torch.sum(
-                softmax_output[(predictions_argmax == target) & (sensitive_attributes != sensitive_attribute)][
-                    :, target
-                ]
+            y_eq_k_and_z_not_eq_z = torch.sum(
+                softmax_output[
+                    (predictions_argmax == target)
+                    & (sensitive_attributes != sensitive_attribute)
+                ][:, target]
             )
 
-            Z_eq_z = torch.sum(softmax_output[(sensitive_attributes == sensitive_attribute)][:, target])
+            z_eq_z = torch.sum(
+                softmax_output[(sensitive_attributes == sensitive_attribute)][:, target]
+            )
 
-            Z_not_eq_z = torch.sum(softmax_output[(sensitive_attributes != sensitive_attribute)][:, target])
-            # TODO: we need to check if Z_eq_z and Z_not_eq_z are not equal to 0
+            z_not_eq_z = torch.sum(
+                softmax_output[(sensitive_attributes != sensitive_attribute)][:, target]
+            )
+            # TODO: we need to check if z_eq_z and z_not_eq_z are not equal to 0
             # if they are equal to 0 we need to use the information present in the
             # probabilities dictionary, if the probabilities dictionary is None
             # then we need to raise an error
-            violation_term = torch.abs((Y_eq_k_and_Z_eq_z / Z_eq_z) - (Y_eq_k_and_Z_not_eq_z / Z_not_eq_z))
+            violation_term = torch.abs(
+                (y_eq_k_and_z_eq_z / z_eq_z) - (y_eq_k_and_z_not_eq_z / z_not_eq_z)
+            )
             fairness_violations.append(violation_term)
 
     fairness_violations = torch.stack(fairness_violations)

@@ -1,4 +1,7 @@
 import numpy as np
+
+# ABOUTME: Implements the Demographic Parity regularization loss for fairness-aware training.
+# ABOUTME: Uses differentiable softmax-based violations to optimize for model fairness.
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -6,199 +9,241 @@ from torch import nn
 
 class DisparityRegularizationLoss(nn.Module):
     """
-    This class defines the regularization loss as proposed in
+    Defines the regularization loss as proposed in
     https://arxiv.org/abs/2302.09183.
     It uses the definition of demographic parity to compute the
     fairness violation term for each batch and then it uses this
     violation term as a regularization term to add to the loss.
     """
 
-    def __init__(self, weight=None, size_average=True, estimation=0.5) -> None:
+    def __init__(
+        self, _weight=None, *, _size_average: bool = True, estimation: float = 0.5
+    ) -> None:
         """Initialization of the regularization loss."""
         super().__init__()
         self.estimation = estimation
 
     def forward(
         self,
-        sensitive_attribute_list: torch.tensor,
+        sensitive_attribute_list: torch.Tensor | list,
         device: torch.device,
-        predictions: torch.tensor,
+        predictions: torch.Tensor,
         possible_sensitive_attributes: list,
         possible_targets: list,
         average_probabilities: dict | None = None,
-        wandb_run=None,
-        batch=None,
+        _wandb_run=None,
+        _batch=None,
+        *,
         global_computation=False,
         json_file=None,
-    ) -> torch.tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, dict]:
         """
-        This function computes the regularization term.
-        It takes as input the sensitive attribute list, the targets,
-        the device and the predictions computed with the model.
-        It returns the regularization term.
-
-        What we do here:
-        - We compute the softmax of the predictions
-        - Then we consider the possible combinations of targets and sensitive features
-            and we compute the corresponding fairness violation term
-        - We return the maximum violation term among all the possible combinations
+        Compute the regularization term.
 
         Args:
-            sensitive_attribute_list (np.array): a list with the value of
-                the sensitive attribute for each sample in the batch
-            device (str): the device we're using to train the model
-            predictions (np.array): the predictions of the model for the batch of data
-            possible_sensitive_attributes (list): the possible values of the sensitive
-                attribute
-            possible_targets (list): the possible target values we have in this
-                dataset
-            average_probabilities (dict): in case of Federated learning, if a client
-                has only a subset of the possible sensitive attributes, we can use the
-                average probabilities of the other clients to estimate the probabilities
-                of the missing sensitive attributes. This is None in centralised learning
-
-        Example:
-            >>> sensitive_attribute_list = torch.tensor([1, 1, -1, -1, 1, -1])
-            >>> device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            >>> predictions = torch.tensor([[0.1, 0.9], [0.2, 0.8], [0.3, 0.7],
-                [0.4, 0.6], [0.5, 0.5], [0.6, 0.4]])
-            >>> possible_sensitive_attributes = [1, -1]
-            >>> possible_targets = [0, 1]
-            >>> regularization_loss = RegularizationLoss()
-            >>> regularization_loss(sensitive_attribute_list, device, predictions,
-                possible_sensitive_attributes, possible_targets)
+            sensitive_attribute_list (torch.Tensor): List of sensitive group indicators.
+            device (torch.device): Computation device.
+            predictions (torch.Tensor): Model output predictions.
+            possible_sensitive_attributes (list): List of possible sensitive group values.
+            possible_targets (list): List of possible target labels.
+            average_probabilities (dict, optional): FL average probabilities. Defaults to None.
+            wandb_run (Any, optional): WandB run for logging. Defaults to None.
+            batch (Any, optional): Current batch. Defaults to None.
+            global_computation (bool, optional): Whether to perform global computation. Defaults to False.
+            json_file (str, optional): Path to JSON file for logging. Defaults to None.
 
         Returns:
-            float: the disparity metric computed on the data passed as parameter
+            torch.Tensor: The disparity regularization loss.
 
         """
+        (
+            softmax_,
+            sensitive_attribute_list,
+            predictions_argmax,
+            possible_targets,
+            possible_sensitive_attributes,
+        ) = self._prepare_data(
+            predictions,
+            sensitive_attribute_list,
+            device,
+            possible_targets,
+            possible_sensitive_attributes,
+        )
+
         fairness_violations = []
-        # We compute the softmax of the predictions. We do this because
-        # we can't use the argmax function on the nn output,
-        # because we need differentiable results
-        softmax_ = F.softmax(predictions, dim=1)
-
-        # convert the list of sensitive attributes to a tensor and move it to the device
-        sensitive_attribute_list = torch.tensor([int(item) for item in sensitive_attribute_list])
-        sensitive_attribute_list = sensitive_attribute_list.to(device)
-
-        # We compute the argmax of the predictions, this is used to count
-        # the number of samples for each class that are predicted with one class
-        # or with the other.
-        predictions_argmax = torch.argmax(torch.tensor(predictions), dim=1).to(device)
-        # we convert the possible targets and the possible sensitive attributes to a list
-        # just to be sure that the values are integers
-        possible_targets = [int(item) for item in possible_targets]
-        possible_sensitive_attributes = [int(item) for item in possible_sensitive_attributes]
-
         global_counters = {}
 
         for target in possible_targets:
             for z in possible_sensitive_attributes:
-                # Z_eq_z and Z_not_eq_z are the denominators that we will use
-                # in the DPL formula. |Z=z| and |Z!=z|
-                Z_eq_z = len(sensitive_attribute_list[sensitive_attribute_list == z])
-                Z_not_eq_z = len(sensitive_attribute_list[sensitive_attribute_list != z])
-
-                # We get the number of samples that are predicted with the target class
-                # target and that have the sensitive attribute equal to z:  |Y = k, Z = z|.
-                # In this case we just sum the columns of the rows that
-                # respect the previous constraint.
-                # Example: Given [[0.2, 0.8], [0.4, 0.6], [0.3, 0.7]], suppose
-                # that to compute Y_eq_k_and_Z_eq_z we have to consider only
-                # the first and the third row and that we are considering the class 1.
-                # In this case we will sum 0.8 and 0.7.
-                Y_eq_k_and_Z_eq_z = torch.sum(
-                    softmax_[(predictions_argmax == target) & (sensitive_attribute_list == z)][:, target]
+                violation_term, y_eq_k_and_z_eq_z = self._compute_violation_term(
+                    target,
+                    z,
+                    softmax_,
+                    predictions_argmax,
+                    sensitive_attribute_list,
+                    average_probabilities,
                 )
-
-                # Here we compute |Y = k, Z != z| with the same strategy we used to
-                # compute |Y = k, Z = z|.
-                Y_eq_k_and_Z_not_eq_z = torch.sum(
-                    softmax_[(predictions_argmax == target) & (sensitive_attribute_list != z)][:, target]
-                )
-
-                global_counters[f"{target}|{z}"] = Y_eq_k_and_Z_eq_z
-
-                # Now we can compute the violation term that we will
-                # sum to our loss. We have to consider the case in which
-                # Z_eq_z or Z_not_eq_z are equal to 0, because in this case
-                # we will have a division by 0.
-                # If this doesn't happen we can compute the violation term
-                # using the classic formula |P(Y=y|Z=z) - P(Y=y|Z!=z)|
-                # If this happens, instead, we have to use the estimation
-
-                if (Y_eq_k_and_Z_eq_z == 0 and Y_eq_k_and_Z_not_eq_z != 0) or (Z_eq_z == 0 and Z_not_eq_z != 0):
-                    denominator = 1 if z == 1 else 0
-                    if average_probabilities and average_probabilities.get(f"{target}|{denominator}", None):
-                        # In this case I use the estimation
-                        violation_term = torch.abs(
-                            average_probabilities[f"{target}|{denominator}"] - Y_eq_k_and_Z_not_eq_z / Z_not_eq_z
-                        )
-                    else:
-                        # In this case instead I return 0, this only happens when
-                        # we do not have the estimation (for instance in the first
-                        # FL Round)
-                        violation_term = torch.abs(Y_eq_k_and_Z_not_eq_z / Z_not_eq_z) - torch.abs(
-                            Y_eq_k_and_Z_not_eq_z / Z_not_eq_z
-                        )
-                elif (Y_eq_k_and_Z_eq_z != 0 and Y_eq_k_and_Z_not_eq_z == 0) or (Z_not_eq_z == 0 and Z_eq_z != 0):
-                    # This is just the other case
-                    denominator = 1 if z == 0 else 0
-                    if average_probabilities and average_probabilities.get(f"{target}|{denominator}", None):
-                        violation_term = torch.abs(
-                            (Y_eq_k_and_Z_eq_z / Z_eq_z) - average_probabilities[f"{target}|{denominator}"]
-                        )
-                    else:
-                        violation_term = torch.abs(Y_eq_k_and_Z_eq_z / Z_eq_z) - torch.abs(Y_eq_k_and_Z_eq_z / Z_eq_z)
-
-                else:
-                    # In this case we have all the combinations,
-                    # so we can compute the violation term using the classic formula
-                    violation_term = torch.abs((Y_eq_k_and_Z_eq_z / Z_eq_z) - (Y_eq_k_and_Z_not_eq_z / Z_not_eq_z))
-
                 fairness_violations.append(violation_term)
+                global_counters[f"{target}|{z}"] = y_eq_k_and_z_eq_z
 
-        fairness_violations_ = [item.item() if isinstance(item, torch.Tensor) else item for item in fairness_violations]
-
-        # We get the index of the maximum violation term. Then we create a mask with
-        # all zeros and we set to 1 the element at the index we found. We use this mask
-        # to sum the violation terms and we return the result. This was needed because
-        # when we started to work on this project we discovered that without this
-        # some of the gradients were not computed correctly. I would not remove it
-        # even if I'm not sure that it is needed anymore.
-        index = fairness_violations_.index(max(fairness_violations_))
-        fairness_violations = torch.stack(fairness_violations)
-        mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(device)
-        mask[index] = 1
-        mask = mask.to(device)
-        fairness_violations = fairness_violations.to(device)
-        res = torch.sum(mask * fairness_violations)
+        res = self._apply_fairness_mask(fairness_violations, device)
 
         if global_computation:
-            if json_file:
-                # This only works for binary case but we can extend it to a non binary case
-                # if needed.
-                for sens_value in json_file["possible_z"]:
-                    poss_target = 0
-                    try:
-                        global_counters[sens_value] = (
-                            global_counters[f"{poss_target}|{sens_value}"]
-                            + global_counters[f"{abs(1 - poss_target)}|{sens_value}"]
-                        )
-                    except:
-                        continue
-
-                # the most stupid thing that I thought to remove the combinations that we do not
-                # want to have. I'm removing this because later we will introduce noise
-                # only on the data in the form "y|z" and not in the counters of the sensitive values.
-                # Then we will derive the counters that we remove here from the counters
-                # of the sensitive values and the combinations.
-                for non_existing, _ in json_file["missing_combinations"]:
-                    global_counters.pop(non_existing, None)
-
+            global_counters = self._update_global_counters(global_counters, json_file)
             return (res, global_counters)
         return res
+
+    def _prepare_data(
+        self,
+        predictions: torch.Tensor,
+        sensitive_attribute_list: torch.Tensor | list,
+        device: torch.device,
+        possible_targets: list,
+        possible_sensitive_attributes: list,
+    ):
+        """Prepare data for disparity computation."""
+        softmax_ = F.softmax(predictions, dim=1)
+        # convert the list of sensitive attributes to a tensor and move it to the device
+        sensitive_attribute_list = torch.tensor(
+            [int(item) for item in sensitive_attribute_list]
+        ).to(device)
+
+        # We compute the argmax of the predictions
+        predictions_argmax = torch.argmax(predictions.detach().clone(), dim=1).to(
+            device
+        )
+
+        possible_targets = [int(item) for item in possible_targets]
+        possible_sensitive_attributes = [
+            int(item) for item in possible_sensitive_attributes
+        ]
+
+        return (
+            softmax_,
+            sensitive_attribute_list,
+            predictions_argmax,
+            possible_targets,
+            possible_sensitive_attributes,
+        )
+
+    def _compute_violation_term(
+        self,
+        target,
+        z,
+        softmax_,
+        predictions_argmax,
+        sensitive_attribute_list,
+        average_probabilities,
+    ):
+        """Compute violation term for a specific target and sensitive group."""
+        # Dennominators |z=z| and |z!=z|
+        z_eq_z = len(sensitive_attribute_list[sensitive_attribute_list == z])
+        z_not_eq_z = len(sensitive_attribute_list[sensitive_attribute_list != z])
+
+        # |Y = k, Z = z|
+        y_eq_k_and_z_eq_z = torch.sum(
+            softmax_[(predictions_argmax == target) & (sensitive_attribute_list == z)][
+                :, target
+            ]
+        )
+
+        # |Y = k, Z != z|
+        y_eq_k_and_z_not_eq_z = torch.sum(
+            softmax_[(predictions_argmax == target) & (sensitive_attribute_list != z)][
+                :, target
+            ]
+        )
+
+        if (y_eq_k_and_z_eq_z == 0 and y_eq_k_and_z_not_eq_z != 0) or (
+            z_eq_z == 0 and z_not_eq_z != 0
+        ):
+            violation_term = self._estimate_violation(
+                target,
+                z,
+                y_eq_k_and_z_not_eq_z,
+                z_not_eq_z,
+                average_probabilities,
+                is_z_zero=True,
+            )
+        elif (y_eq_k_and_z_eq_z != 0 and y_eq_k_and_z_not_eq_z == 0) or (
+            z_not_eq_z == 0 and z_eq_z != 0
+        ):
+            violation_term = self._estimate_violation(
+                target,
+                z,
+                y_eq_k_and_z_eq_z,
+                z_eq_z,
+                average_probabilities,
+                is_z_zero=False,
+            )
+        else:
+            violation_term = torch.abs(
+                (y_eq_k_and_z_eq_z / z_eq_z) - (y_eq_k_and_z_not_eq_z / z_not_eq_z)
+            )
+
+        return violation_term, y_eq_k_and_z_eq_z
+
+    def _estimate_violation(
+        self,
+        target,
+        z,
+        known_numerator,
+        known_denominator,
+        average_probabilities,
+        *,
+        is_z_zero: bool,
+    ):
+        """Estimate violation term when one group is missing."""
+        denominator_val = (1 if z == 1 else 0) if is_z_zero else (1 if z == 0 else 0)
+        prob_key = f"{target}|{denominator_val}"
+
+        if average_probabilities and average_probabilities.get(prob_key) is not None:
+            if is_z_zero:
+                return torch.abs(
+                    average_probabilities[prob_key]
+                    - known_numerator / known_denominator
+                )
+            return torch.abs(
+                (known_numerator / known_denominator) - average_probabilities[prob_key]
+            )
+
+        # Default fallback: return 0 if no estimation available
+        val = known_numerator / known_denominator
+        return torch.abs(val) - torch.abs(val)
+
+    def _apply_fairness_mask(self, fairness_violations, device):
+        """Apply max violation mask for gradient routing."""
+        fairness_violations_ = [
+            item.item() if isinstance(item, torch.Tensor) else item
+            for item in fairness_violations
+        ]
+
+        index = fairness_violations_.index(max(fairness_violations_))
+        fairness_violations = torch.stack(fairness_violations)
+        mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(
+            device
+        )
+        mask[index] = 1
+        return torch.sum(mask.to(device) * fairness_violations.to(device))
+
+    def _update_global_counters(self, global_counters, json_file):
+        """Update global counters based on json_file info."""
+        if not json_file:
+            return global_counters
+
+        for sens_value in json_file.get("possible_z", []):
+            poss_target = 0
+            try:
+                global_counters[sens_value] = global_counters.get(
+                    f"{poss_target}|{sens_value}", 0
+                ) + global_counters.get(f"{abs(1 - poss_target)}|{sens_value}", 0)
+            except (KeyError, ValueError, TypeError):
+                continue
+
+        for non_existing, _ in json_file.get("missing_combinations", []):
+            global_counters.pop(non_existing, None)
+
+        return global_counters
 
     def violation_with_dataset(
         self,
@@ -206,31 +251,18 @@ class DisparityRegularizationLoss(nn.Module):
         dataset: torch.utils.data.DataLoader,
         average_probabilities: dict,
         device: torch.device,
+        *,
         global_computation=False,
-    ) -> torch.tensor:
+    ) -> torch.Tensor:
         """
-        When we want to compute the disparity metric on the entire dataset
-        we can't directly use the forward function because we don't have the
-        predictions and the sensitive attribute list for each batch.
-        So in this function we just use the model to compute the predictions for
-        all the samples in the dataset and we aggregate the results in a single
-        final tensor that we pass to the forward function.
-        This is used, for instance, to compute the disparity of the model
-        on the test dataset.
+        Evaluate the violation term on the entire dataset.
 
         Args:
-            model (torch.nn.Module): the model we want to evaluate
-            dataset (torch.utils.data.DataLoader): the dataset we want to
-                use during the evaluation
-            average_probabilities (dict): in case of Federated learning, if a client
-                has only a subset of the possible sensitive attributes, we can use the
-                average probabilities of the other clients to estimate the probabilities
-                of the missing sensitive attributes. This is None in centralised learning
-            device (torch.device): the device we're using to train the model
-
-        Returns:
-            float: the disparity metric computed on the dataset
-                passed as parameter
+            model (torch.nn.Module): The model to evaluate.
+            dataset (torch.utils.data.DataLoader): The dataset for evaluation.
+            average_probabilities (dict): FL average probabilities.
+            device (torch.device): Computation device.
+            global_computation (bool, optional): Whether to perform global computation. Defaults to False.
 
         """
         predictions = torch.tensor([]).to(device)
@@ -238,15 +270,17 @@ class DisparityRegularizationLoss(nn.Module):
         targets = []
         model.eval()
         with torch.no_grad():
-            for images, sensitive_attributes, target in dataset:
-                images = images.to(device)
-                target = target.to(device)
+            for images_batch, sensitive_attributes_batch, target_batch in dataset:
+                images_batch = images_batch.to(device)
+                target_batch = target_batch.to(device)
 
-                output = model(images)
+                output = model(images_batch)
 
                 predictions = torch.cat((predictions, output), 0)
-                sensitive_attribute_list = torch.cat((sensitive_attribute_list, sensitive_attributes.to(device)), 0)
-                targets += target.tolist()
+                sensitive_attribute_list = torch.cat(
+                    (sensitive_attribute_list, sensitive_attributes_batch.to(device)), 0
+                )
+                targets += target_batch.tolist()
 
         sensitive_attributes = list({item.item() for item in sensitive_attribute_list})
         target_list = list(set(targets))
@@ -263,94 +297,152 @@ class DisparityRegularizationLoss(nn.Module):
             global_computation=global_computation,
         )
 
+    def evaluate_violation(
+        self,
+        predictions_argmax: torch.Tensor,
+        sensitive_attribute_list: torch.Tensor | list,
+        possible_sensitive_attributes: list,
+        possible_targets: list,
+        *,
+        global_computation=False,
+    ) -> torch.Tensor:
+        """
+        Compute violation using argmax.
+
+        Args:
+            predictions_argmax (torch.Tensor): Predictions (argmax).
+            sensitive_attribute_list (torch.Tensor): Sensitive attributes.
+            possible_sensitive_attributes (list): List of possible sensitive feature values.
+            possible_targets (list): List of possible target labels.
+            global_computation (bool, optional): Whether to perform global computation. Defaults to False.
+
+        Returns:
+            torch.Tensor: The disparity regularization loss.
+
+        """
+        fairness_violations = []
+        for target in possible_targets:
+            for z in possible_sensitive_attributes:
+                violation_term = self.compute_violation_with_argmax(
+                    predictions_argmax, sensitive_attribute_list, target, z
+                )
+                fairness_violations.append(violation_term)
+
+        fairness_violations_ = []
+        for item in fairness_violations:
+            if isinstance(item, torch.Tensor):
+                if item.numel() > 1:
+                    fairness_violations_.append(item.mean().item())
+                else:
+                    fairness_violations_.append(item.item())
+            else:
+                fairness_violations_.append(item)
+
+        index = fairness_violations_.index(max(fairness_violations_))
+        fairness_violations_tensors = []
+        for item in fairness_violations:
+            if isinstance(item, torch.Tensor):
+                if item.numel() > 1:
+                    fairness_violations_tensors.append(item.mean())
+                else:
+                    fairness_violations_tensors.append(item)
+            else:
+                fairness_violations_tensors.append(
+                    torch.tensor(item, dtype=torch.float32).to(
+                        predictions_argmax.device
+                    )
+                )
+
+        fairness_violations = torch.stack(fairness_violations_tensors)
+
+        mask = torch.full((fairness_violations.shape[0],), 0, dtype=torch.float32).to(
+            predictions_argmax.device
+        )
+        mask[index] = 1
+        mask = mask.to(predictions_argmax.device)
+        fairness_violations = fairness_violations.to(predictions_argmax.device)
+        return torch.sum(mask * fairness_violations)
+
     def compute_violation_with_argmax(
         self,
-        predictions_argmax: torch.tensor,
-        sensitive_attribute_list: torch.tensor,
+        predictions_argmax: torch.Tensor,
+        sensitive_attribute_list: torch.Tensor | list,
         current_target: int,
         current_sensitive_feature: int,
         weights: dict | None = None,
     ):
         """
-        Debug function used to compute the DPL using the argmax function
-        instead of the softmax.
+        Compute violation using argmax.
 
         Args:
-            predictions_argmax (torch.tensor): predictions of the model
-            sensitive_attribute_list (torch.tensor): _description_
-            target (int): The target we are considering
-                in this iteration to compute the violation
-            sensitive_feature (int): the sensitive feature
-                we are considering in this iteration to
-                compute the violation
+            predictions_argmax (torch.Tensor): Predictions (argmax).
+            sensitive_attribute_list (torch.Tensor): Sensitive attributes.
+            current_target (int): Target being considered.
+            current_sensitive_feature (int): Sensitive feature value being considered.
+            weights (dict, optional): Weights for each sample. Defaults to None.
 
         Returns:
-            Tuple[int, int, int, int]: The number of times the
-                prediction is equal to the target and the sensitive
-                feature is equal to the sensitive feature we are
-                considering in this iteration, the number of times
-                the sensitive feature is equal to the sensitive
-                feature we are considering in this iteration, the
-                number of times the prediction is equal to the target
-                and the sensitive feature is not equal to the sensitive
-                feature we are considering in this iteration, the number
-                of times the sensitive feature is not equal to the sensitive
-                feature we are considering in this iteration
+            Tuple[int, int, int, int]: Counts for violation calculation.
 
         """
         # Z_eq_z and Z_not_eq_z are the denominators that we will use
         # in the DPL formula. |Z=z| and |Z!=z|
 
-        Z_eq_z = len(sensitive_attribute_list[sensitive_attribute_list == current_sensitive_feature])
-        Z_not_eq_z = len(sensitive_attribute_list[sensitive_attribute_list != current_sensitive_feature])
-        Y_eq_k_and_Z_eq_z = len(
+        z_eq_z = len(
+            sensitive_attribute_list[
+                sensitive_attribute_list == current_sensitive_feature
+            ]
+        )
+        z_not_eq_z = len(
+            sensitive_attribute_list[
+                sensitive_attribute_list != current_sensitive_feature
+            ]
+        )
+        y_eq_k_and_z_eq_z = len(
             predictions_argmax[
-                (predictions_argmax == current_target) & (sensitive_attribute_list == current_sensitive_feature)
+                (predictions_argmax == current_target)
+                & (sensitive_attribute_list == current_sensitive_feature)
             ]
         )
 
-        Y_eq_k_and_Z_not_eq_z = len(
+        y_eq_k_and_z_not_eq_z = len(
             predictions_argmax[
-                (predictions_argmax == current_target) & (sensitive_attribute_list != current_sensitive_feature)
+                (predictions_argmax == current_target)
+                & (sensitive_attribute_list != current_sensitive_feature)
             ]
         )
 
-
-        if Z_eq_z == 0 and Z_not_eq_z != 0:
-            return np.abs(Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
-        if Z_eq_z != 0 and Z_not_eq_z == 0:
-            return np.abs(Y_eq_k_and_Z_eq_z / Z_eq_z).item()
-        if Z_eq_z == 0 and Z_not_eq_z == 0:
+        if z_eq_z == 0 and z_not_eq_z != 0:
+            return np.abs(y_eq_k_and_z_not_eq_z / z_not_eq_z).item()
+        if z_eq_z != 0 and z_not_eq_z == 0:
+            return np.abs(y_eq_k_and_z_eq_z / z_eq_z).item()
+        if z_eq_z == 0 and z_not_eq_z == 0:
             return 0
-        return np.abs(Y_eq_k_and_Z_eq_z / Z_eq_z - Y_eq_k_and_Z_not_eq_z / Z_not_eq_z).item()
+        return np.abs(
+            y_eq_k_and_z_eq_z / z_eq_z - y_eq_k_and_z_not_eq_z / z_not_eq_z
+        ).item()
 
     @staticmethod
     def compute_probabilities(
-        predictions,
-        sensitive_attribute_list,
+        predictions: torch.Tensor,
+        sensitive_attribute_list: torch.Tensor | list,
         device: torch.device,
         possible_sensitive_attributes: list,
         possible_targets: list,
-    ) -> torch.tensor:
+    ) -> tuple[dict, dict]:
         """
-        This function computes the probabilities and the counters
+        Compute the probabilities and the counters
             of each possible combination of target and sensitive attribute.
-            It is used to compute the probabilities that we use to estimate
-            the probabilities of the missing sensitive attributes in the
-            Federated Learning scenario.
 
         Args:
-            sensitive_attribute_list: a list with the value of
-                the sensitive attribute for each sample in the batch
-            device: the device we're using to train the model
-            possible_targets: the possible target values we have in this
-                dataset
-            possible_sensitive_attributes: the possible values of the sensitive
-                attribute
+            predictions (torch.Tensor): Model predictions.
+            sensitive_attribute_list (torch.Tensor): Sensitive attribute values.
+            device (torch.device): Computation device.
+            possible_sensitive_attributes (list): List of possible sensitive attributes.
+            possible_targets (list): List of possible targets.
 
         Returns:
-            (dict, dict): the probabilities and the counters of each possible combination
-                of target and sensitive attribute
+            (dict, dict): The probabilities and the counters of each possible combination.
 
         """
         softmax_ = F.softmax(predictions, dim=1)
@@ -358,37 +450,49 @@ class DisparityRegularizationLoss(nn.Module):
         # We compute the argmax of the predictions, this is used to count
         # the number of samples for each class that are predicted with one class
         # or with the other.
-        predictions_argmax = torch.argmax(torch.tensor(predictions), dim=1).to(device)
+        predictions_argmax = torch.argmax(predictions.detach().clone(), dim=1).to(
+            device
+        )
 
-        sensitive_attribute_list = torch.tensor([int(item) for item in sensitive_attribute_list])
+        sensitive_attribute_list = torch.tensor(
+            [int(item) for item in sensitive_attribute_list]
+        )
         sensitive_attribute_list = sensitive_attribute_list.to(device)
 
         probabilities = {}
         counters = {}
-        possible_sensitive_attributes = [int(item) for item in possible_sensitive_attributes]
+        possible_sensitive_attributes = [
+            int(item) for item in possible_sensitive_attributes
+        ]
 
-        for z in list(possible_sensitive_attributes):
-            # if we are in a binary scenario we can just consider
-            # one of the two values in the computation
+        for target in possible_targets:
+            for z in list(possible_sensitive_attributes):
+                # if we are in a binary scenario we can just consider
+                # one of the two values in the computation
 
-            target = 1
-            z = int(z)
-            # Z_eq_z and Z_not_eq_z are the denominators that we will use
-            # in the DPL formula. |Z=z| and |Z!=z|
-            Z_eq_z = len(sensitive_attribute_list[sensitive_attribute_list == z])
+                z_int = int(z)
+                # z_eq_z and z_not_eq_z are the denominators that we will use
+                # in the DPL formula. |Z=z| and |Z!=z|
+                z_eq_z = len(
+                    sensitive_attribute_list[sensitive_attribute_list == z_int]
+                )
 
-            Y_eq_k_and_Z_eq_z = torch.sum(
-                softmax_[(predictions_argmax == target) & (sensitive_attribute_list == z)][:, target]
-            )
+                y_eq_k_and_z_eq_z = torch.sum(
+                    softmax_[
+                        (predictions_argmax == target) & (sensitive_attribute_list == z)
+                    ][:, target]
+                )
 
-            Y_eq_k_and_Z_eq_z_argmax = len(
-                predictions_argmax[(predictions_argmax == target) & (sensitive_attribute_list == z)]
-            )
+                y_eq_k_and_z_eq_z_argmax = len(
+                    predictions_argmax[
+                        (predictions_argmax == target) & (sensitive_attribute_list == z)
+                    ]
+                )
 
-            probabilities[f"{target}|{z}"] = Y_eq_k_and_Z_eq_z
-            probabilities[f"{z}"] = Z_eq_z
-            counters[f"{target}|{z}"] = Y_eq_k_and_Z_eq_z_argmax
+                probabilities[f"{target}|{z}"] = y_eq_k_and_z_eq_z
+                probabilities[f"{z}"] = z_eq_z
+                counters[f"{target}|{z}"] = y_eq_k_and_z_eq_z_argmax
 
-            counters[f"{z}"] = Z_eq_z
+                counters[f"{z}"] = z_eq_z
 
         return probabilities, counters
