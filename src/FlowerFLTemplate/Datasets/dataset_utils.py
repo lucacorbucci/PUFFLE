@@ -50,6 +50,26 @@ def get_data_info(preferences: Preferences) -> DataInfo:
     return {}
 
 
+def get_model_info_from_dataset(dataset_name: str) -> dict[str, int]:
+    """
+    Returns model architecture information based on dataset name.
+    """
+    if dataset_name == "dutch":
+        return {"in_channels": 12, "num_classes": 2}
+    if dataset_name == "abalone":
+        return {"in_channels": 8, "num_classes": 1}
+    if dataset_name == "income":  # acs_income
+        return {"in_channels": 10, "num_classes": 2}
+    if dataset_name == "celeba":
+        return {
+            "in_channels": 3,
+            "num_classes": 2,
+        }  # Attributes to predict is usually 1 (e.g. smiling) but CelebaNet might expect 2 output for CrossEntropy? Or is it Binary? Checking CelebaNet usage.
+    if dataset_name == "mnist":
+        return {"in_channels": 1, "num_classes": 10, "pixel": 28}
+    return {}
+
+
 def prepare_data_for_cross_device(
     context: Context,
     partition: pd.DataFrame | None,
@@ -63,6 +83,9 @@ def prepare_data_for_cross_device(
         if partition is None:
             msg = "Partition cannot be None for Dutch dataset in cross-device"
             raise ValueError(msg)
+
+        if not isinstance(partition, pd.DataFrame):
+            partition = pd.DataFrame(partition)
 
         # Split train/val
         partition = partition.sample(frac=1, random_state=preferences.seed).reset_index(

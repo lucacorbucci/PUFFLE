@@ -19,6 +19,7 @@ from FlowerFLTemplate.Aggregations.aggregations import Aggregation
 from FlowerFLTemplate.ClientManager.client_manager import SimpleClientManager
 from FlowerFLTemplate.Datasets.dataset_utils import (
     get_data_info,
+    get_model_info_from_dataset,
     prepare_data_for_cross_device,
     prepare_data_for_cross_silo,
 )
@@ -28,6 +29,8 @@ from FlowerFLTemplate.Strategy.fed_avg import FedAvg
 from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_params, seed_everything
 
+import logging
+logging.getLogger("ray").setLevel(logging.WARNING)
 
 def signal_handler(sig: int, frame: Any) -> None:
     """
@@ -102,23 +105,13 @@ def server_fn(context: Context) -> ServerAppComponents:
     # Determine model name from dataset if not explicitly set
     model_name = preferences.model
     if model_name is None:
-        if preferences.dataset_name == "dutch":
-            model_name = "LinearClassificationNet"
-        elif preferences.dataset_name == "abalone":
-            model_name = "AbaloneNet"
-        elif preferences.dataset_name == "mnist":
-            model_name = "SimpleMNISTModel"
-        elif preferences.dataset_name == "celeba":
-            model_name = "CelebaNet"
-        else:
-            msg = f"Unknown dataset for model selection: {preferences.dataset_name}"
-            raise ValueError(msg)
+        msg = "Model name is not specified."
+        raise ValueError(msg)
 
     model = get_model(
         model_name=model_name,
         num_classes=preferences.num_classes,
         in_channels=preferences.in_channels,
-        pixel=preferences.pixel,
     )
 
     ndarrays = get_params(model)
@@ -236,8 +229,6 @@ def prepare_data(preferences: Preferences) -> Any:
     elif preferences.dataset_name == "celeba":
         data_info = get_data_info(preferences)
         dataset_dict = load_dataset("csv", data_files=preferences.dataset_path)
-    # elif preferences.dataset_name == "speech_fairness":
-
     else:
         error = f"Unsupported dataset: {preferences.dataset_name}"
         raise ValueError(error)
@@ -405,6 +396,26 @@ def main():
         noise_multiplier=args.noise_multiplier,
         max_grad_norm=args.max_grad_norm,
     )
+
+    if args.dataset_name == "dutch":
+        preferences.model = "LinearClassificationNet"
+    elif args.dataset_name == "abalone":
+        preferences.model = "AbaloneNet"
+    elif args.dataset_name == "mnist":
+        preferences.model = "SimpleMNISTModel"
+    elif args.dataset_name == "celeba":
+        preferences.model = "CelebaNet"
+    else:
+        msg = f"Unknown dataset for model selection: {preferences.dataset_name}"
+        raise ValueError(msg)
+
+    # Populate model info from dataset if not provided
+    if preferences.dataset_name:
+        model_info = get_model_info_from_dataset(preferences.dataset_name)
+        if preferences.num_classes is None:
+            preferences.num_classes = model_info.get("num_classes")
+        if preferences.in_channels is None:
+            preferences.in_channels = model_info.get("in_channels")
 
     # Needs to be global for client_fn/server_fn to access?
     # client_fn and server_fn use `preferences` from outer scope.

@@ -17,10 +17,10 @@ class FairnessMetrics:
     def to_dict(self) -> dict:
         """Convert metrics to a flat dictionary."""
         return {
-            "loss": self.loss,
-            "accuracy": self.accuracy,
-            "f1": self.f1,
-            "disparity": self.disparity,
+            "loss": float(self.loss),
+            "accuracy": float(self.accuracy),
+            "f1": float(self.f1),
+            "disparity": float(self.disparity),
             "statistics": self.statistics,
         }
 

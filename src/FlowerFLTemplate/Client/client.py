@@ -67,7 +67,6 @@ class FlowerClient(NumPyClient):
             model_name=self.preferences.model,
             num_classes=self.preferences.num_classes,
             in_channels=self.preferences.in_channels,
-            pixel=self.preferences.pixel,
         )
         optimizer = get_optimizer(trained_model, preferences)
         criterion = MixLoss(
@@ -169,15 +168,23 @@ class FlowerClient(NumPyClient):
 
         """
         set_params(self.model.model, parameters)
-        result_dict = self.model.evaluate(data_loader=self.valloader)
-        return float(result_dict["loss"]), len(self.valloader), {}  # result_dict
+        result = self.model.evaluate(data_loader=self.valloader)
+        # FairnessMetrics.to_dict() returns dict with loss, accuracy, f1, disparity, statistics
+        # Flower expects dict[str, Scalar] where Scalar is bool|bytes|float|int|str
+        # So we exclude 'statistics' which is a nested dict
+        metrics = {
+            "loss": result.loss,
+            "accuracy": result.accuracy,
+            "f1": result.f1,
+            "disparity": result.disparity,
+        }
+        return float(result.loss), len(self.valloader), metrics
 
     def get_noise_multiplier(self, dataset, target_epsilon=None):
         model_noise = get_model(
             model_name=self.preferences.model,
             num_classes=self.preferences.num_classes,
             in_channels=self.preferences.in_channels,
-            pixel=self.preferences.pixel,
         )
         privacy_engine = PrivacyEngine(accountant="rdp")
         optimizer_noise = torch.optim.SGD(model_noise.parameters(), lr=0.1)

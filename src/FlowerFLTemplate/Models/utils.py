@@ -12,7 +12,6 @@ def get_model(
     model_name: str,
     num_classes: int | None = None,
     in_channels: int | None = None,
-    pixel: int | None = None,
 ) -> nn.Module:
     """
     Returns the model based on the model name.

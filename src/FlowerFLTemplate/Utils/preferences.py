@@ -52,7 +52,6 @@ class Preferences:
     model: str | None = None
     num_classes: int | None = None
     in_channels: int | None = None
-    pixel: int | None = None
 
     # Unfairness reduction parameters
     unfairness_reduction: bool = False
