@@ -64,5 +64,7 @@ class Preferences:
 
     private_training: bool = False
     epsilon: float | None = None
+    epsilon_statistics: float | None = None
+    epsilon_lambda: float | None = None
     noise_multiplier: float = 0.0
     max_grad_norm: float = 1000000

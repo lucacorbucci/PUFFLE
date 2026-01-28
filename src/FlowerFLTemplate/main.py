@@ -30,7 +30,10 @@ from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_params, seed_everything
 
 import logging
+import ray
 logging.getLogger("ray").setLevel(logging.WARNING)
+ray.init(logging_level=logging.WARNING, log_to_driver=False)
+
 
 def signal_handler(sig: int, frame: Any) -> None:
     """
@@ -46,7 +49,6 @@ def signal_handler(sig: int, frame: Any) -> None:
         None
 
     """
-    print("Gracefully stopping your experiment! Keep calm!")
     print("Gracefully stopping your experiment! Keep calm!")
     if wandb_run:
         wandb_run.finish()
@@ -333,6 +335,12 @@ parser.add_argument("--epsilon", type=float, default=None)
 parser.add_argument("--noise_multiplier", type=float, default=0.0)
 parser.add_argument("--max_grad_norm", type=float, default=1000000.0)
 
+parser.add_argument("--epsilon_lambda", type=float, default=None)
+parser.add_argument("--epsilon_statistics", type=float, default=None)
+
+parser.add_argument("--num_client_cpus", type=float, default=1)  # Percentage of CPUs used by each client
+parser.add_argument("--num_client_gpus", type=float, default=1)  # Percentage of GPUs used by each client
+
 # Initialize global variables for client_fn/server_fn access
 preferences: Preferences | None = None
 partitioner: Any = None
@@ -354,6 +362,11 @@ def main():
     num_rounds = args.num_rounds
 
     cross_device = args.FL_setting == "cross_device"
+
+    client_resources = {
+        "num_cpus": args.num_client_cpus,
+        "num_gpus": args.num_client_gpus,
+    }
 
     # Global preferences object
     global preferences  # noqa: PLW0603
@@ -395,6 +408,8 @@ def main():
         epsilon=args.epsilon,
         noise_multiplier=args.noise_multiplier,
         max_grad_norm=args.max_grad_norm,
+        epsilon_statistics=args.epsilon_statistics,
+        epsilon_lambda=args.epsilon_lambda,
     )
 
     if args.dataset_name == "dutch":
@@ -463,9 +478,35 @@ def main():
 
     # Concstruct the ClientApp passing the client generation function
     client_app = ClientApp(client_fn=client_fn)
+    
+    ray_num_cpus = 20
+    ray_num_gpus = 1
+    ram_memory = 16_000 * 1024 * 1024 * 2
+
+    # (optional) specify Ray config
+    ray_init_args = {
+        "include_dashboard": False,
+        "num_cpus": ray_num_cpus,
+        "num_gpus": ray_num_gpus,
+        "_memory": ram_memory,
+        "_redis_max_memory": 10000000,
+        "object_store_memory": 78643200,
+        "logging_level": logging.ERROR,
+        "log_to_driver": True,
+    }
+
+    client_resources = {
+        "num_cpus": args.num_client_cpus,
+        "num_gpus": args.num_client_gpus,
+    }
+
+    configuration = {
+        "client_resources": client_resources,
+        "init_args": ray_init_args,
+    }
 
     run_simulation(
-        server_app=server_app, client_app=client_app, num_supernodes=num_clients
+        server_app=server_app, client_app=client_app, num_supernodes=num_clients, backend_config=configuration,
     )
 
     if wandb_run:

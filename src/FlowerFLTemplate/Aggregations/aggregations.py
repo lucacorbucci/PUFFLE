@@ -1,9 +1,11 @@
 # ABOUTME: Aggregation functions for FL metrics from multiple clients.
 # ABOUTME: Handles train, validation, and test metrics with fairness support.
 
+import os
 from logging import INFO
 from typing import Any
 
+import dill
 from flwr.common.logger import log
 
 from puffle.Utils.modes import MetricMode
@@ -146,6 +148,33 @@ class Aggregation:
             aggregated_disparity = sum(disparity_values) / total_examples
             agg_metrics[f"{mode.name.title()}_Disparity"] = aggregated_disparity
 
+        # Compute disparity with statistics from aggregated counters
+        # This is the true disparity computed by aggregating local prediction counters
+        has_counters = any("counter_z" in m for _, m in metrics)
+        if has_counters:
+            counter_z = sum(m.get("counter_z", 0) for _, m in metrics)
+            counter_not_z = sum(m.get("counter_not_z", 0) for _, m in metrics)
+            counter_y_z = sum(m.get("counter_y_z", 0) for _, m in metrics)
+            counter_y_not_z = sum(m.get("counter_y_not_z", 0) for _, m in metrics)
+
+            # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
+            p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
+            p_y_given_not_z = (
+                counter_y_not_z / counter_not_z if counter_not_z > 0 else 0
+            )
+            disparity_with_statistics = abs(p_y_given_z - p_y_given_not_z)
+
+            log(
+                INFO,
+                f"{mode.name.title()} Disparity with statistics: {disparity_with_statistics:.4f} - "
+                f"Counter Z: {counter_z} - Counter Not Z: {counter_not_z} - "
+                f"Counter Y|Z: {counter_y_z} - Counter Y|Not Z: {counter_y_not_z}",
+            )
+
+            agg_metrics[f"{mode.name.title()} Disparity with statistics"] = (
+                disparity_with_statistics
+            )
+
         # Log metrics
         if accuracy_values:
             log(
@@ -258,12 +287,44 @@ class Aggregation:
 
             log(
                 INFO,
-                f"Counter Disparity: {counter_disparity:.4f} - "
+                f"Train Disparity with statistics: {counter_disparity:.4f} - "
                 f"Counter Z: {counter_z} - Counter Not Z: {counter_not_z} - "
-                f"Counter Y Z: {counter_y_z} - Counter Y Not Z: {counter_y_not_z}",
+                f"Counter Y|Z: {counter_y_z} - Counter Y|Not Z: {counter_y_not_z}",
             )
 
-            agg_metrics["Counter Disparity"] = counter_disparity
+            agg_metrics["Train Disparity with statistics"] = counter_disparity
+
+        # Handle DP statistics aggregation
+        has_noisy_counters = any("counter_y_z_noise" in m for _, m in metrics)
+        if has_noisy_counters:
+            sum_y_z_noise = sum(m.get("counter_y_z_noise", 0) for _, m in metrics)
+            sum_y_not_z_noise = sum(
+                m.get("counter_y_not_z_noise", 0) for _, m in metrics
+            )
+            sum_z = sum(m.get("counter_z", 0) for _, m in metrics)
+            sum_not_z = sum(m.get("counter_not_z", 0) for _, m in metrics)
+
+            avg_probs = {}
+            # Assuming binary Z/Y where Y=1|Z=1 maps to "1|1" and Y=1|Z=0 maps to "1|0"
+            if sum_z > 0:
+                p_1_1 = sum_y_z_noise / sum_z
+                avg_probs["1|1"] = float(max(0.0, min(1.0, p_1_1)))
+            else:
+                avg_probs["1|1"] = 0.0
+
+            if sum_not_z > 0:
+                p_1_0 = sum_y_not_z_noise / sum_not_z
+                avg_probs["1|0"] = float(max(0.0, min(1.0, p_1_0)))
+            else:
+                avg_probs["1|0"] = 0.0
+
+            # Save to disk
+            if fed_dir:
+                try:
+                    with open(os.path.join(fed_dir, "avg_proba.pkl"), "wb") as f:
+                        dill.dump(avg_probs, f)
+                except Exception as e:  # noqa: BLE001
+                    log(INFO, f"Failed to save average probabilities: {e}")
 
         # Log training metrics
         if accuracy_values:
