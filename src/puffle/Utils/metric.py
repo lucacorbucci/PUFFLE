@@ -1,4 +1,5 @@
 import torch
+
 from puffle.Utils.privacy import get_noise
 
 
@@ -6,6 +7,7 @@ def compute_demographic_disparity(
     z: torch.Tensor,
     y: torch.Tensor,
     sigma_update_lambda: float = None,
+    average_probabilities: dict = None,
 ):
     """
     Compute the demographic disparity of a model.
@@ -35,7 +37,6 @@ def compute_demographic_disparity(
         msg = "Input tensors z and y must not be empty."
         raise ValueError(msg)
 
-
     unique_z, z_inverse = torch.unique(z, return_inverse=True)
     unique_y, y_inverse = torch.unique(y, return_inverse=True)
 
@@ -58,21 +59,66 @@ def compute_demographic_disparity(
 
     # Probabilities P(Y=y | Z=z) = count(z,y) / count(z)
     # Avoid division by zero
-    p_y_given_z = (pair_counts + (
+    if average_probabilities is None:
+        p_y_given_z = (
+            pair_counts
+            + (
                 get_noise(
                     mechanism_type="gaussian",
                     sigma=sigma_update_lambda,
                 )
                 if sigma_update_lambda is not None
                 else 0
-            )) / (z_counts.view(-1, 1) + 1e-10 + + (
+            )
+        ) / (
+            z_counts.view(-1, 1)
+            + 1e-10
+            + +(
                 get_noise(
                     mechanism_type="gaussian",
                     sigma=sigma_update_lambda,
                 )
                 if sigma_update_lambda is not None
                 else 0
-            ))
+            )
+        )
+    else:
+        p_y_given_z = torch.zeros_like(pair_counts, dtype=torch.float)
+
+        for z_idx, z_val in enumerate(unique_z):
+            z_denominator = z_counts[z_idx]
+
+            # Check if this group has samples (denominator > 0)
+            if z_denominator > 0:
+                # Use local computation
+                for y_idx, y_val in enumerate(unique_y):
+                    numerator = pair_counts[z_idx, y_idx] + (
+                        get_noise(
+                            mechanism_type="gaussian",
+                            sigma=sigma_update_lambda,
+                        )
+                        if sigma_update_lambda is not None
+                        else 0
+                    )
+                    denominator = z_denominator + (
+                        get_noise(
+                            mechanism_type="gaussian",
+                            sigma=sigma_update_lambda,
+                        )
+                        if sigma_update_lambda is not None
+                        else 0
+                    )
+                    p_y_given_z[z_idx, y_idx] = numerator / (denominator + 1e-10)
+            else:
+                # Use global average probabilities as fallback
+                for y_idx, y_val in enumerate(unique_y):
+                    key = f"{int(y_val.item())}|{int(z_val.item())}"
+                    if key in average_probabilities:
+                        p_y_given_z[z_idx, y_idx] = average_probabilities[key]
+                    else:
+                        raise ValueError(
+                            f"Key {key} not found in average probabilities."
+                        )
 
     # 2. Compute P(Y=y | Z!=z) for all y, z
     # Total count of y across the whole dataset
@@ -85,15 +131,10 @@ def compute_demographic_disparity(
     total_samples = len(z)
     count_not_z = total_samples - z_counts
 
-    p_y_given_not_z = (count_not_z_y + + (
-                get_noise(
-                    mechanism_type="gaussian",
-                    sigma=sigma_update_lambda,
-                )
-                if sigma_update_lambda is not None
-                else 0
-            )) / (
-        count_not_z.view(-1, 1) + 1e-10 + + (
+    if average_probabilities is None:
+        p_y_given_not_z = (
+            count_not_z_y
+            + +(
                 get_noise(
                     mechanism_type="gaussian",
                     sigma=sigma_update_lambda,
@@ -101,7 +142,54 @@ def compute_demographic_disparity(
                 if sigma_update_lambda is not None
                 else 0
             )
-    )
+        ) / (
+            count_not_z.view(-1, 1)
+            + 1e-10
+            + +(
+                get_noise(
+                    mechanism_type="gaussian",
+                    sigma=sigma_update_lambda,
+                )
+                if sigma_update_lambda is not None
+                else 0
+            )
+        )
+    else:
+        p_y_given_not_z = torch.zeros_like(count_not_z_y, dtype=torch.float)
+
+        for z_idx, z_val in enumerate(unique_z):
+            not_z_denominator = count_not_z[z_idx]
+
+            if not_z_denominator > 0:
+                for y_idx, y_val in enumerate(unique_y):
+                    numerator = count_not_z_y[z_idx, y_idx] + (
+                        get_noise(
+                            mechanism_type="gaussian",
+                            sigma=sigma_update_lambda,
+                        )
+                        if sigma_update_lambda is not None
+                        else 0
+                    )
+                    denominator = not_z_denominator + (
+                        get_noise(
+                            mechanism_type="gaussian",
+                            sigma=sigma_update_lambda,
+                        )
+                        if sigma_update_lambda is not None
+                        else 0
+                    )
+                    p_y_given_not_z[z_idx, y_idx] = numerator / (denominator + 1e-10)
+            else:
+                # Fallback: We need P(Y|NOT Z).
+                # Since we only support binary sensitive attribute for now in average_probabilities logic (implied by "1|0"),
+                # "NOT Z" corresponds to the other z value.
+                other_z_val = 1 - int(z_val.item())  # Assuming 0/1 coding
+                for y_idx, y_val in enumerate(unique_y):
+                    key = f"{int(y_val.item())}|{other_z_val}"
+                    if key in average_probabilities:
+                        p_y_given_not_z[z_idx, y_idx] = average_probabilities[key]
+                    else:
+                        p_y_given_not_z[z_idx, y_idx] = 0.0
 
     # 3. Compute disparity |P(Y=y|Z=z) - P(Y=y|Z!=z)|
     disparities = torch.abs(p_y_given_z - p_y_given_not_z)

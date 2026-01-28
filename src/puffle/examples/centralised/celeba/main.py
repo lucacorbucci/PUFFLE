@@ -5,12 +5,11 @@ import warnings
 import torch
 import wandb
 from opacus import PrivacyEngine
+from opacus.accountants.utils import get_noise_multiplier
 from torch import nn, optim
 
-from puffle.examples.data_preparation.dataset_preparation import (
-    prepare_celeba_centralised,
-)
-from puffle.examples.models.models import CNN
+from puffle.examples.data_preparation.dataset_preparation import prepare_dutch
+from puffle.examples.models.models import LinearClassificationNet
 from puffle.examples.utils.utils import seed_everything
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
@@ -57,6 +56,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon", type=str, default=None)
     parser.add_argument("--noise_multiplier", type=float, default=0)
     parser.add_argument("--max_grad_norm", type=float, default=10000000)
+    parser.add_argument("--epsilon_lambda", type=str, default=None)
 
     # Training parameters
     parser.add_argument("--lr", type=float, required=True)
@@ -101,16 +101,13 @@ if __name__ == "__main__":
         else None
     )
     seed_everything(args.seed)
-    celeba_train, celeba_test, celeba_val = prepare_celeba_centralised(
-        debug=False,
-        sweep=args.sweep,
-        validation_seed=args.validation_seed,
-        seed=args.seed,
+    dutch_train, dutch_test, dutch_val = prepare_dutch(
+        args.csv_path, sweep=args.sweep, validation_seed=args.validation_seed
     )
     seed_everything(args.seed)
 
     train_loader = torch.utils.data.DataLoader(
-        celeba_train,
+        dutch_train,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=0,
@@ -118,16 +115,16 @@ if __name__ == "__main__":
     )
 
     test_loader = torch.utils.data.DataLoader(
-        celeba_test,
+        dutch_test,
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=0,
         pin_memory=True,
     )
 
-    if celeba_val is not None:
+    if dutch_val is not None:
         val_loader = torch.utils.data.DataLoader(
-            celeba_val,
+            dutch_val,
             batch_size=args.batch_size,
             shuffle=False,
             num_workers=0,
@@ -135,6 +132,19 @@ if __name__ == "__main__":
         )
     else:
         val_loader = None
+
+    if args.epsilon_lambda is not None:
+        delta = (1 / len(train_loader.dataset)) / 2
+        sample_rate = args.batch_size / len(train_loader.dataset)
+        iterations = args.epochs * len(train_loader) * 2
+        epsilon_lambda = float(args.epsilon_lambda)
+        sigma_update_lambda = get_noise_multiplier(
+            target_epsilon=epsilon_lambda,
+            target_delta=delta,
+            sample_rate=sample_rate,
+            steps=iterations,
+            accountant="rdp",
+        )
 
     lr = args.lr
     epochs = args.epochs
@@ -145,7 +155,7 @@ if __name__ == "__main__":
         model_loss=nn.CrossEntropyLoss(),
         unfairness_loss=DisparityRegularizationLoss(),
     )
-    model = CNN()
+    model = LinearClassificationNet(input_size=11, output_size=2)
     optimizer = (
         optim.SGD(model.parameters(), lr=lr, momentum=0)
         if args.optimizer == "sgd"
@@ -172,6 +182,9 @@ if __name__ == "__main__":
         else torch.device("cuda"),
         wandb_run=wandb_run,
         config=PUFFLEConfig(
+            sigma_update_lambda=sigma_update_lambda
+            if args.epsilon_lambda is not None
+            else None,
             lambda_regularization=args.regularization_lambda,
             target=args.target,
             tunable_lambda=args.regularization_mode == "tunable",
@@ -186,8 +199,8 @@ if __name__ == "__main__":
     puffle_model.train(
         train_loader=train_loader_gc,
         epochs=epochs,
-        val_loader=val_loader if celeba_val is not None else test_loader,
-        test_loader=test_loader if celeba_test is not None else None,
+        val_loader=val_loader if dutch_val is not None else None,
+        test_loader=test_loader if dutch_test is not None else None,
         verbose=True,
         average_probabilities=None,
         max_physical_batch_size=MAX_PHYSICAL_BATCH_SIZE,

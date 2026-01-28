@@ -17,9 +17,9 @@ from puffle.Utils.fairness_metrics import FairnessMetrics
 from puffle.Utils.lambda_updater import LambdaUpdater
 from puffle.Utils.metric import compute_demographic_disparity
 from puffle.Utils.modes import MetricMode
+from puffle.Utils.privacy import get_noise
 from puffle.Utils.tensor_utils import ensure_tensor
 from puffle.Utils.types import DeviceType, MetricsDict
-from puffle.Utils.privacy import get_noise
 
 
 class TrainingBatchResult(NamedTuple):
@@ -95,6 +95,11 @@ class PUFFLEModel:
             ki=self.config.lambda_ki,
             kd=self.config.lambda_kd,
         )
+        self.average_probabilities = None
+
+    def set_average_probabilities(self, average_probabilities: dict) -> None:
+        """Set the average probabilities."""
+        self.average_probabilities = average_probabilities
 
     @contextmanager
     def evaluation_mode(self):
@@ -209,18 +214,24 @@ class PUFFLEModel:
             metrics["counter_y_z"] = statistics[-1].get("counter_y_z", 0)
             metrics["counter_y_not_z"] = statistics[-1].get("counter_y_not_z", 0)
 
-            
-            metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (get_noise(
+            metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (
+                get_noise(
                     mechanism_type="gaussian",
                     sigma=self.config.sigma_statistics,
                 )
-                if self.tunable_lambda and self.config.sigma_statistics else 0)
-            metrics["counter_y_not_z_noise"] = statistics[-1].get("counter_y_not_z", 0) + (get_noise(
+                if self.tunable_lambda and self.config.sigma_statistics
+                else 0
+            )
+            metrics["counter_y_not_z_noise"] = statistics[-1].get(
+                "counter_y_not_z", 0
+            ) + (
+                get_noise(
                     mechanism_type="gaussian",
                     sigma=self.config.sigma_statistics,
                 )
-                if self.tunable_lambda and self.config.sigma_statistics else 0)
-
+                if self.tunable_lambda and self.config.sigma_statistics
+                else 0
+            )
 
         return metrics
 
@@ -491,7 +502,7 @@ class PUFFLEModel:
             # Here we pass noise parameter to compute_demographic_disparity
             # with differential privacy. This is handling everything for us.
             # We do not need to do anything else, even if we are in FL
-            # If the noise is None, it will use the default noise = 0. 
+            # If the noise is None, it will use the default noise = 0.
             # There are no other differences after this.
 
             unfairness_batch, _ = compute_demographic_disparity(
@@ -500,6 +511,7 @@ class PUFFLEModel:
                 else torch.tensor(z_batch, device=self.device),
                 y=predicted,
                 sigma_update_lambda=self.config.sigma_update_lambda,
+                average_probabilities=self.average_probabilities,
             )
 
         return TrainingBatchResult(

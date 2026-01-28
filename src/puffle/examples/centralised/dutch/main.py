@@ -5,8 +5,8 @@ import warnings
 import torch
 import wandb
 from opacus import PrivacyEngine
-from torch import nn, optim
 from opacus.accountants.utils import get_noise_multiplier
+from torch import nn, optim
 
 from puffle.examples.data_preparation.dataset_preparation import prepare_dutch
 from puffle.examples.models.models import LinearClassificationNet
@@ -159,7 +159,6 @@ if __name__ == "__main__":
             steps=iterations,
             accountant="rdp",
         )
-        
 
     lr = args.lr
     epochs = args.epochs

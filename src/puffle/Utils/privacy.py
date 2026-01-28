@@ -9,12 +9,9 @@ def get_noise(
 ):
     if mechanism_type == "laplace":
         return np.random.laplace(loc=0, scale=sensitivity / epsilon, size=1)
-    elif mechanism_type == "geometric":
+    if mechanism_type == "geometric":
         p = 1 - np.exp(-epsilon / sensitivity)
         return (np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1))[0]
-    elif mechanism_type == "gaussian":
+    if mechanism_type == "gaussian":
         return np.random.normal(loc=0, scale=sigma, size=1)[0]
-    else:
-        raise ValueError(
-            "The mechanism type must be either laplace, geometric or gaussian"
-        )
+    raise ValueError("The mechanism type must be either laplace, geometric or gaussian")
