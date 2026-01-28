@@ -134,8 +134,8 @@ if __name__ == "__main__":
         val_loader = None
 
     if args.epsilon_lambda is not None:
-        delta = (1 / len(train_loader.dataset)) / 2
-        sample_rate = args.batch_size / len(train_loader.dataset)
+        delta = (1 / len(train_loader.dataset)) / 2  # type: ignore
+        sample_rate = args.batch_size / len(train_loader.dataset)  # type: ignore
         iterations = args.epochs * len(train_loader) * 2
         epsilon_lambda = float(args.epsilon_lambda)
         sigma_update_lambda = get_noise_multiplier(

@@ -551,6 +551,7 @@ class PUFFLEModel:
                 z_batch = ensure_tensor(batch[1], self.device)
                 y_batch = ensure_tensor(batch[2], self.device)
 
+                self.model = self.model.to(self.device)
                 outputs = self.model(x_batch)
                 if self.criterion:
                     loss = self.criterion(

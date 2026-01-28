@@ -3,15 +3,27 @@ import numpy as np
 
 def get_noise(
     mechanism_type: str,
-    epsilon: float = None,
-    sensitivity: float = None,
-    sigma: float = None,
+    epsilon: float | None = None,
+    sensitivity: float | None = None,
+    sigma: float | None = None,
 ):
+    rng = np.random.default_rng()
     if mechanism_type == "laplace":
-        return np.random.laplace(loc=0, scale=sensitivity / epsilon, size=1)
+        if sensitivity is None or epsilon is None:
+            msg = "Sensitivity and epsilon needed for Laplace"
+            raise ValueError(msg)
+        return rng.laplace(loc=0, scale=sensitivity / epsilon, size=1)
     if mechanism_type == "geometric":
+        if sensitivity is None or epsilon is None:
+            msg = "Sensitivity and epsilon needed for Geometric"
+            raise ValueError(msg)
         p = 1 - np.exp(-epsilon / sensitivity)
-        return (np.random.geometric(p=p, size=1) - np.random.geometric(p=p, size=1))[0]
+        return (rng.geometric(p=p, size=1) - rng.geometric(p=p, size=1))[0]
     if mechanism_type == "gaussian":
-        return np.random.normal(loc=0, scale=sigma, size=1)[0]
-    raise ValueError("The mechanism type must be either laplace, geometric or gaussian")
+        if sigma is None:
+            msg = "Sigma needed for Gaussian"
+            raise ValueError(msg)
+        return rng.normal(loc=0, scale=sigma, size=1)[0]
+
+    msg = "The mechanism type must be either laplace, geometric or gaussian"
+    raise ValueError(msg)
