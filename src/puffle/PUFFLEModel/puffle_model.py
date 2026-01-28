@@ -19,6 +19,7 @@ from puffle.Utils.metric import compute_demographic_disparity
 from puffle.Utils.modes import MetricMode
 from puffle.Utils.tensor_utils import ensure_tensor
 from puffle.Utils.types import DeviceType, MetricsDict
+from puffle.Utils.privacy import get_noise
 
 
 class TrainingBatchResult(NamedTuple):
@@ -86,7 +87,6 @@ class PUFFLEModel:
         self.alpha = self.config.alpha
         self.weight_decay_alpha = self.config.weight_decay_alpha
         self.tunable_lambda = self.config.tunable_lambda
-
         self.lambda_updater = LambdaUpdater(
             strategy=self.config.lambda_update_strategy,
             alpha=self.alpha,
@@ -208,6 +208,19 @@ class PUFFLEModel:
             metrics["counter_not_z"] = statistics[-1].get("counter_not_z", 0)
             metrics["counter_y_z"] = statistics[-1].get("counter_y_z", 0)
             metrics["counter_y_not_z"] = statistics[-1].get("counter_y_not_z", 0)
+
+            
+            metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (get_noise(
+                    mechanism_type="gaussian",
+                    sigma=self.config.sigma_statistics,
+                )
+                if self.tunable_lambda and self.config.sigma_statistics else 0)
+            metrics["counter_y_not_z_noise"] = statistics[-1].get("counter_y_not_z", 0) + (get_noise(
+                    mechanism_type="gaussian",
+                    sigma=self.config.sigma_statistics,
+                )
+                if self.tunable_lambda and self.config.sigma_statistics else 0)
+
 
         return metrics
 
@@ -474,11 +487,19 @@ class PUFFLEModel:
             total_batch = y_batch.size(0)
 
             # Use differentiable metric or argmax metric?
+            # Small batches may only have one unique z value, handle gracefully
+            # Here we pass noise parameter to compute_demographic_disparity
+            # with differential privacy. This is handling everything for us.
+            # We do not need to do anything else, even if we are in FL
+            # If the noise is None, it will use the default noise = 0. 
+            # There are no other differences after this.
+
             unfairness_batch, _ = compute_demographic_disparity(
                 z=z_batch
                 if isinstance(z_batch, torch.Tensor)
                 else torch.tensor(z_batch, device=self.device),
                 y=predicted,
+                sigma_update_lambda=self.config.sigma_update_lambda,
             )
 
         return TrainingBatchResult(
@@ -579,8 +600,14 @@ class PUFFLEModel:
         try:
             disparity, statistics = compute_demographic_disparity(z_tensor, y_tensor)
         except ValueError:
+            # Disparity cannot be computed with less than 2 unique z values
             disparity = 0.0
-            statistics = {}
+            statistics = {
+                "counter_z": 0,
+                "counter_not_z": 0,
+                "counter_y_z": 0,
+                "counter_y_not_z": 0,
+            }
 
         return FairnessMetrics(
             loss=loss,

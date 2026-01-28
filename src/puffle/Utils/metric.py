@@ -1,9 +1,11 @@
 import torch
+from puffle.Utils.privacy import get_noise
 
 
 def compute_demographic_disparity(
     z: torch.Tensor,
     y: torch.Tensor,
+    sigma_update_lambda: float = None,
 ):
     """
     Compute the demographic disparity of a model.
@@ -33,6 +35,7 @@ def compute_demographic_disparity(
         msg = "Input tensors z and y must not be empty."
         raise ValueError(msg)
 
+
     unique_z, z_inverse = torch.unique(z, return_inverse=True)
     unique_y, y_inverse = torch.unique(y, return_inverse=True)
 
@@ -41,7 +44,7 @@ def compute_demographic_disparity(
 
     min_required_groups = 2
     if num_z < min_required_groups:
-        msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found."
+        msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
         raise ValueError(msg)
 
     # 1. Compute P(Y=y | Z=z) for all y, z
@@ -55,7 +58,21 @@ def compute_demographic_disparity(
 
     # Probabilities P(Y=y | Z=z) = count(z,y) / count(z)
     # Avoid division by zero
-    p_y_given_z = pair_counts / (z_counts.view(-1, 1) + 1e-10)
+    p_y_given_z = (pair_counts + (
+                get_noise(
+                    mechanism_type="gaussian",
+                    sigma=sigma_update_lambda,
+                )
+                if sigma_update_lambda is not None
+                else 0
+            )) / (z_counts.view(-1, 1) + 1e-10 + + (
+                get_noise(
+                    mechanism_type="gaussian",
+                    sigma=sigma_update_lambda,
+                )
+                if sigma_update_lambda is not None
+                else 0
+            ))
 
     # 2. Compute P(Y=y | Z!=z) for all y, z
     # Total count of y across the whole dataset
@@ -68,18 +85,55 @@ def compute_demographic_disparity(
     total_samples = len(z)
     count_not_z = total_samples - z_counts
 
-    p_y_given_not_z = count_not_z_y / (count_not_z.view(-1, 1) + 1e-10)
+    p_y_given_not_z = (count_not_z_y + + (
+                get_noise(
+                    mechanism_type="gaussian",
+                    sigma=sigma_update_lambda,
+                )
+                if sigma_update_lambda is not None
+                else 0
+            )) / (
+        count_not_z.view(-1, 1) + 1e-10 + + (
+                get_noise(
+                    mechanism_type="gaussian",
+                    sigma=sigma_update_lambda,
+                )
+                if sigma_update_lambda is not None
+                else 0
+            )
+    )
 
     # 3. Compute disparity |P(Y=y|Z=z) - P(Y=y|Z!=z)|
     disparities = torch.abs(p_y_given_z - p_y_given_not_z)
     max_disparity = disparities.max().item()
 
-    # Return empty statistics to match type signature.
+    # Compute statistics for FL aggregation
+    # Assuming binary z (0/1) and y (0/1), we extract counts for the positive class
+    # counter_z: count of samples where z == 1 (or the second unique z value)
+    # counter_not_z: count of samples where z == 0 (or the first unique z value)
+    # counter_y_z: count of samples where y == 1 AND z == 1
+    # counter_y_not_z: count of samples where y == 1 AND z == 0
+    if num_z >= min_required_groups and num_y >= min_required_groups:
+        # z_counts[0] = count of first unique z value (typically 0)
+        # z_counts[1] = count of second unique z value (typically 1)
+        counter_z = int(z_counts[1].item()) if num_z > 1 else 0
+        counter_not_z = int(z_counts[0].item())
+        # pair_counts[z_idx, y_idx] = count of (z, y) pairs
+        # pair_counts[1, 1] = count of (z=1, y=1)
+        # pair_counts[0, 1] = count of (z=0, y=1)
+        counter_y_z = int(pair_counts[1, 1].item()) if num_z > 1 and num_y > 1 else 0
+        counter_y_not_z = int(pair_counts[0, 1].item()) if num_y > 1 else 0
+    else:
+        counter_z = 0
+        counter_not_z = 0
+        counter_y_z = 0
+        counter_y_not_z = 0
+
     statistics = {
-        "counter_z": 0,
-        "counter_not_z": 0,
-        "counter_y_z": 0,
-        "counter_y_not_z": 0,
+        "counter_z": counter_z,
+        "counter_not_z": counter_not_z,
+        "counter_y_z": counter_y_z,
+        "counter_y_not_z": counter_y_not_z,
     }
 
     return max_disparity, statistics

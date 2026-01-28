@@ -6,6 +6,7 @@ import torch
 import wandb
 from opacus import PrivacyEngine
 from torch import nn, optim
+from opacus.accountants.utils import get_noise_multiplier
 
 from puffle.examples.data_preparation.dataset_preparation import prepare_dutch
 from puffle.examples.models.models import LinearClassificationNet
@@ -55,6 +56,8 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon", type=str, default=None)
     parser.add_argument("--noise_multiplier", type=float, default=0)
     parser.add_argument("--max_grad_norm", type=float, default=10000000)
+    parser.add_argument("--epsilon_lambda", type=str, default=None)
+    parser.add_argument("--epsilon_statistics", type=str, default=None)
 
     # Training parameters
     parser.add_argument("--lr", type=float, required=True)
@@ -131,6 +134,33 @@ if __name__ == "__main__":
     else:
         val_loader = None
 
+    delta = (1 / len(train_loader.dataset)) / 2
+
+    if args.epsilon_lambda is not None:
+        sample_rate = args.batch_size / len(train_loader.dataset)
+        iterations = args.epochs * len(train_loader) * 4
+        epsilon_lambda = float(args.epsilon_lambda)
+        sigma_update_lambda = get_noise_multiplier(
+            target_epsilon=epsilon_lambda,
+            target_delta=delta,
+            sample_rate=sample_rate,
+            steps=iterations,
+            accountant="rdp",
+        )
+
+    if args.epsilon_statistics is not None:
+        sample_rate = 1
+        iterations = args.epochs * 2
+        epsilon_statistics = float(args.epsilon_statistics)
+        sigma_statistics = get_noise_multiplier(
+            target_epsilon=epsilon_statistics,
+            target_delta=delta,
+            sample_rate=sample_rate,
+            steps=iterations,
+            accountant="rdp",
+        )
+        
+
     lr = args.lr
     epochs = args.epochs
     MAX_PHYSICAL_BATCH_SIZE = 1024
@@ -167,6 +197,12 @@ if __name__ == "__main__":
         else torch.device("cuda"),
         wandb_run=wandb_run,
         config=PUFFLEConfig(
+            sigma_update_lambda=sigma_update_lambda
+            if args.epsilon_lambda is not None
+            else None,
+            sigma_statistics=sigma_statistics
+            if args.epsilon_statistics is not None
+            else None,
             lambda_regularization=args.regularization_lambda,
             target=args.target,
             tunable_lambda=args.regularization_mode == "tunable",

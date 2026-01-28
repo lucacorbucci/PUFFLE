@@ -15,9 +15,13 @@ run_sweep_and_agent () {
   rm temp_output.txt
   
   # Run the wandb agent command
-  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 100
+  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 20
 }
 
 
-run_sweep_and_agent "dutch"
-run_sweep_and_agent "dutch_tunable"
+# run_sweep_and_agent "dutch"
+# run_sweep_and_agent "dutch_tunable"
+
+
+# run_sweep_and_agent "dutch_private"
+run_sweep_and_agent "dutch_tunable_private"

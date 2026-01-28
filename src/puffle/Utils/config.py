@@ -30,3 +30,6 @@ class PUFFLEConfig(BaseModel):
     lambda_kp: float = Field(default=0.01, ge=0.0)
     lambda_ki: float = Field(default=0.001, ge=0.0)
     lambda_kd: float = Field(default=0.005, ge=0.0)
+
+    sigma_update_lambda: float | None = Field(default=None, ge=0.0)
+    sigma_statistics: float | None = Field(default=None, ge=0.0)

@@ -32,7 +32,6 @@ class LambdaUpdater:
             kp: Proportional gain (for PID)
             ki: Integral gain (for PID)
             kd: Derivative gain (for PID)
-
         """
         self.strategy = strategy
         self.alpha = alpha
