@@ -89,6 +89,7 @@ import flwr as fl
 
 
 def prepare_celeba(partition: pd.DataFrame, preferences: Preferences) -> DataLoader:
+    """Prepare CelebA dataset."""
     dataset = partition
     image_path = preferences.image_path
     if image_path is None:
@@ -101,6 +102,7 @@ def prepare_celeba(partition: pd.DataFrame, preferences: Preferences) -> DataLoa
 def prepare_celeba_for_cross_silo(
     preferences: Preferences, partition: pd.DataFrame, partition_id: int
 ) -> fl.client.Client:
+    """Prepare CelebA for cross-silo FL."""
     partition_train_test = partition.train_test_split(
         test_size=0.2, seed=preferences.seed
     )

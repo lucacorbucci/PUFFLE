@@ -13,6 +13,8 @@ class FairnessMetrics:
     f1: float
     disparity: float
     statistics: dict = field(default_factory=dict)
+    dataset_disparity: float = 0.0
+    dataset_statistics: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Convert metrics to a flat dictionary."""
@@ -22,6 +24,8 @@ class FairnessMetrics:
             "f1": float(self.f1),
             "disparity": float(self.disparity),
             "statistics": self.statistics,
+            "dataset_disparity": float(self.dataset_disparity),
+            "dataset_statistics": self.dataset_statistics,
         }
 
     def __getitem__(self, key: str):

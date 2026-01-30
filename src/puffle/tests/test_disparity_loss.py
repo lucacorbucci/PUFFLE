@@ -453,3 +453,73 @@ class TestDisparityLoss:
             predictions_argmax, sensitive_attribute_list, [0, 1], [0, 1]
         )
         assert res.item() == 0.5
+
+
+class MockModel(torch.nn.Module):
+    def __init__(self, num_classes=2):
+        super().__init__()
+        self.linear = torch.nn.Linear(10, num_classes)
+
+    def forward(self, x):
+        return self.linear(x)
+
+
+def test_violation_with_dataset_equivalence():
+    """
+    Verify that the incremental implementation in `violation_with_dataset`
+    produces the same result as the standard `forward` pass (which requires OOM-prone full accumulation).
+    This ensures the 'safe' implementation is mathematically correct.
+    """
+    device = "cpu"
+    torch.manual_seed(42)
+
+    # Create synthetic data
+    n_samples = 100
+    x = torch.randn(n_samples, 10)
+    z = torch.randint(0, 2, (n_samples,))
+    y = torch.randint(0, 2, (n_samples,))
+    dataset = TensorDataset(x, z, y)
+    dataloader = DataLoader(dataset, batch_size=10)
+
+    model = MockModel()
+    loss_fn = DisparityRegularizationLoss()
+
+    # 1. Compute baseline violation using manual full accumulation + forward()
+    predictions = torch.tensor([]).to(device)
+    sensitive_attribute_list = torch.tensor([]).to(device)
+    targets = []
+
+    avg_probs = {}
+
+    model.eval()
+    with torch.no_grad():
+        for images_batch, sensitive_attributes_batch, target_batch in dataloader:
+            images_batch = images_batch.to(device)
+            output = model(images_batch)
+            predictions = torch.cat((predictions, output), 0)
+            sensitive_attribute_list = torch.cat(
+                (sensitive_attribute_list, sensitive_attributes_batch.to(device)), 0
+            )
+            targets += target_batch.tolist()
+
+    sensitive_attributes = list({item.item() for item in sensitive_attribute_list})
+    target_list = list(set(targets))
+
+    expected_violation = loss_fn.forward(
+        sensitive_attribute_list,
+        torch.device(device),
+        predictions,
+        sensitive_attributes,
+        target_list,
+        average_probabilities=avg_probs,
+    )
+
+    # 2. Compute violation using the incremental optimized method
+    actual_violation = loss_fn.violation_with_dataset(
+        model, dataloader, avg_probs, torch.device(device)
+    )
+
+    # 3. Assert they are identical
+    assert isinstance(expected_violation, torch.Tensor)
+    assert isinstance(actual_violation, torch.Tensor)
+    assert torch.allclose(expected_violation, actual_violation, atol=1e-6)

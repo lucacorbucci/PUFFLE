@@ -1,6 +1,6 @@
 import torch
 
-from puffle.Utils.privacy import get_noise
+from puffle.Utils.metric_utils import compute_binary_statistics
 
 
 def _compute_p_y_given_group_with_fallback(
@@ -8,25 +8,12 @@ def _compute_p_y_given_group_with_fallback(
     denominator_vector: torch.Tensor,
     unique_z: torch.Tensor,
     unique_y: torch.Tensor,
-    sigma: float | None,
     average_probabilities: dict | None,
     *,
     is_complement: bool,
 ) -> torch.Tensor:
     if average_probabilities is None:
-        noise_num_val = (
-            get_noise(mechanism_type="gaussian", sigma=sigma)
-            if sigma is not None
-            else 0
-        )
-        noise_den_val = (
-            get_noise(mechanism_type="gaussian", sigma=sigma)
-            if sigma is not None
-            else 0
-        )
-        return (numerator_matrix + noise_num_val) / (
-            denominator_vector.view(-1, 1) + 1e-10 + noise_den_val
-        )
+        return (numerator_matrix) / (denominator_vector.view(-1, 1) + 1e-10)
 
     probs = torch.zeros_like(numerator_matrix, dtype=torch.float)
     for z_idx, z_val in enumerate(unique_z):
@@ -36,18 +23,7 @@ def _compute_p_y_given_group_with_fallback(
                 n_val = numerator_matrix[z_idx, y_idx]
                 d_val = den
 
-                noise_n = (
-                    get_noise(mechanism_type="gaussian", sigma=sigma)
-                    if sigma is not None
-                    else 0
-                )
-                noise_d = (
-                    get_noise(mechanism_type="gaussian", sigma=sigma)
-                    if sigma is not None
-                    else 0
-                )
-
-                probs[z_idx, y_idx] = (n_val + noise_n) / (d_val + noise_d + 1e-10)
+                probs[z_idx, y_idx] = (n_val) / (d_val + 1e-10)
         else:
             other_z_val = 1 - int(z_val.item()) if is_complement else int(z_val.item())
             for y_idx, y_val in enumerate(unique_y):
@@ -59,7 +35,6 @@ def _compute_p_y_given_group_with_fallback(
 def compute_demographic_disparity(
     z: torch.Tensor,
     y: torch.Tensor,
-    sigma_update_lambda: float | None = None,
     average_probabilities: dict | None = None,
 ):
     """
@@ -72,7 +47,6 @@ def compute_demographic_disparity(
     Args:
         z (torch.Tensor): The sensitive features.
         y (torch.Tensor): The target values.
-        sigma_update_lambda (float | None): Sigma for DP noise.
         average_probabilities (dict | None): Global statistics for fallback.
 
     Returns:
@@ -97,9 +71,19 @@ def compute_demographic_disparity(
     num_y = len(unique_y)
 
     min_required_groups = 2
-    if num_z < min_required_groups:
+    if num_z < min_required_groups and average_probabilities is None:
         msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
         raise ValueError(msg)
+
+    if average_probabilities is not None and average_probabilities.get("first_round"):
+        max_disparity = 0.0
+        statistics = {
+            "counter_z": 0,
+            "counter_not_z": 0,
+            "counter_y_z": 0,
+            "counter_y_not_z": 0,
+        }
+        return max_disparity, statistics
 
     # 1. Compute P(Y=y | Z=z)
     pair_indices = z_inverse * num_y + y_inverse
@@ -112,7 +96,6 @@ def compute_demographic_disparity(
         z_counts,
         unique_z,
         unique_y,
-        sigma_update_lambda,
         average_probabilities,
         is_complement=False,
     )
@@ -128,7 +111,6 @@ def compute_demographic_disparity(
         count_not_z,
         unique_z,
         unique_y,
-        sigma_update_lambda,
         average_probabilities,
         is_complement=True,
     )
@@ -137,24 +119,11 @@ def compute_demographic_disparity(
     disparities = torch.abs(p_y_given_z - p_y_given_not_z)
     max_disparity = disparities.max().item()
 
-    # Compute statistics for FL aggregation
-    if num_z >= min_required_groups and num_y >= min_required_groups:
-        counter_z = int(z_counts[1].item()) if num_z > 1 else 0
-        counter_not_z = int(z_counts[0].item())
-        counter_y_z = int(pair_counts[1, 1].item()) if num_z > 1 and num_y > 1 else 0
-        counter_y_not_z = int(pair_counts[0, 1].item()) if num_y > 1 else 0
-    else:
-        counter_z = 0
-        counter_not_z = 0
-        counter_y_z = 0
-        counter_y_not_z = 0
-
-    statistics = {
-        "counter_z": counter_z,
-        "counter_not_z": counter_not_z,
-        "counter_y_z": counter_y_z,
-        "counter_y_not_z": counter_y_not_z,
-    }
+    # Compute statistics for FL aggregation with validation
+    # Validation only makes sense if we can uniquely identify binary groups 0 and 1
+    statistics = compute_binary_statistics(
+        num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y
+    )
 
     return max_disparity, statistics
 

@@ -239,49 +239,132 @@ class DisparityRegularizationLoss(BaseFairnessLoss):
         device: torch.device,
         *,
         global_computation=False,
-    ) -> torch.Tensor:
+    ) -> torch.Tensor | tuple[torch.Tensor, dict]:
         """
-        Evaluate the violation term on the entire dataset.
-
-        Args:
-            model (torch.nn.Module): The model to evaluate.
-            dataset (torch.utils.data.DataLoader): The dataset for evaluation.
-            average_probabilities (dict): FL average probabilities.
-            device (torch.device): Computation device.
-            global_computation (bool, optional): Whether to perform global computation. Defaults to False.
-
+        Evaluate the violation term on the entire dataset using incremental statistics.
+        Prevents OOM by avoiding full dataset concatenation.
         """
-        predictions = torch.tensor([]).to(device)
-        sensitive_attribute_list = torch.tensor([]).to(device)
-        targets = []
         model.eval()
-        with torch.no_grad():
-            for images_batch, sensitive_attributes_batch, target_batch in dataset:
-                images_batch = images_batch.to(device)
-                target_batch = target_batch.to(device)
 
-                output = model(images_batch)
-
-                predictions = torch.cat((predictions, output), 0)
-                sensitive_attribute_list = torch.cat(
-                    (sensitive_attribute_list, sensitive_attributes_batch.to(device)), 0
-                )
-                targets += target_batch.tolist()
-
-        sensitive_attributes = list({item.item() for item in sensitive_attribute_list})
-        target_list = list(set(targets))
-
-        # now we just call the forward function with the "fake" predictions and the sensitive
-        # attribute list we computed
-        return self.forward(
-            sensitive_attribute_list,
-            device,
-            predictions,
-            sensitive_attributes,
-            target_list,
-            average_probabilities=average_probabilities,
-            global_computation=global_computation,
+        counts_z, _, probs_y_z_sum, unique_targets, unique_z = (
+            self._accumulate_batch_statistics(model, dataset, device)
         )
+
+        fairness_violations = []
+        global_counters = {}
+
+        potential_sensitive = list(unique_z)
+        potential_targets = list(unique_targets)
+
+        # Sort for determinism
+        potential_sensitive.sort()
+        potential_targets.sort()
+
+        for target in potential_targets:
+            for z in potential_sensitive:
+                # Retrieve stats
+                z_eq_z = counts_z.get(z, 0)
+                # For z_not_eq_z, sum all other z counts
+                z_not_eq_z = sum(c for zz, c in counts_z.items() if zz != z)
+
+                key_eq = f"{target}|{z}"
+                y_eq_k_and_z_eq_z = probs_y_z_sum.get(key_eq, 0.0)
+
+                # y_eq_k_and_z_not_eq_z: sum of probs for target k over all other Z
+                y_eq_k_and_z_not_eq_z = sum(
+                    probs_y_z_sum.get(f"{target}|{zz}", 0.0)
+                    for zz in potential_sensitive
+                    if zz != z
+                )
+
+                if (y_eq_k_and_z_eq_z == 0 and y_eq_k_and_z_not_eq_z != 0) or (
+                    z_eq_z == 0 and z_not_eq_z != 0
+                ):
+                    violation_term = self._estimate_violation(
+                        target,
+                        z,
+                        torch.tensor(y_eq_k_and_z_not_eq_z),
+                        z_not_eq_z,
+                        average_probabilities,
+                        is_z_zero=True,
+                    )
+                elif (y_eq_k_and_z_eq_z != 0 and y_eq_k_and_z_not_eq_z == 0) or (
+                    z_not_eq_z == 0 and z_eq_z != 0
+                ):
+                    violation_term = self._estimate_violation(
+                        target,
+                        z,
+                        torch.tensor(y_eq_k_and_z_eq_z),
+                        z_eq_z,
+                        average_probabilities,
+                        is_z_zero=False,
+                    )
+                else:
+                    term1 = y_eq_k_and_z_eq_z / z_eq_z if z_eq_z > 0 else 0
+                    term2 = y_eq_k_and_z_not_eq_z / z_not_eq_z if z_not_eq_z > 0 else 0
+                    violation_term = abs(term1 - term2)
+
+                fairness_violations.append(violation_term)
+
+                global_counters[f"{target}|{z}"] = torch.tensor(y_eq_k_and_z_eq_z)
+
+        # Apply mask
+        fairness_violations = [
+            v if isinstance(v, torch.Tensor) else torch.tensor(v).to(device)
+            for v in fairness_violations
+        ]
+
+        res = self._apply_fairness_mask(fairness_violations, device)
+
+        if global_computation:
+            return (res, global_counters)
+        return res
+
+    def _accumulate_batch_statistics(self, model, dataset, device):
+        """Accumulate statistics batch-wise to avoid OOM."""
+        counts_z = {}  # {z_val: count}
+        counts_y_z = {}  # {f"{target}|{z}": count}
+        probs_y_z_sum = {}  # {f"{target}|{z}": sum_probs}
+
+        unique_targets = set()
+        unique_z = set()
+
+        with torch.no_grad():
+            for images_batch, sensitive_attributes_batch, _ in dataset:
+                images_batch = images_batch.to(device)
+
+                # Forward pass
+                output = model(images_batch)
+                softmax_ = F.softmax(output, dim=1)
+                preds = torch.argmax(softmax_, dim=1)
+
+                z_batch = self._prepare_sensitive_attributes(
+                    sensitive_attributes_batch, device
+                )
+
+                # Update unique values
+                batch_targets = preds.unique().tolist()
+                batch_z = z_batch.unique().tolist()
+                unique_targets.update(batch_targets)
+                unique_z.update(batch_z)
+
+                # Iterate all unique Z in batch to update counts_z
+                for z_val in batch_z:
+                    mask_z = z_batch == z_val
+                    counts_z[z_val] = counts_z.get(z_val, 0) + mask_z.sum().item()
+
+                # Iterate all unique (T, Z) combinations in batch
+                for t in batch_targets:
+                    for z_val in batch_z:
+                        mask_y_z = (preds == t) & (z_batch == z_val)
+                        count = mask_y_z.sum().item()
+                        if count > 0:
+                            key = f"{t}|{z_val}"
+                            counts_y_z[key] = counts_y_z.get(key, 0) + count
+                            sum_prob = softmax_[mask_y_z][:, t].sum().item()
+                            probs_y_z_sum[key] = probs_y_z_sum.get(key, 0) + sum_prob
+
+        return counts_z, counts_y_z, probs_y_z_sum, unique_targets, unique_z
 
     def evaluate_violation(
         self,
@@ -346,19 +429,6 @@ class DisparityRegularizationLoss(BaseFairnessLoss):
     def _masked_max_violation(
         self, fairness_violations_tensors: torch.Tensor, device: torch.device
     ) -> torch.Tensor:
-        # We need to find index of max.
-        # But wait, original code found max index from `fairness_violations_` (scalars)
-        # and applied mask to `fairness_violations` (tensors).
-        # We can find max from the detached CPU versions of tensors.
-
-        # More efficiently:
-        # fairness_violations_tensors is 1D tensor of violations.
-        # Logic: find index of max, create mask, sum.
-
-        # Wait, if we use values from tensors directly it works.
-        # Original code converted to float list, then found max.
-        # This is equivalent to argmax on the tensor if they are all scalars.
-
         if fairness_violations_tensors.numel() == 0:
             return torch.tensor(0.0).to(device)
 

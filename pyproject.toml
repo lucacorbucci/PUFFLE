@@ -58,6 +58,7 @@ ignore = [
     "EXE", # flake8-executable
     "T10", # debugger
     "TID", # flake8-tidy-imports
+    "D203", # incorrect-blank-line-before-class (conflicts with D211)
     "E501",  # line too long, handled by black
     "B008",  # do not perform function calls in argument defaults
     "C901",  # too complex
@@ -65,8 +66,6 @@ ignore = [
     #### specific rules
     "D100",   # ignore missing docs
     "D101",
-    "D102",
-    "D103",
     "D104",
     "D105",
     "D106",

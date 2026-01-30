@@ -21,6 +21,7 @@ class MixLoss(nn.Module):
         self.device = device
 
     def forward(self, inputs, target):
+        """Forward pass."""
         model_output = inputs[0]
         sensitive_value = inputs[1]
         lambda_regularization = inputs[2]

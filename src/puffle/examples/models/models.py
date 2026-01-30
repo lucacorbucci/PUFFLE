@@ -11,6 +11,7 @@ class LinearClassificationNet(nn.Module):
         self.layer1 = nn.Linear(input_size, output_size, bias=False)
 
     def forward(self, x):
+        """Forward pass."""
         return self.layer1(x.float())
 
 

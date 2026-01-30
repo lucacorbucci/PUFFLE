@@ -214,6 +214,26 @@ class PUFFLEModel:
             metrics["counter_y_z"] = statistics[-1].get("counter_y_z", 0)
             metrics["counter_y_not_z"] = statistics[-1].get("counter_y_not_z", 0)
 
+            metrics["counter_not_y_z"] = statistics[-1].get("counter_not_y_z", 0)
+            metrics["counter_not_y_not_z"] = statistics[-1].get(
+                "counter_not_y_not_z", 0
+            )
+            metrics["counter_y"] = statistics[-1].get("counter_y", 0)
+            metrics["counter_not_y"] = statistics[-1].get("counter_not_y", 0)
+            metrics["total_samples"] = statistics[-1].get("total_samples", 0)
+
+            # Dataset Statistics (Ground Truth)
+            # Extracted from nested 'dataset_statistics' key pushed in _run_training_loop
+            ds_stats = statistics[-1].get("dataset_statistics", {})
+            metrics["dataset_counter_z"] = ds_stats.get("counter_z", 0)
+            metrics["dataset_counter_not_z"] = ds_stats.get("counter_not_z", 0)
+            metrics["dataset_counter_y_z"] = ds_stats.get("counter_y_z", 0)
+            metrics["dataset_counter_y_not_z"] = ds_stats.get("counter_y_not_z", 0)
+            
+            metrics["dataset_counter_y"] = ds_stats.get("counter_y", 0)
+            metrics["dataset_counter_not_y"] = ds_stats.get("counter_not_y", 0)
+            # metrics["dataset_total_samples"] = ds_stats.get("total_samples", 0) # Already captured
+
             metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (
                 get_noise(
                     mechanism_type="gaussian",
@@ -306,7 +326,15 @@ class PUFFLEModel:
 
             # Store and log training metrics
             self._update_metrics_dict(metrics, MetricMode.TRAIN, train_metrics)
-            statistics.append(train_metrics.get("statistics", {}))
+            
+            # Allow statistics to capture both model and dataset stats
+            current_stats = train_metrics.statistics.copy() if hasattr(train_metrics, "statistics") else train_metrics.get("statistics", {}).copy()
+            if hasattr(train_metrics, "dataset_statistics"):
+                 current_stats["dataset_statistics"] = train_metrics.dataset_statistics
+            elif "dataset_statistics" in train_metrics:
+                 current_stats["dataset_statistics"] = train_metrics["dataset_statistics"]
+            
+            statistics.append(current_stats)
             self._log_wandb_epoch(train_metrics, epoch, mode=MetricMode.TRAIN)
 
             # Validation and Testing
@@ -510,7 +538,7 @@ class PUFFLEModel:
                 if isinstance(z_batch, torch.Tensor)
                 else torch.tensor(z_batch, device=self.device),
                 y=predicted,
-                sigma_update_lambda=self.config.sigma_update_lambda,
+                # sigma_update_lambda=self.config.sigma_update_lambda,
                 average_probabilities=self.average_probabilities,
             )
 
@@ -612,10 +640,24 @@ class PUFFLEModel:
 
         try:
             disparity, statistics = compute_demographic_disparity(z_tensor, y_tensor)
+            print(disparity, statistics)
         except ValueError:
             # Disparity cannot be computed with less than 2 unique z values
             disparity = 0.0
             statistics = {
+                "counter_z": 0,
+                "counter_not_z": 0,
+                "counter_y_z": 0,
+                "counter_y_not_z": 0,
+            }
+
+        # Compute Disparity on Dataset (Ground Truth)
+        y_true_tensor = ensure_tensor(y_true, self.device)
+        try:
+            dataset_disparity, dataset_statistics = compute_demographic_disparity(z_tensor, y_true_tensor)
+        except ValueError:
+            dataset_disparity = 0.0
+            dataset_statistics = {
                 "counter_z": 0,
                 "counter_not_z": 0,
                 "counter_y_z": 0,
@@ -628,6 +670,8 @@ class PUFFLEModel:
             f1=float(f1),
             disparity=float(disparity),
             statistics=statistics,
+            dataset_disparity=float(dataset_disparity),
+            dataset_statistics=dataset_statistics,
         )
 
     def update_lambda(self, unfairness_loss: float) -> None:

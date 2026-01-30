@@ -174,16 +174,21 @@ class FlowerClient(NumPyClient):
             RuntimeError: If training fails due to device or model issues.
 
         """
+        avg_probs = None
         # Load average probabilities for DP statistics
-        if self.preferences.epsilon_statistics is not None and self.preferences.fed_dir:
-            avg_probs_path = os.path.join(self.preferences.fed_dir, "avg_proba.pkl")
-            if os.path.exists(avg_probs_path):
-                try:
-                    with open(avg_probs_path, "rb") as f:
-                        avg_probs = dill.load(f)
-                    self.model.set_average_probabilities(avg_probs)
-                except Exception as e:  # noqa: BLE001
-                    log(INFO, f"Failed to load average probabilities: {e}")
+        # if self.preferences.fed_dir:
+        #     avg_probs_path = os.path.join(self.preferences.fed_dir, "avg_proba.pkl")
+        #     if os.path.exists(avg_probs_path):
+        #         try:
+        #             with open(avg_probs_path, "rb") as f:
+        #                 avg_probs = dill.load(f)
+        #             self.model.set_average_probabilities(avg_probs)
+        #         except Exception as e:
+        #             log(INFO, f"Failed to load average probabilities: {e}")
+        #     else:
+        #         avg_probs = {
+        #             "first_round": True,
+        #         }
 
         # copy parameters sent by the server into client's local model
         set_params(self.model.model, parameters)
@@ -191,7 +196,9 @@ class FlowerClient(NumPyClient):
         # do local training (call same function as centralised setting)
         # Note: PUFFLEModel.train() returns dict[str, list[float]] with metrics per epoch
         result_dict = self.model.train(
-            train_loader=self.trainloader, epochs=self.preferences.num_epochs
+            train_loader=self.trainloader,
+            epochs=self.preferences.num_epochs,
+            average_probabilities=avg_probs,
         )
 
         # Flower expects dict[str, Scalar] where Scalar is bool|bytes|float|int|str
@@ -206,6 +213,7 @@ class FlowerClient(NumPyClient):
             elif not isinstance(value, (list, dict)):
                 metrics[key] = value
 
+        metrics["client_id"] = self.partition_id
         # return the model parameters to the server as well as extra info (number of training examples in this case)
         return get_params(self.model.model), len(self.trainloader), metrics
 
@@ -256,9 +264,41 @@ class FlowerClient(NumPyClient):
             metrics["counter_not_z"] = result.statistics.get("counter_not_z", 0)
             metrics["counter_y_z"] = result.statistics.get("counter_y_z", 0)
             metrics["counter_y_not_z"] = result.statistics.get("counter_y_not_z", 0)
+
+            metrics["counter_not_y_z"] = result.statistics.get("counter_not_y_z", 0)
+            metrics["counter_not_y_not_z"] = result.statistics.get(
+                "counter_not_y_not_z", 0
+            )
+            metrics["counter_y"] = result.statistics.get("counter_y", 0)
+            metrics["counter_not_y"] = result.statistics.get("counter_not_y", 0)
+            metrics["total_samples"] = result.statistics.get("total_samples", 0)
+
+        # Add dataset statistics (Ground Truth)
+        if result.dataset_statistics:
+            ds = result.dataset_statistics
+            metrics["dataset_counter_z"] = ds.get("counter_z", 0)
+            metrics["dataset_counter_not_z"] = ds.get("counter_not_z", 0)
+            metrics["dataset_counter_y_z"] = ds.get("counter_y_z", 0)
+            metrics["dataset_counter_y_not_z"] = ds.get("counter_y_not_z", 0)
+            metrics["dataset_counter_y"] = ds.get("counter_y", 0)
+            metrics["dataset_counter_not_y"] = ds.get("counter_not_y", 0)
+
+        metrics["client_id"] = self.partition_id
+
         return float(result.loss), len(self.valloader), metrics
 
     def get_noise_multiplier(self, dataset, target_epsilon=None):
+        """
+        Calculate the noise multiplier for a given target epsilon.
+
+        Args:
+            dataset (Dataset): The dataset used for training.
+            target_epsilon (float, optional): The target epsilon for differential privacy. Defaults to None.
+
+        Returns:
+            float: The calculated noise multiplier.
+
+        """
         model_noise = get_model(
             model_name=self.preferences.model,
             num_classes=self.preferences.num_classes,

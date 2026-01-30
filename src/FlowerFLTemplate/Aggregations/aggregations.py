@@ -48,7 +48,7 @@ class Aggregation:
         wandb_run: Any,
     ) -> dict:
         """
-        Aggregates validation (evaluation) metrics from multiple clients using weighted averages.
+        Aggregates (evaluation) metrics from multiple clients using weighted averages.
 
         Supports classification (accuracy, loss, f1, disparity) metrics.
         Logs aggregated values and updates wandb run if provided.
@@ -156,6 +156,77 @@ class Aggregation:
             counter_not_z = sum(m.get("counter_not_z", 0) for _, m in metrics)
             counter_y_z = sum(m.get("counter_y_z", 0) for _, m in metrics)
             counter_y_not_z = sum(m.get("counter_y_not_z", 0) for _, m in metrics)
+            ids = [m.get("client_id", 0) for _, m in metrics]
+            # log all the counters to wandb for each client
+            for _, metric in metrics:
+                if "counter_z" in metric:
+                    wandb_run.log(
+                        {f"counter_z_{metric['client_id']}": metric["counter_z"]}
+                    )
+                if "counter_not_z" in metric:
+                    wandb_run.log(
+                        {
+                            f"counter_not_z_{metric['client_id']}": metric[
+                                "counter_not_z"
+                            ]
+                        }
+                    )
+                if "counter_y_z" in metric:
+                    wandb_run.log(
+                        {f"counter_y_z_{metric['client_id']}": metric["counter_y_z"]}
+                    )
+                if "counter_y_not_z" in metric:
+                    wandb_run.log(
+                        {
+                            f"counter_y_not_z_{metric['client_id']}": metric[
+                                "counter_y_not_z"
+                            ]
+                        }
+                    )
+
+                if "counter_not_y_z" in metric:
+                    wandb_run.log(
+                        {
+                            f"counter_not_y_z_{metric['client_id']}": metric[
+                                "counter_not_y_z"
+                            ]
+                        }
+                    )
+                if "counter_not_y_not_z" in metric:
+                    wandb_run.log(
+                        {
+                            f"counter_not_y_not_z_{metric['client_id']}": metric[
+                                "counter_not_y_not_z"
+                            ]
+                        }
+                    )
+                if "counter_y" in metric:
+                    wandb_run.log(
+                        {f"counter_y_{metric['client_id']}": metric["counter_y"]}
+                    )
+                if "counter_not_y" in metric:
+                    wandb_run.log(
+                        {
+                            f"counter_not_y_{metric['client_id']}": metric[
+                                "counter_not_y"
+                            ]
+                        }
+                    )
+                if "total_samples" in metric:
+                    wandb_run.log(
+                        {
+                            f"total_samples_{metric['client_id']}": metric[
+                                "total_samples"
+                            ]
+                        }
+                    )
+
+                disparity_client = abs(
+                    metric["counter_y_z"] / metric["counter_z"]
+                    - metric["counter_y_not_z"] / metric["counter_not_z"]
+                )
+                wandb_run.log({f"disparity_{metric['client_id']}": disparity_client})
+
 
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
             p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
@@ -174,6 +245,46 @@ class Aggregation:
             agg_metrics[f"{mode.name.title()} Disparity with statistics"] = (
                 disparity_with_statistics
             )
+
+        # Compute Dataset Disparity (Ground Truth)
+        has_dataset_counters = any("dataset_counter_z" in m for _, m in metrics)
+        if has_dataset_counters:
+            d_counter_z = sum(m.get("dataset_counter_z", 0) for _, m in metrics)
+            d_counter_not_z = sum(m.get("dataset_counter_not_z", 0) for _, m in metrics)
+            d_counter_y_z = sum(m.get("dataset_counter_y_z", 0) for _, m in metrics)
+            d_counter_y_not_z = sum(m.get("dataset_counter_y_not_z", 0) for _, m in metrics)
+
+            # Compute P(Y=1|Z=1) and P(Y=1|Z=0) for Dataset
+            d_p_y_given_z = d_counter_y_z / d_counter_z if d_counter_z > 0 else 0
+            d_p_y_given_not_z = (
+                d_counter_y_not_z / d_counter_not_z if d_counter_not_z > 0 else 0
+            )
+            dataset_disparity = abs(d_p_y_given_z - d_p_y_given_not_z)
+
+            
+            agg_metrics[f"{mode.name.title()} Dataset Disparity"] = dataset_disparity
+            
+            # Log dataset counters to wandb
+            if wandb_run:
+                wandb_run.log({
+                    f"{mode.name.title()}_Dataset_Disparity": dataset_disparity,
+                    f"{mode.name.title()}_Dataset_Counter_Z": d_counter_z,
+                    f"{mode.name.title()}_Dataset_Counter_Y_Z": d_counter_y_z
+                })
+                
+                # Log dataset disparity per client
+                for _, metric in metrics:
+                    if "dataset_counter_z" in metric:
+                         d_c_z = metric.get("dataset_counter_z", 0)
+                         d_c_not_z = metric.get("dataset_counter_not_z", 0)
+                         d_c_y_z = metric.get("dataset_counter_y_z", 0)
+                         d_c_y_not_z = metric.get("dataset_counter_y_not_z", 0)
+                         
+                         p_y_z = d_c_y_z / d_c_z if d_c_z > 0 else 0
+                         p_y_not_z = d_c_y_not_z / d_c_not_z if d_c_not_z > 0 else 0
+                         
+                         d_disp_client = abs(p_y_z - p_y_not_z)
+                         wandb_run.log({f"dataset_disparity_{metric.get('client_id', 'unknown')}": d_disp_client})
 
         # Log metrics
         if accuracy_values:

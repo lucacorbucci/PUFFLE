@@ -1,9 +1,12 @@
 import os
+from logging import INFO
 from typing import Any
 
 import numpy as np
 import pandas as pd
+import torch
 from flwr.common import Context
+from flwr.common.logger import log
 from torch.utils.data import DataLoader
 
 from FlowerFLTemplate.Client.client import FlowerClient
@@ -173,6 +176,7 @@ def prepare_data_for_cross_device(
             z=z_train.astype(np.float32),
             y=y_train.astype(np.float32),
         )
+
         trainloader = DataLoader(
             train_dataset, batch_size=preferences.batch_size, shuffle=True
         )

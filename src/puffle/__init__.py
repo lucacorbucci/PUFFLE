@@ -1,2 +1,2 @@
 def main() -> None:
-    pass
+    """Main entry point."""

@@ -1,4 +1,5 @@
 import argparse
+import logging
 import os
 import shutil
 import signal
@@ -6,6 +7,7 @@ import sys
 import time
 from typing import Any
 
+import ray
 import wandb
 from datasets import load_dataset
 from flwr.client import ClientApp
@@ -29,10 +31,8 @@ from FlowerFLTemplate.Strategy.fed_avg import FedAvg
 from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_params, seed_everything
 
-import logging
-import ray
-logging.getLogger("ray").setLevel(logging.WARNING)
-ray.init(logging_level=logging.WARNING, log_to_driver=False)
+# logging.getLogger("ray").setLevel(logging.WARNING)
+# ray.init(logging_level=logging.WARNING, log_to_driver=False)
 
 
 def signal_handler(sig: int, frame: Any) -> None:
@@ -82,6 +82,7 @@ def client_fn(context: Context) -> Any:
         return prepare_data_for_cross_device(
             context, partition, preferences, partition_id
         )
+
 
     return prepare_data_for_cross_silo(context, partition, preferences, partition_id)
 
@@ -260,6 +261,22 @@ def prepare_data(preferences: Preferences) -> Any:
             bbox_inches="tight",
         )
 
+        plot, _, _ = plot_label_distributions(
+            partitioner=partitioner,
+            label_name="occupation",
+            plot_type="bar",
+            size_unit="absolute",
+            partition_id_axis="x",
+            legend=True,
+            verbose_labels=True,
+            max_num_partitions=preferences.num_clients,
+            title="Per Partition Labels Distribution",
+        )
+        plot.savefig(
+            f"label_distribution_occupation_{preferences.partitioner_type}.png",
+            bbox_inches="tight",
+        )
+
     return partitioner
 
 
@@ -338,8 +355,15 @@ parser.add_argument("--max_grad_norm", type=float, default=1000000.0)
 parser.add_argument("--epsilon_lambda", type=float, default=None)
 parser.add_argument("--epsilon_statistics", type=float, default=None)
 
-parser.add_argument("--num_client_cpus", type=float, default=1)  # Percentage of CPUs used by each client
-parser.add_argument("--num_client_gpus", type=float, default=1)  # Percentage of GPUs used by each client
+parser.add_argument(
+    "--num_client_cpus", type=float, default=1.0
+)  # Percentage of CPUs used by each client
+parser.add_argument(
+    "--num_client_gpus", type=float, default=0.0
+)  # Percentage of GPUs used by each client
+parser.add_argument("--ray_num_cpus", type=int, default=20)
+parser.add_argument("--ray_num_gpus", type=int, default=1)
+
 
 # Initialize global variables for client_fn/server_fn access
 preferences: Preferences | None = None
@@ -349,6 +373,7 @@ wandb_run: Any = None
 
 
 def main():
+    """Execute the Federated Learning simulation."""
     signal.signal(signal.SIGINT, signal_handler)
     # remove files in tmp/ray
     args = parser.parse_args()
@@ -367,6 +392,9 @@ def main():
         "num_cpus": args.num_client_cpus,
         "num_gpus": args.num_client_gpus,
     }
+
+    ray_num_cpus = args.ray_num_cpus
+    ray_num_gpus = args.ray_num_gpus
 
     # Global preferences object
     global preferences  # noqa: PLW0603
@@ -411,6 +439,11 @@ def main():
         epsilon_statistics=args.epsilon_statistics,
         epsilon_lambda=args.epsilon_lambda,
     )
+
+    avg_probs_path = os.path.join(preferences.fed_dir, "avg_proba.pkl")
+    if os.path.exists(avg_probs_path):
+        os.remove(avg_probs_path)
+        print(f"Removed {avg_probs_path}")
 
     if args.dataset_name == "dutch":
         preferences.model = "LinearClassificationNet"
@@ -478,9 +511,7 @@ def main():
 
     # Concstruct the ClientApp passing the client generation function
     client_app = ClientApp(client_fn=client_fn)
-    
-    ray_num_cpus = 20
-    ray_num_gpus = 1
+
     ram_memory = 16_000 * 1024 * 1024 * 2
 
     # (optional) specify Ray config
@@ -506,7 +537,10 @@ def main():
     }
 
     run_simulation(
-        server_app=server_app, client_app=client_app, num_supernodes=num_clients, backend_config=configuration,
+        server_app=server_app,
+        client_app=client_app,
+        num_supernodes=num_clients,
+        backend_config=configuration,
     )
 
     if wandb_run:

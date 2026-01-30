@@ -27,6 +27,7 @@ class ErrorRateRegularizationLoss(BaseFairnessLoss):
         _softmax_,
         group: int,
     ):
+        """Compute error rate counters."""
         if group is None:
             msg = "The privileged and unprivileged groups must be specified"
             raise ValueError(msg)

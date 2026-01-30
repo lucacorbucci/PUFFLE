@@ -26,6 +26,7 @@ def get_params(model: torch.nn.Module) -> NDArrays:
 def get_optimizer(
     model: torch.nn.Module, preferences: Preferences
 ) -> torch.optim.Optimizer:
+    """Get optimizer based on preferences."""
     match preferences.optimizer.lower():
         case "sgd":
             return torch.optim.SGD(
@@ -43,6 +44,7 @@ def get_optimizer(
 
 
 def seed_everything(seed: int) -> None:
+    """Seed all random number generators."""
     torch.manual_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
