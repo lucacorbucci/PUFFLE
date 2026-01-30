@@ -6,7 +6,8 @@ def get_noise(
     epsilon: float | None = None,
     sensitivity: float | None = None,
     sigma: float | None = None,
-):
+) -> float:
+    """Get noise from mechanism."""
     rng = np.random.default_rng()
     if mechanism_type == "laplace":
         if sensitivity is None or epsilon is None:
