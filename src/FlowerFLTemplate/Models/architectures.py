@@ -20,7 +20,7 @@ class LinearClassificationNet(nn.Module):
 
         """
         super().__init__()
-        self.layer1 = nn.Linear(input_size, output_size, bias=True)
+        self.layer1 = nn.Linear(input_size, output_size, bias=False)
 
     def forward(self, x: Tensor) -> Tensor:
         """

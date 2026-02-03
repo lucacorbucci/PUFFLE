@@ -25,3 +25,5 @@ changelog_cleanup.md
 *.txt
 ! examples/
 .coverage
+agents.md
+.agent/

@@ -227,7 +227,6 @@ class Aggregation:
                 )
                 wandb_run.log({f"disparity_{metric['client_id']}": disparity_client})
 
-
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
             p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
             p_y_given_not_z = (
@@ -252,7 +251,9 @@ class Aggregation:
             d_counter_z = sum(m.get("dataset_counter_z", 0) for _, m in metrics)
             d_counter_not_z = sum(m.get("dataset_counter_not_z", 0) for _, m in metrics)
             d_counter_y_z = sum(m.get("dataset_counter_y_z", 0) for _, m in metrics)
-            d_counter_y_not_z = sum(m.get("dataset_counter_y_not_z", 0) for _, m in metrics)
+            d_counter_y_not_z = sum(
+                m.get("dataset_counter_y_not_z", 0) for _, m in metrics
+            )
 
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0) for Dataset
             d_p_y_given_z = d_counter_y_z / d_counter_z if d_counter_z > 0 else 0
@@ -261,30 +262,35 @@ class Aggregation:
             )
             dataset_disparity = abs(d_p_y_given_z - d_p_y_given_not_z)
 
-            
             agg_metrics[f"{mode.name.title()} Dataset Disparity"] = dataset_disparity
-            
+
             # Log dataset counters to wandb
             if wandb_run:
-                wandb_run.log({
-                    f"{mode.name.title()}_Dataset_Disparity": dataset_disparity,
-                    f"{mode.name.title()}_Dataset_Counter_Z": d_counter_z,
-                    f"{mode.name.title()}_Dataset_Counter_Y_Z": d_counter_y_z
-                })
-                
+                wandb_run.log(
+                    {
+                        f"{mode.name.title()}_Dataset_Disparity": dataset_disparity,
+                        f"{mode.name.title()}_Dataset_Counter_Z": d_counter_z,
+                        f"{mode.name.title()}_Dataset_Counter_Y_Z": d_counter_y_z,
+                    }
+                )
+
                 # Log dataset disparity per client
                 for _, metric in metrics:
                     if "dataset_counter_z" in metric:
-                         d_c_z = metric.get("dataset_counter_z", 0)
-                         d_c_not_z = metric.get("dataset_counter_not_z", 0)
-                         d_c_y_z = metric.get("dataset_counter_y_z", 0)
-                         d_c_y_not_z = metric.get("dataset_counter_y_not_z", 0)
-                         
-                         p_y_z = d_c_y_z / d_c_z if d_c_z > 0 else 0
-                         p_y_not_z = d_c_y_not_z / d_c_not_z if d_c_not_z > 0 else 0
-                         
-                         d_disp_client = abs(p_y_z - p_y_not_z)
-                         wandb_run.log({f"dataset_disparity_{metric.get('client_id', 'unknown')}": d_disp_client})
+                        d_c_z = metric.get("dataset_counter_z", 0)
+                        d_c_not_z = metric.get("dataset_counter_not_z", 0)
+                        d_c_y_z = metric.get("dataset_counter_y_z", 0)
+                        d_c_y_not_z = metric.get("dataset_counter_y_not_z", 0)
+
+                        p_y_z = d_c_y_z / d_c_z if d_c_z > 0 else 0
+                        p_y_not_z = d_c_y_not_z / d_c_not_z if d_c_not_z > 0 else 0
+
+                        d_disp_client = abs(p_y_z - p_y_not_z)
+                        wandb_run.log(
+                            {
+                                f"dataset_disparity_{metric.get('client_id', 'unknown')}": d_disp_client
+                            }
+                        )
 
         # Log metrics
         if accuracy_values:

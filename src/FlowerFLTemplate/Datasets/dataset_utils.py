@@ -1,12 +1,9 @@
 import os
-from logging import INFO
 from typing import Any
 
 import numpy as np
 import pandas as pd
-import torch
 from flwr.common import Context
-from flwr.common.logger import log
 from torch.utils.data import DataLoader
 
 from FlowerFLTemplate.Client.client import FlowerClient
@@ -23,7 +20,7 @@ from FlowerFLTemplate.Datasets.celeba import (
 from FlowerFLTemplate.Datasets.dutch import (
     DutchDataset,
     get_dutch_scaler,
-    prepare_dutch,
+    prepare_dutch_FL,
     prepare_dutch_for_cross_silo,
 )
 from FlowerFLTemplate.Datasets.income import (
@@ -129,7 +126,7 @@ def get_model_info_from_dataset(dataset_name: str) -> dict[str, int]:
     Returns model architecture information based on dataset name.
     """
     if dataset_name == "dutch":
-        return {"in_channels": 12, "num_classes": 2}
+        return {"in_channels": 11, "num_classes": 2}
     if dataset_name == "abalone":
         return {"in_channels": 8, "num_classes": 1}
     if dataset_name == "income":  # acs_income
@@ -167,7 +164,7 @@ def prepare_data_for_cross_device(
     """
     if preferences.dataset_name == "dutch":
         train = partition.to_pandas()
-        x_train, z_train, y_train, _ = prepare_dutch(
+        x_train, z_train, y_train, _ = prepare_dutch_FL(
             dutch_df=train,
             scaler=preferences.scaler,
         )

@@ -5,11 +5,13 @@ import shutil
 import signal
 import sys
 import time
+from collections import Counter
 from typing import Any
 
-import ray
+import matplotlib.pyplot as plt
+import numpy as np
 import wandb
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
 from flwr.client import ClientApp
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
@@ -19,11 +21,16 @@ from flwr_datasets.visualization import plot_label_distributions
 
 from FlowerFLTemplate.Aggregations.aggregations import Aggregation
 from FlowerFLTemplate.ClientManager.client_manager import SimpleClientManager
+from FlowerFLTemplate.ClientManager.fairness_client_manager import FairnessClientManager
 from FlowerFLTemplate.Datasets.dataset_utils import (
     get_data_info,
     get_model_info_from_dataset,
     prepare_data_for_cross_device,
     prepare_data_for_cross_silo,
+)
+from FlowerFLTemplate.Datasets.dutch import prepare_dutch_for_fairness
+from FlowerFLTemplate.Datasets.Partitioner.fairness_partitioner import (
+    FairnessPartitioner,
 )
 from FlowerFLTemplate.Models.utils import get_model
 from FlowerFLTemplate.Server.server import Server
@@ -82,7 +89,6 @@ def client_fn(context: Context) -> Any:
         return prepare_data_for_cross_device(
             context, partition, preferences, partition_id
         )
-
 
     return prepare_data_for_cross_silo(context, partition, preferences, partition_id)
 
@@ -158,6 +164,42 @@ def server_fn(context: Context) -> ServerAppComponents:
     return ServerAppComponents(server=server, config=config)  # type: ignore
 
 
+def plot_fairness_distributions(
+    title: str, counter_groups: list, all_combinations: list, filename: str
+):
+    """Plot stacked bar chart showing distribution of (target, sensitive) groups per client."""
+    plt.figure(figsize=(20, 8))
+    previous_sum = []
+
+    # Iterate through each group combination (e.g. (0,0), (0,1), etc.)
+    for combination in all_combinations:
+        # Extract count for this combination for each client
+        counter = [counter.get(combination, 0) for counter in counter_groups]
+
+        if previous_sum:
+            plt.bar(
+                range(len(counter)),
+                counter,
+                bottom=previous_sum,
+                label=str(combination),
+            )
+        else:
+            plt.bar(range(len(counter)), counter, label=str(combination))
+            previous_sum = [0] * len(counter)
+
+        # Update previous_sum for stacking
+        previous_sum = [sum(x) for x in zip(previous_sum, counter, strict=False)]
+
+    plt.xlabel("Client")
+    plt.ylabel("Amount of samples")
+    plt.title(title)
+    plt.legend()
+    plt.rcParams.update({"font.size": 15})
+    plt.tight_layout()
+    plt.savefig(filename, bbox_inches="tight")
+    plt.close()
+
+
 def get_partitioner(preferences: Preferences) -> Any:
     """
     Returns a partitioner based on the specified type in preferences.
@@ -189,6 +231,27 @@ def get_partitioner(preferences: Preferences) -> Any:
                 alpha=preferences.partitioner_alpha,
                 partition_by=preferences.partitioner_by,
             )
+        case "fairness":
+            if (
+                preferences.sensitive_attribute is None
+                or preferences.target_attribute is None
+            ):
+                msg = "sensitive_attribute and target_attribute are required for fairness partitioning"
+                raise ValueError(msg)
+            return FairnessPartitioner(
+                num_partitions=preferences.num_clients or 10,
+                sensitive_attribute=preferences.sensitive_attribute,
+                target_attribute=preferences.target_attribute,
+                ratio_unfair_clients=preferences.ratio_unfair_clients
+                if preferences.ratio_unfair_clients is not None
+                else 0.5,
+                group_to_reduce=preferences.group_to_reduce,
+                ratio_unfairness=preferences.ratio_unfairness
+                if preferences.ratio_unfairness
+                else (0.8, 0.9),
+                group_to_increment=preferences.group_to_increment,
+                seed=preferences.seed,
+            )
         case _:
             error = f"Unsupported partitioner type: {partitioner_type}"
             raise ValueError(error)
@@ -210,10 +273,13 @@ def prepare_data(preferences: Preferences) -> Any:
         ValueError: If an unsupported dataset is specified or no training data is found.
 
     """
+    data = None
     if preferences.dataset_name == "dutch":
         data_info = get_data_info(preferences)
         preferences.scaler = data_info.get("scaler", None)
         dataset_dict = load_dataset("csv", data_files=preferences.dataset_path)
+        if preferences.partitioner_type == "fairness":
+            data = prepare_dutch_for_fairness(preferences, dataset_dict, 0)
     elif preferences.dataset_name == "mnist":
         data_info = get_data_info(preferences)
         dataset_dict = load_dataset(
@@ -236,7 +302,9 @@ def prepare_data(preferences: Preferences) -> Any:
         error = f"Unsupported dataset: {preferences.dataset_name}"
         raise ValueError(error)
 
-    data = dataset_dict.get("train", None)  # type: ignore
+    if not data:
+        data = dataset_dict.get("train", None)  # type: ignore
+
     if data:
         partitioner = get_partitioner(preferences)
         partitioner.dataset = data
@@ -244,10 +312,12 @@ def prepare_data(preferences: Preferences) -> Any:
         error = "No training data found in the dataset"
         raise ValueError(error)
 
-    if preferences.partitioner_by:
+    if preferences.partitioner_by or preferences.partitioner_type == "fairness":
         plot, _, _ = plot_label_distributions(
             partitioner=partitioner,
-            label_name=preferences.partitioner_by,
+            label_name=preferences.partitioner_by
+            if preferences.partitioner_by
+            else preferences.target_attribute,
             plot_type="bar",
             size_unit="absolute",
             partition_id_axis="x",
@@ -263,7 +333,7 @@ def prepare_data(preferences: Preferences) -> Any:
 
         plot, _, _ = plot_label_distributions(
             partitioner=partitioner,
-            label_name="occupation",
+            label_name="sex",
             plot_type="bar",
             size_unit="absolute",
             partition_id_axis="x",
@@ -273,10 +343,115 @@ def prepare_data(preferences: Preferences) -> Any:
             title="Per Partition Labels Distribution",
         )
         plot.savefig(
-            f"label_distribution_occupation_{preferences.partitioner_type}.png",
+            f"label_distribution_sex_{preferences.partitioner_type}.png",
             bbox_inches="tight",
         )
 
+        # Plot fairness-specific distributions if using fairness partitioner
+        if preferences.partitioner_type == "fairness":
+            # Collect counts per client
+            counter_groups = []
+
+            # Get the actual dataset to determine unique groups
+            sample_partition = partitioner.load_partition(0).to_pandas()
+
+            # Identify all possible groups from the dataset
+            unique_groups = sorted(
+                set(
+                    zip(
+                        sample_partition[preferences.target_attribute],
+                        sample_partition[preferences.sensitive_attribute],
+                        strict=False,
+                    )
+                )
+            )
+            print(f"All unique groups found: {unique_groups}")
+
+            SENSITIVE_BIN = "sex"
+            TARGET_BIN = "occupation_binary"
+
+            for i in range(preferences.num_clients):
+                p_ds = partitioner.load_partition(i)
+                df_p = p_ds.to_pandas()
+
+                # Create a counter for this client: Key=(target, sensitive)
+                client_groups = list(
+                    zip(
+                        df_p[preferences.target_attribute],
+                        df_p[preferences.sensitive_attribute],
+                        strict=False,
+                    )
+                )
+                counter_groups.append(Counter(client_groups))
+
+            # Plot
+            title = "Samples for each group (target, sensitive) per client"
+            plot_fairness_distributions(
+                title,
+                counter_groups,
+                unique_groups,
+                f"fairness_group_distribution_{preferences.partitioner_type}.png",
+            )
+
+            import matplotlib.pyplot as plt
+            import pandas as pd
+            import seaborn as sns
+
+            def compute_dataset_disparity(df, sensitive_col, target_col):
+                # Disparity = P(y=1 | z=0) - P(y=1 | z=1)
+                # Signed value indicates direction of unfairness.
+                # Using Demographic Parity difference.
+
+                # Calculate P(y=1 | z=0)
+                df_z0 = df[df[sensitive_col] == 0]
+                p_y1_z0 = df_z0[target_col].mean() if len(df_z0) > 0 else 0
+
+                # Calculate P(y=1 | z=1)
+                df_z1 = df[df[sensitive_col] == 1]
+                p_y1_z1 = df_z1[target_col].mean() if len(df_z1) > 0 else 0
+
+                return p_y1_z0 - p_y1_z1
+
+            client_disparities = []
+            client_ids = []
+            client_types = []
+            NUM_PARTITIONS = 150
+
+            for i in range(NUM_PARTITIONS):
+                p_ds = partitioner.load_partition(i)
+                df_p = p_ds.to_pandas()
+
+                disparity = compute_dataset_disparity(
+                    df_p, "sex_binary", "occupation_binary"
+                )
+                client_disparities.append(disparity)
+                client_ids.append(i)
+                client_types.append(partitioner.client_types.get(i, "unknown"))
+
+            # Create DataFrame for plotting
+            disparity_df = pd.DataFrame(
+                {
+                    "client_id": client_ids,
+                    "disparity": client_disparities,
+                    "type": client_types,
+                }
+            )
+
+            plt.figure(figsize=(12, 6))
+            sns.barplot(
+                data=disparity_df, x="client_id", y="disparity", hue="type", dodge=False
+            )
+            plt.title("Signed Dataset Disparity (Demographic Parity) per Client")
+            plt.ylabel("Disparity P(y=1|z=0) - P(y=1|z=1)")
+            plt.axhline(0, color="black", linewidth=0.8)
+            # Simplify x-axis labels if too many
+            if NUM_PARTITIONS > 50:
+                plt.xticks(
+                    ticks=range(0, NUM_PARTITIONS, 10),
+                    labels=range(0, NUM_PARTITIONS, 10),
+                )
+            plt.savefig("disparity.png", bbox_inches="tight")
+            plt.close()
     return partitioner
 
 
@@ -365,6 +540,16 @@ parser.add_argument("--ray_num_cpus", type=int, default=20)
 parser.add_argument("--ray_num_gpus", type=int, default=1)
 
 
+parser.add_argument("--sensitive_attribute", type=str, default=None)
+parser.add_argument("--target_attribute", type=str, default=None)
+
+# Fairness Partitioner parameters
+parser.add_argument("--ratio_unfair_clients", type=float, default=None)
+parser.add_argument("--group_to_reduce", type=int, nargs="+", default=None)
+parser.add_argument("--group_to_increment", type=int, nargs="+", default=None)
+parser.add_argument("--ratio_unfairness", type=float, nargs="+", default=None)
+
+
 # Initialize global variables for client_fn/server_fn access
 preferences: Preferences | None = None
 partitioner: Any = None
@@ -419,6 +604,17 @@ def main():
         partitioner_type=args.partitioner_type,
         partitioner_alpha=args.partitioner_alpha,
         partitioner_by=args.partitioner_by,
+        # Fairness args
+        sensitive_attribute=args.sensitive_attribute,
+        target_attribute=args.target_attribute,
+        ratio_unfair_clients=args.ratio_unfair_clients,
+        group_to_reduce=tuple(args.group_to_reduce) if args.group_to_reduce else None,
+        group_to_increment=tuple(args.group_to_increment)
+        if args.group_to_increment
+        else None,
+        ratio_unfairness=tuple(args.ratio_unfairness)
+        if args.ratio_unfairness
+        else None,
         batch_size=args.batch_size,
         lr=args.lr,
         optimizer=args.optimizer,
@@ -465,18 +661,6 @@ def main():
         if preferences.in_channels is None:
             preferences.in_channels = model_info.get("in_channels")
 
-    # Needs to be global for client_fn/server_fn to access?
-    # client_fn and server_fn use `preferences` from outer scope.
-    # To avoid global variable mess, we should pass preferences to them or use partials,
-    # but Flwr API expects distinct signatures.
-    # For now, using global scope or `global preferences` inside main is not enough if they are defined outside.
-    # The functions server_fn and client_fn are defined at module level and use `preferences`.
-    # Make sure `preferences` is available to them.
-    # We can inject it or use a closure?
-    # Simple fix: `global preferences` in main() writes to module-level variable.
-    # But `preferences` is not defined at module level yet.
-    # I should define `preferences = None` at top level.
-
     # remove the files in the path args.fed_dir
     if os.path.exists(args.fed_dir):
         for item in os.listdir(args.fed_dir):
@@ -500,11 +684,17 @@ def main():
     )
 
     # Create your ServerApp
-    global client_manager  # noqa: PLW0603
-    client_manager = SimpleClientManager(preferences=preferences)
-
+    # Create your ServerApp
     global partitioner  # noqa: PLW0603
     partitioner = prepare_data(preferences=preferences)
+
+    global client_manager  # noqa: PLW0603
+    if preferences.partitioner_type == "fairness" and partitioner:
+        client_manager = FairnessClientManager(
+            preferences=preferences, client_types=partitioner.client_types
+        )
+    else:
+        client_manager = SimpleClientManager(preferences=preferences)
 
     # Create your ServerApp
     server_app = ServerApp(server_fn=server_fn)

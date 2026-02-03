@@ -4,6 +4,7 @@ import threading
 import time
 
 import dill
+from flwr.common import GetPropertiesIns
 from flwr.server.client_manager import ClientManager
 from flwr.server.client_proxy import ClientProxy
 from flwr.server.criterion import Criterion
@@ -173,7 +174,8 @@ class SimpleClientManager(ClientManager):
         if client.cid in self.clients:
             return False
 
-        self._assign_unique_cid(client)
+        # self._assign_unique_cid(client)
+        # print("client.cid: ", client.cid)
 
         self.clients[client.cid] = client
         self.clients_list.append(client.cid)
@@ -187,9 +189,12 @@ class SimpleClientManager(ClientManager):
         return True
 
     def _assign_unique_cid(self, client: ClientProxy) -> None:
+        print("called _assign_unique_cid")
         new_random_cid = str(random.randint(0, self.preferences.num_clients))
         while new_random_cid in self.clients:
             new_random_cid = str(random.randint(0, self.preferences.num_clients))
+
+        print("new_random_cid: ", new_random_cid)
         client.cid = new_random_cid
 
     def _setup_simulation_sets(self) -> None:
@@ -258,6 +263,14 @@ class SimpleClientManager(ClientManager):
 
         with open(f"{self.preferences.fed_dir}/train_nodes_list.pkl", "wb") as f:
             dill.dump(self.training_clients_list, f)
+
+        print(f"Training clients: {self.training_clients_list}")
+        print(f"Validation clients: {self.validation_clients_list}")
+        print(f"Test clients: {self.test_clients_list}")
+
+        print(f"Training clients per round: {sampled_nodes_train}")
+        print(f"Validation clients per round: {sampled_nodes_validation}")
+        print(f"Test clients per round: {sampled_nodes_test}")
 
         self._save_counter_sampling(sampled_nodes_train)
 

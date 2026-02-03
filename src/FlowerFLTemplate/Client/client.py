@@ -176,19 +176,20 @@ class FlowerClient(NumPyClient):
         """
         avg_probs = None
         # Load average probabilities for DP statistics
-        # if self.preferences.fed_dir:
-        #     avg_probs_path = os.path.join(self.preferences.fed_dir, "avg_proba.pkl")
-        #     if os.path.exists(avg_probs_path):
-        #         try:
-        #             with open(avg_probs_path, "rb") as f:
-        #                 avg_probs = dill.load(f)
-        #             self.model.set_average_probabilities(avg_probs)
-        #         except Exception as e:
-        #             log(INFO, f"Failed to load average probabilities: {e}")
-        #     else:
-        #         avg_probs = {
-        #             "first_round": True,
-        #         }
+        if self.preferences.fed_dir:
+            avg_probs_path = os.path.join(self.preferences.fed_dir, "avg_proba.pkl")
+            if os.path.exists(avg_probs_path):
+                try:
+                    with open(avg_probs_path, "rb") as f:
+                        avg_probs = dill.load(f)
+                    self.model.set_average_probabilities(avg_probs)
+                except Exception as e:
+                    log(INFO, f"Failed to load average probabilities: {e}")
+            else:
+                avg_probs = {
+                    "first_round": True,
+                }
+                self.model.set_average_probabilities(avg_probs)
 
         # copy parameters sent by the server into client's local model
         set_params(self.model.model, parameters)
@@ -236,19 +237,9 @@ class FlowerClient(NumPyClient):
             RuntimeError: If evaluation fails due to device or model issues.
 
         """
-        # Load average probabilities for DP statistics
-        if self.preferences.epsilon_statistics is not None and self.preferences.fed_dir:
-            avg_probs_path = os.path.join(self.preferences.fed_dir, "avg_proba.pkl")
-            if os.path.exists(avg_probs_path):
-                try:
-                    with open(avg_probs_path, "rb") as f:
-                        avg_probs = dill.load(f)
-                    self.model.set_average_probabilities(avg_probs)
-                except Exception as e:  # noqa: BLE001
-                    log(INFO, f"Failed to load average probabilities: {e}")
 
         set_params(self.model.model, parameters)
-        result = self.model.evaluate(data_loader=self.valloader)
+        result = self.model.evaluate(data_loader=self.valloader, _is_validation=True)
         # FairnessMetrics includes loss, accuracy, f1, disparity, and statistics
         # Flower expects dict[str, Scalar] where Scalar is bool|bytes|float|int|str
         # We include the counters from statistics for computing aggregated disparity
@@ -324,3 +315,7 @@ class FlowerClient(NumPyClient):
         )
 
         return private_optimizer.noise_multiplier
+
+    def get_properties(self, config):
+        log(INFO, f"DEBUG: Client {self.partition_id} get_properties called!")
+        return {"partition_id": self.partition_id}

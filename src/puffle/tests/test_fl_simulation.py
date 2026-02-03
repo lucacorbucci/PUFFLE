@@ -44,7 +44,9 @@ class TestFLSimulation:
         # --- Client Local Computation ---
 
         # Client A Preparation
-        num_z_a, unique_z_a, unique_y_a, z_counts_a, pair_counts_a = prepare_inputs(z_a, y_a)
+        num_z_a, unique_z_a, unique_y_a, z_counts_a, pair_counts_a = prepare_inputs(
+            z_a, y_a
+        )
 
         stats_a = compute_binary_statistics(
             num_z=num_z_a,
@@ -54,11 +56,13 @@ class TestFLSimulation:
             pair_counts=pair_counts_a,
             total_samples=len(z_a),
             z=z_a,
-            y=y_a
+            y=y_a,
         )
 
         # Client B Preparation
-        num_z_b, unique_z_b, unique_y_b, z_counts_b, pair_counts_b = prepare_inputs(z_b, y_b)
+        num_z_b, unique_z_b, unique_y_b, z_counts_b, pair_counts_b = prepare_inputs(
+            z_b, y_b
+        )
 
         stats_b = compute_binary_statistics(
             num_z=num_z_b,
@@ -68,7 +72,7 @@ class TestFLSimulation:
             pair_counts=pair_counts_b,
             total_samples=len(z_b),
             z=z_b,
-            y=y_b
+            y=y_b,
         )
 
         # --- Aggregation ---
@@ -91,7 +95,9 @@ class TestFLSimulation:
 
         # Probabilities
         prob_y_given_z = agg_stats["counter_y_z"] / total_z if total_z > 0 else 0
-        prob_y_given_not_z = agg_stats["counter_y_not_z"] / total_not_z if total_not_z > 0 else 0
+        prob_y_given_not_z = (
+            agg_stats["counter_y_not_z"] / total_not_z if total_not_z > 0 else 0
+        )
 
         disparity = abs(prob_y_given_z - prob_y_given_not_z)
 

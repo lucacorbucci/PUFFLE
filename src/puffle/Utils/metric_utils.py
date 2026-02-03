@@ -1,8 +1,4 @@
 import logging
-from logging import INFO
-
-import torch
-from flwr.common.logger import log
 
 logger = logging.getLogger(__name__)
 
@@ -49,13 +45,13 @@ def compute_binary_statistics(
     # 3. Y values must be within binary range [0, 1]
     # Check if Z values are valid (subset of [0, 1])
     z_is_binary = ((unique_z == 0) | (unique_z == 1)).all()
-    
+
     is_valid_input = (
-        num_z >= 1 and
-        z_is_binary and
-        not ((unique_y < 0).any() or (unique_y > 1).any())
+        num_z >= 1
+        and z_is_binary
+        and not ((unique_y < 0).any() or (unique_y > 1).any())
     )
-    
+
     if not is_valid_input:
         return empty_result
 
@@ -120,7 +116,6 @@ def compute_binary_statistics(
         "counter_not_y_not_z": counter_not_y_not_z,
         "total_samples": total_samples,
     }
-
 
     # Validation
     if not _validate_counters(result, total_samples, z, y):

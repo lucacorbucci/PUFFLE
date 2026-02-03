@@ -36,6 +36,13 @@ class Preferences:
     partitioner_type: str | None = None
     partitioner_alpha: float | None = None
     partitioner_by: str | None = None
+    # Fairness Partitioner specific
+    sensitive_attribute: str | None = None
+    target_attribute: str | None = None
+    ratio_unfair_clients: float | None = None
+    group_to_reduce: Any = None
+    group_to_increment: Any = None
+    ratio_unfairness: Any = None
     encoder: TargetEncoder | None = None
 
     task: str = "classification"

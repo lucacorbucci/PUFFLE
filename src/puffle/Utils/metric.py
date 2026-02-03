@@ -36,6 +36,7 @@ def compute_demographic_disparity(
     z: torch.Tensor,
     y: torch.Tensor,
     average_probabilities: dict | None = None,
+    is_validation: bool = False,
 ):
     """
     Compute the demographic disparity of a model.
@@ -70,27 +71,36 @@ def compute_demographic_disparity(
     num_z = len(unique_z)
     num_y = len(unique_y)
 
-    min_required_groups = 2
-    if num_z < min_required_groups and average_probabilities is None:
-        msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
-        raise ValueError(msg)
-
-    if average_probabilities is not None and average_probabilities.get("first_round"):
-        max_disparity = 0.0
-        statistics = {
-            "counter_z": 0,
-            "counter_not_z": 0,
-            "counter_y_z": 0,
-            "counter_y_not_z": 0,
-        }
-        return max_disparity, statistics
-
     # 1. Compute P(Y=y | Z=z)
     pair_indices = z_inverse * num_y + y_inverse
     pair_counts = torch.bincount(pair_indices, minlength=num_z * num_y).float()
     pair_counts = pair_counts.view(num_z, num_y)  # [z, y]
     z_counts = torch.bincount(z_inverse, minlength=num_z).float()  # [z]
 
+    # 2. Compute P(Y=y | Z!=z)
+    y_counts = torch.bincount(y_inverse, minlength=num_y).float()  # [y]
+    count_not_z_y = y_counts.view(1, -1) - pair_counts
+    total_samples = len(z)
+    count_not_z = total_samples - z_counts
+
+    if (average_probabilities is not None and average_probabilities.get("first_round")) or is_validation:
+        max_disparity = 0.0
+        # Compute statistics for FL aggregation with validation
+        # Validation only makes sense if we can uniquely identify binary groups 0 and 1
+        statistics = compute_binary_statistics(
+            num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y
+        )
+        return max_disparity, statistics
+
+    min_required_groups = 2
+    if num_z < min_required_groups and average_probabilities is None:
+        if average_probabilities is None:
+            msg = "Average Prob is none"
+        else:
+            msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
+        raise ValueError(msg)
+
+    # Compute the two conditional probabilities
     p_y_given_z = _compute_p_y_given_group_with_fallback(
         pair_counts,
         z_counts,
@@ -99,12 +109,6 @@ def compute_demographic_disparity(
         average_probabilities,
         is_complement=False,
     )
-
-    # 2. Compute P(Y=y | Z!=z)
-    y_counts = torch.bincount(y_inverse, minlength=num_y).float()  # [y]
-    count_not_z_y = y_counts.view(1, -1) - pair_counts
-    total_samples = len(z)
-    count_not_z = total_samples - z_counts
 
     p_y_given_not_z = _compute_p_y_given_group_with_fallback(
         count_not_z_y,

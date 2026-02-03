@@ -229,7 +229,7 @@ class PUFFLEModel:
             metrics["dataset_counter_not_z"] = ds_stats.get("counter_not_z", 0)
             metrics["dataset_counter_y_z"] = ds_stats.get("counter_y_z", 0)
             metrics["dataset_counter_y_not_z"] = ds_stats.get("counter_y_not_z", 0)
-            
+
             metrics["dataset_counter_y"] = ds_stats.get("counter_y", 0)
             metrics["dataset_counter_not_y"] = ds_stats.get("counter_not_y", 0)
             # metrics["dataset_total_samples"] = ds_stats.get("total_samples", 0) # Already captured
@@ -326,14 +326,20 @@ class PUFFLEModel:
 
             # Store and log training metrics
             self._update_metrics_dict(metrics, MetricMode.TRAIN, train_metrics)
-            
+
             # Allow statistics to capture both model and dataset stats
-            current_stats = train_metrics.statistics.copy() if hasattr(train_metrics, "statistics") else train_metrics.get("statistics", {}).copy()
+            current_stats = (
+                train_metrics.statistics.copy()
+                if hasattr(train_metrics, "statistics")
+                else train_metrics.get("statistics", {}).copy()
+            )
             if hasattr(train_metrics, "dataset_statistics"):
-                 current_stats["dataset_statistics"] = train_metrics.dataset_statistics
+                current_stats["dataset_statistics"] = train_metrics.dataset_statistics
             elif "dataset_statistics" in train_metrics:
-                 current_stats["dataset_statistics"] = train_metrics["dataset_statistics"]
-            
+                current_stats["dataset_statistics"] = train_metrics[
+                    "dataset_statistics"
+                ]
+
             statistics.append(current_stats)
             self._log_wandb_epoch(train_metrics, epoch, mode=MetricMode.TRAIN)
 
@@ -525,14 +531,6 @@ class PUFFLEModel:
             correct_batch = (predicted == y_batch).sum().item()
             total_batch = y_batch.size(0)
 
-            # Use differentiable metric or argmax metric?
-            # Small batches may only have one unique z value, handle gracefully
-            # Here we pass noise parameter to compute_demographic_disparity
-            # with differential privacy. This is handling everything for us.
-            # We do not need to do anything else, even if we are in FL
-            # If the noise is None, it will use the default noise = 0.
-            # There are no other differences after this.
-
             unfairness_batch, _ = compute_demographic_disparity(
                 z=z_batch
                 if isinstance(z_batch, torch.Tensor)
@@ -553,7 +551,10 @@ class PUFFLEModel:
         )
 
     def evaluate(
-        self, data_loader: DataLoader, *, _is_validation: bool = False
+        self,
+        data_loader: DataLoader,
+        *,
+        _is_validation: bool = False,
     ) -> FairnessMetrics:
         """
         Evaluate the model on a dataset.
@@ -608,6 +609,7 @@ class PUFFLEModel:
             y_true,
             y_pred,
             sensitive_attributes,
+            _is_validation=_is_validation,
         )
 
     def _compute_metrics(
@@ -617,6 +619,7 @@ class PUFFLEModel:
         y_true: list,
         y_pred: list,
         sensitive_attributes: list,
+        _is_validation: bool = False,
     ) -> FairnessMetrics:
         """
         Compute all metrics.
@@ -627,6 +630,7 @@ class PUFFLEModel:
             y_true (list): True labels.
             y_pred (list): Predicted labels.
             sensitive_attributes (list): Sensitive attributes.
+            _is_validation (bool): Whether evaluation is for validation. Defaults to False.
 
         Returns:
             dict[str, float]: Dictionary of metrics.
@@ -637,32 +641,19 @@ class PUFFLEModel:
         # Convert to tensors for disparity computation
         z_tensor = ensure_tensor(sensitive_attributes, self.device)
         y_tensor = ensure_tensor(y_pred, self.device)
-
-        try:
-            disparity, statistics = compute_demographic_disparity(z_tensor, y_tensor)
-            print(disparity, statistics)
-        except ValueError:
-            # Disparity cannot be computed with less than 2 unique z values
-            disparity = 0.0
-            statistics = {
-                "counter_z": 0,
-                "counter_not_z": 0,
-                "counter_y_z": 0,
-                "counter_y_not_z": 0,
-            }
+        disparity, statistics = compute_demographic_disparity(
+            z_tensor,
+            y_tensor,
+            is_validation=_is_validation,
+        )
 
         # Compute Disparity on Dataset (Ground Truth)
         y_true_tensor = ensure_tensor(y_true, self.device)
-        try:
-            dataset_disparity, dataset_statistics = compute_demographic_disparity(z_tensor, y_true_tensor)
-        except ValueError:
-            dataset_disparity = 0.0
-            dataset_statistics = {
-                "counter_z": 0,
-                "counter_not_z": 0,
-                "counter_y_z": 0,
-                "counter_y_not_z": 0,
-            }
+        dataset_disparity, dataset_statistics = compute_demographic_disparity(
+            z_tensor,
+            y_true_tensor,
+            is_validation=_is_validation,
+        )
 
         return FairnessMetrics(
             loss=loss,

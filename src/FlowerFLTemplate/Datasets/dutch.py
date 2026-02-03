@@ -2,6 +2,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from datasets import Dataset as hfDataset
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, Dataset
 
@@ -126,11 +127,13 @@ def prepare_dutch(
         error_message = "There are still missing values in the dataset"
         raise ValueError(error_message)
 
-    dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
-    dutch_df["occupation_binary"] = np.where(dutch_df["occupation"] >= 300, 1, 0)
+    if "sex" in dutch_df.columns:
+        dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
+        del dutch_df["sex"]
 
-    del dutch_df["sex"]
-    del dutch_df["occupation"]
+    if "occupation" in dutch_df.columns:
+        dutch_df["occupation_binary"] = np.where(dutch_df["occupation"] >= 300, 1, 0)
+        del dutch_df["occupation"]
 
     y_train = dutch_df["occupation_binary"].astype(int).values
     z_train = dutch_df["sex_binary"].astype(int).values
@@ -138,10 +141,73 @@ def prepare_dutch(
     dutch_df = pd.get_dummies(dutch_df, columns=None, drop_first=False)
 
     if scaler is None:
+        del dutch_df["sex_binary"]
         scaler = MinMaxScaler()
-    x_train = scaler.fit_transform(dutch_df)
+        x_train = scaler.fit_transform(dutch_df)
+    else:
+        x_train = scaler.transform(dutch_df)
 
     return x_train, np.array(z_train), np.array(y_train), scaler
+
+
+
+def prepare_dutch_FL(
+    dutch_df: pd.DataFrame,
+    scaler: MinMaxScaler | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, MinMaxScaler]:
+
+    # 1. Create Targets
+    if "sex" in dutch_df.columns:
+        dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
+        del dutch_df["sex"]
+
+    if "occupation" in dutch_df.columns:
+        # Assuming occupation code >= 300 is the target class
+        dutch_df["occupation_binary"] = np.where(dutch_df["occupation"] >= 300, 1, 0)
+        del dutch_df["occupation"]
+
+    y_train = dutch_df["occupation_binary"].astype(int).values
+    z_train = dutch_df["sex_binary"].astype(int).values
+    
+    # 2. FIX LEAKAGE: Drop the sensitive attribute from input
+    del dutch_df["occupation_binary"]
+    del dutch_df["sex_binary"]
+
+    # 4. SCALING 
+    if scaler is None:
+        scaler = MinMaxScaler()
+        x_train = scaler.fit_transform(dutch_df)
+    else:
+        x_train = scaler.transform(dutch_df)
+
+    return x_train, np.array(z_train), np.array(y_train), scaler
+
+
+def prepare_dutch_for_fairness(
+    preferences: Preferences, dataset_dict: Any, partition_id: int
+) -> Any:
+    # Preprocess for fairness partitioner if needed
+
+    data = dataset_dict.get("train", None)
+    df = data.to_pandas()
+
+    # Binarize sex: 1 -> 1 (male/privileged), 2 -> 0 (female)
+    df["sex_binary"] = np.where(df["sex"] == 1, 1, 0)
+
+    df["occupation_binary"] = np.where(df["occupation"] >= 300, 1, 0)
+
+    df = pd.get_dummies(df, drop_first=False)
+
+    # Convert back to Dataset
+    data = hfDataset.from_pandas(df)
+
+    # Update preferences to use binary column names
+    if preferences.sensitive_attribute == "sex":
+        preferences.sensitive_attribute = "sex_binary"
+    if preferences.target_attribute == "occupation":
+        preferences.target_attribute = "occupation_binary"
+
+    return data
 
 
 def prepare_dutch_for_cross_silo(
