@@ -1,6 +1,3 @@
-# ABOUTME: Flower client implementation for federated learning.
-# ABOUTME: Supports lazy data loading for efficient simulation registration.
-
 import os
 from collections.abc import Callable
 from logging import INFO
@@ -21,6 +18,9 @@ from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_optimizer, get_params, set_params
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
 from puffle.Regularization.disparity_loss import DisparityRegularizationLoss
+from puffle.Regularization.error_rate_regularization_loss import (
+    ErrorRateRegularizationLoss,
+)
 from puffle.Regularization.mix_loss import MixLoss
 from puffle.Utils.config import PUFFLEConfig
 from puffle.Utils.constants import (
@@ -119,9 +119,16 @@ class FlowerClient(NumPyClient):
             in_channels=self.preferences.in_channels,
         )
         optimizer = get_optimizer(trained_model, self.preferences)
+
+        # Select fairness loss based on configuration
+        if self.preferences.fairness_metric == "error_rate":
+            unfairness_loss = ErrorRateRegularizationLoss()
+        else:
+            unfairness_loss = DisparityRegularizationLoss()
+
         criterion = MixLoss(
             model_loss=nn.CrossEntropyLoss(),
-            unfairness_loss=DisparityRegularizationLoss(),
+            unfairness_loss=unfairness_loss,
         )
         self.privacy_engine = PrivacyEngine(accountant="rdp")
 

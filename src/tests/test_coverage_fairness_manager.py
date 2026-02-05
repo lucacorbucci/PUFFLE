@@ -1,3 +1,4 @@
+# ruff: noqa: S101, PLR2004, PT018, D102, ARG002
 from unittest.mock import MagicMock
 
 import pytest

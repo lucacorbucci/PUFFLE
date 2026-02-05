@@ -1,3 +1,4 @@
+# ruff: noqa: S101
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -70,8 +71,8 @@ class TestFairnessIntegration:
 
         assert len(fair_nodes) == expected_fair, (
             f"Expected {expected_fair} fair nodes, got {len(fair_nodes)}"
-        )  # noqa: S101
-        assert len(unfair_nodes) == expected_unfair, (  # noqa: S101
+        )
+        assert len(unfair_nodes) == expected_unfair, (
             f"Expected {expected_unfair} unfair nodes, got {len(unfair_nodes)}"
         )
 
@@ -104,7 +105,7 @@ class TestFairnessIntegration:
             # With 50/50 population and 4 samples, we expect 2 Fair and 2 Unfair
             assert n_fair == expected_sample_count, (
                 f"Round {fl_round}: Expected {expected_sample_count} Fair, got {n_fair}"
-            )  # noqa: S101
+            )
             assert n_unfair == expected_sample_count, (
                 f"Round {fl_round}: Expected {expected_sample_count} Unfair, got {n_unfair}"
-            )  # noqa: S101
+            )

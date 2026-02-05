@@ -1,3 +1,10 @@
+"""
+Base class for fairness regularization losses.
+
+This module provides BaseFairnessLoss, an abstract base class for implementing
+different fairness metrics (e.g., demographic disparity, error rate parity).
+"""
+
 from abc import abstractmethod
 
 import torch

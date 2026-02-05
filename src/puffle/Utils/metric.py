@@ -37,8 +37,8 @@ def compute_demographic_disparity(
     z: torch.Tensor,
     y: torch.Tensor,
     average_probabilities: dict | None = None,
-    is_validation: bool = False,
-    sigma_update_lambda: float | None = None
+    is_validation: bool = False,  # noqa: FBT001, FBT002
+    sigma_update_lambda: float | None = None,
 ):
     """
     Compute the demographic disparity of a model.
@@ -51,6 +51,8 @@ def compute_demographic_disparity(
         z (torch.Tensor): The sensitive features.
         y (torch.Tensor): The target values.
         average_probabilities (dict | None): Global statistics for fallback.
+        is_validation (bool): Whether this is validation mode.
+        sigma_update_lambda (float | None): Noise parameter for differential privacy.
 
     Returns:
         tuple[float, dict]: The demographic disparity of the model and a dictionary of statistics.
@@ -85,21 +87,27 @@ def compute_demographic_disparity(
     total_samples = len(z)
     count_not_z = total_samples - z_counts
 
-    if (average_probabilities is not None and average_probabilities.get("first_round")) or is_validation:
+    if (
+        average_probabilities is not None and average_probabilities.get("first_round")
+    ) or is_validation:
         max_disparity = 0.0
         # Compute statistics for FL aggregation with validation
         # Validation only makes sense if we can uniquely identify binary groups 0 and 1
         statistics = compute_binary_statistics(
-            num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y,
+            num_z,
+            unique_z,
+            unique_y,
+            z_counts,
+            pair_counts,
+            total_samples,
+            z,
+            y,
         )
         return max_disparity, statistics
 
     min_required_groups = 2
     if num_z < min_required_groups and average_probabilities is None:
-        if average_probabilities is None:
-            msg = "Average Prob is none"
-        else:
-            msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
+        msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
         raise ValueError(msg)
 
     if sigma_update_lambda is not None:
@@ -146,7 +154,14 @@ def compute_demographic_disparity(
     # Compute statistics for FL aggregation with validation
     # Validation only makes sense if we can uniquely identify binary groups 0 and 1
     statistics = compute_binary_statistics(
-        num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y,
+        num_z,
+        unique_z,
+        unique_y,
+        z_counts,
+        pair_counts,
+        total_samples,
+        z,
+        y,
     )
 
     return max_disparity, statistics

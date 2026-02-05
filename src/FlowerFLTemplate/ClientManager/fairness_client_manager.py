@@ -167,8 +167,8 @@ class FairnessClientManager(SimpleClientManager):
         remaining_fair = fair_clients[n_test_per_type:]
         remaining_unfair = unfair_clients[n_test_per_type:]
 
-        # shuffle both remaining_fair and remaining_unfair 
-        # using node_shuffle_seed as seed. This is necessary 
+        # shuffle both remaining_fair and remaining_unfair
+        # using node_shuffle_seed as seed. This is necessary
         # because we want to make sure that the validation set of clients
         # is changed every time we run a sweep to avoid overfitting.
         random.seed(self.preferences.node_shuffle_seed)
@@ -227,8 +227,8 @@ class FairnessClientManager(SimpleClientManager):
         with open(f"{self.preferences.fed_dir}/test_nodes_list.pkl", "wb") as f:
             dill.dump(self.test_clients_list, f)
 
-        print("Test clients list: ", self.test_clients_list)
-        print("Sampled test clients per round: ", sampled_nodes_test)
+        log(INFO, f"Test clients list: {self.test_clients_list}")
+        log(INFO, f"Sampled test clients per round: {sampled_nodes_test}")
 
         # Sample validation clients per round (if applicable)
         sampled_nodes_validation = None
@@ -248,16 +248,19 @@ class FairnessClientManager(SimpleClientManager):
             ) as f:
                 dill.dump(self.validation_clients_list, f)
 
-            print("Validation clients list: ", self.validation_clients_list)
-            print("Sampled validation clients per round: ", sampled_nodes_validation)
+            log(INFO, f"Validation clients list: {self.validation_clients_list}")
+            log(
+                INFO,
+                f"Sampled validation clients per round: {sampled_nodes_validation}",
+            )
 
         # Sample training clients per round (with equal fair/unfair per round)
         sampled_nodes_train = self.sample_clients_per_round(
             fraction=self.preferences.sampled_training_nodes_per_round,
             client_list=self.training_clients_list,
         )
-        print("Training clients list: ", self.training_clients_list)
-        print("Sampled training clients per round: ", sampled_nodes_train)
+        log(INFO, f"Training clients list: {self.training_clients_list}")
+        log(INFO, f"Sampled training clients per round: {sampled_nodes_train}")
         with open(f"{self.preferences.fed_dir}/train_nodes_per_round.pkl", "wb") as f:
             dill.dump(sampled_nodes_train, f)
 

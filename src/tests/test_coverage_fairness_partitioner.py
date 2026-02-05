@@ -84,7 +84,7 @@ class TestFairnessPartitionerCoverage:
         assert len(p1) > 0  # noqa: S101
 
     def test_load_invalid_partition(self, dataset):
-        """ "Test loading a non-existent partition raises ValueError."""
+        """Test loading a non-existent partition raises ValueError."""
         partitioner = FairnessPartitioner(
             num_partitions=2,
             sensitive_attribute="sensitive",

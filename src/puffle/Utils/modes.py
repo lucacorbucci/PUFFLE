@@ -1,6 +1,3 @@
-# ABOUTME: Enumerations for different metric tracking and training modes.
-# ABOUTME: Used to standardize keys in metrics dictionaries and logs.
-
 from enum import Enum
 
 

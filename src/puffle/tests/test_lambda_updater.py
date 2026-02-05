@@ -1,6 +1,3 @@
-# ABOUTME: Unit tests for LambdaUpdater.
-# ABOUTME: Covers different update strategies (Momentum, PID) and state reset.
-
 import pytest
 
 from puffle.Utils.lambda_updater import LambdaUpdater, LambdaUpdateStrategy

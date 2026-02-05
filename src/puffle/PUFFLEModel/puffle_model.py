@@ -1,6 +1,3 @@
-# ABOUTME: Core PUFFLE model class for fairness-aware training.
-# ABOUTME: Implements the training loop, metrics computation, and lambda updates.
-
 from contextlib import contextmanager
 from typing import Any, NamedTuple
 
@@ -232,7 +229,6 @@ class PUFFLEModel:
 
             metrics["dataset_counter_y"] = ds_stats.get("counter_y", 0)
             metrics["dataset_counter_not_y"] = ds_stats.get("counter_not_y", 0)
-            # metrics["dataset_total_samples"] = ds_stats.get("total_samples", 0) # Already captured
 
             metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (
                 get_noise(
@@ -619,7 +615,7 @@ class PUFFLEModel:
         y_true: list,
         y_pred: list,
         sensitive_attributes: list,
-        _is_validation: bool = False,
+        _is_validation: bool = False,  # noqa: FBT001, FBT002
     ) -> FairnessMetrics:
         """
         Compute all metrics.

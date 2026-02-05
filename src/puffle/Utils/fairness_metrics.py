@@ -1,6 +1,3 @@
-# ABOUTME: Structured representation of fairness evaluation results.
-# ABOUTME: Provides dictionary-like access for backward compatibility.
-
 from dataclasses import dataclass, field
 
 

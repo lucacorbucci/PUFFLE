@@ -1,6 +1,3 @@
-# ABOUTME: Defines type aliases for complex types used across the codebase.
-# ABOUTME: Improves readability and consistency of type annotations.
-
 from typing import TypeAlias
 
 import torch

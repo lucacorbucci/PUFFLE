@@ -6,7 +6,14 @@ BINARY_CLASS_COUNT = 2
 
 
 def compute_binary_statistics(
-    num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y,
+    num_z,
+    unique_z,
+    unique_y,
+    z_counts,
+    pair_counts,
+    total_samples,
+    z,
+    y,
 ):
     """
     Compute and validate all statistics for binary sensitive attribute case.

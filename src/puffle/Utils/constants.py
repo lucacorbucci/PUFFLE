@@ -1,6 +1,3 @@
-# ABOUTME: Centralized constants and default values for the PUFFLE project.
-# ABOUTME: Includes hyperparameters, numerical stability constants, and penalties.
-
 # Default values for training
 DEFAULT_BATCH_SIZE = 32
 DEFAULT_MOMENTUM = 0.9

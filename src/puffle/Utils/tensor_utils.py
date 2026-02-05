@@ -1,6 +1,3 @@
-# ABOUTME: Provides utility functions for tensor handling and conversion.
-# ABOUTME: Reduces code duplication for common tensor operations.
-
 import torch
 
 from puffle.Utils.constants import EPSILON

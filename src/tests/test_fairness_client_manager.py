@@ -30,16 +30,18 @@ class TestFairnessClientManager:
 
     def test_cid_preservation(self, preferences):
         """Test that CIDs are preserved and not randomized."""
-        client_types = dict.fromkeys(range(10), "fair")
+        client_types = {i: "fair" for i in range(10)}  # noqa: C420
         manager = FairnessClientManager(preferences, client_types)
 
         # Register client "0"
         c0 = MagicMock(spec=ClientProxy)
         c0.cid = "0"
+        # Mock get_properties to return partition_id
+        mock_props = {"partition_id": 0}
+        c0.get_properties.return_value.properties = mock_props
         manager.register(c0)
 
-        # In SimpleClientManager, this would be randomized.
-        # In FairnessClientManager, it should stay "0".
+        # The CID should be set to str(partition_id) = "0"
         assert c0.cid == "0"
         assert "0" in manager.clients
 
@@ -92,17 +94,17 @@ class TestFairnessClientManager:
         # Test direct sampling function
         client_list = [str(i) for i in range(10)]
 
-        # Fraction 0.5 -> 5 clients.
-        # Fair allocation: 5 * 0.8 = 4.
-        # Unfair allocation: 5 * 0.2 = 1.
+        # Fraction 0.5 -> 5 clients total.
+        # FairnessClientManager samples EQUAL numbers of fair/unfair
+        # So with floor(5/2) = 2 each = 4 total (not 5)
         sampled_schedule = manager.sample_clients_per_round(0.5, client_list)
 
         for samples in sampled_schedule.values():
-            assert len(samples) == 5
+            assert len(samples) == 4  # 2 fair + 2 unfair
             fair_count = sum(1 for cid in samples if client_types[int(cid)] == "fair")
             unfair_count = sum(
                 1 for cid in samples if client_types[int(cid)] == "unfair"
             )
 
-            assert fair_count == 4
-            assert unfair_count == 1
+            assert fair_count == 2
+            assert unfair_count == 2

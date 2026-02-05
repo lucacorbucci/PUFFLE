@@ -1,4 +1,3 @@
-
 import os
 from collections.abc import Callable
 from typing import Any
@@ -22,7 +21,7 @@ from FlowerFLTemplate.Datasets.celeba import (
 from FlowerFLTemplate.Datasets.dutch import (
     DutchDataset,
     get_dutch_scaler,
-    prepare_dutch_FL,
+    prepare_dutch_fl,
     prepare_dutch_for_cross_silo,
 )
 from FlowerFLTemplate.Datasets.income import (
@@ -148,7 +147,7 @@ def _create_dutch_dataloaders(
 ) -> tuple[DataLoader, DataLoader]:
     """Create DataLoaders for Dutch dataset from a partition."""
     train = partition.to_pandas()
-    x_train, z_train, y_train, _ = prepare_dutch_FL(
+    x_train, z_train, y_train, _ = prepare_dutch_fl(
         dutch_df=train,
         scaler=preferences.scaler,
     )

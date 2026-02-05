@@ -9,9 +9,8 @@ from collections import Counter
 from typing import Any
 
 import matplotlib.pyplot as plt
-import numpy as np
 import wandb
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from flwr.client import ClientApp
 from flwr.common import Context, ndarrays_to_parameters
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig
@@ -37,9 +36,6 @@ from FlowerFLTemplate.Server.server import Server
 from FlowerFLTemplate.Strategy.fed_avg import FedAvg
 from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_params, seed_everything
-
-# logging.getLogger("ray").setLevel(logging.WARNING)
-# ray.init(logging_level=logging.WARNING, log_to_driver=False)
 
 
 def signal_handler(sig: int, frame: Any) -> None:
@@ -98,7 +94,6 @@ def client_fn(context: Context) -> Any:
     # Cross-silo still loads data eagerly (more complex train/val splits)
     partition = partitioner.load_partition(partition_id) if partitioner else None
     return prepare_data_for_cross_silo(context, partition, preferences, partition_id)
-
 
 
 def server_fn(context: Context) -> ServerAppComponents:
@@ -321,11 +316,18 @@ def prepare_data(preferences: Preferences) -> Any:
         raise ValueError(error)
 
     if preferences.partitioner_by or preferences.partitioner_type == "fairness":
+        # Determine label name with fallback
+        label_name = (
+            preferences.partitioner_by
+            if preferences.partitioner_by
+            else preferences.target_attribute
+        )
+        if label_name is None:
+            label_name = "label"  # Fallback if both are None
+
         plot, _, _ = plot_label_distributions(
             partitioner=partitioner,
-            label_name=preferences.partitioner_by
-            if preferences.partitioner_by
-            else preferences.target_attribute,
+            label_name=label_name,
             plot_type="bar",
             size_unit="absolute",
             partition_id_axis="x",
@@ -375,9 +377,9 @@ def prepare_data(preferences: Preferences) -> Any:
             )
             print(f"All unique groups found: {unique_groups}")
 
-            SENSITIVE_BIN = "sex"
-            TARGET_BIN = "occupation_binary"
-
+            if preferences.num_clients is None:
+                msg = "num_clients must be set"
+                raise ValueError(msg)
             for i in range(preferences.num_clients):
                 p_ds = partitioner.load_partition(i)
                 df_p = p_ds.to_pandas()
@@ -401,9 +403,9 @@ def prepare_data(preferences: Preferences) -> Any:
                 f"fairness_group_distribution_{preferences.partitioner_type}.png",
             )
 
-            import matplotlib.pyplot as plt
-            import pandas as pd
-            import seaborn as sns
+            import matplotlib.pyplot as plt  # noqa: PLC0415
+            import pandas as pd  # noqa: PLC0415
+            import seaborn as sns  # noqa: PLC0415
 
             def compute_dataset_disparity(df, sensitive_col, target_col):
                 # Disparity = P(y=1 | z=0) - P(y=1 | z=1)
@@ -423,9 +425,9 @@ def prepare_data(preferences: Preferences) -> Any:
             client_disparities = []
             client_ids = []
             client_types = []
-            NUM_PARTITIONS = 150
+            num_partitions = 150
 
-            for i in range(NUM_PARTITIONS):
+            for i in range(num_partitions):
                 p_ds = partitioner.load_partition(i)
                 df_p = p_ds.to_pandas()
 
@@ -453,10 +455,10 @@ def prepare_data(preferences: Preferences) -> Any:
             plt.ylabel("Disparity P(y=1|z=0) - P(y=1|z=1)")
             plt.axhline(0, color="black", linewidth=0.8)
             # Simplify x-axis labels if too many
-            if NUM_PARTITIONS > 50:
+            if num_partitions > 50:
                 plt.xticks(
-                    ticks=range(0, NUM_PARTITIONS, 10),
-                    labels=range(0, NUM_PARTITIONS, 10),
+                    ticks=range(0, num_partitions, 10),
+                    labels=[str(x) for x in range(0, num_partitions, 10)],
                 )
             plt.savefig("disparity.png", bbox_inches="tight")
             plt.close()

@@ -1,6 +1,3 @@
-# ABOUTME: Aggregation functions for FL metrics from multiple clients.
-# ABOUTME: Handles train, validation, and test metrics with fairness support.
-
 import os
 from logging import INFO
 from typing import Any
@@ -156,7 +153,6 @@ class Aggregation:
             counter_not_z = sum(m.get("counter_not_z", 0) for _, m in metrics)
             counter_y_z = sum(m.get("counter_y_z", 0) for _, m in metrics)
             counter_y_not_z = sum(m.get("counter_y_not_z", 0) for _, m in metrics)
-            ids = [m.get("client_id", 0) for _, m in metrics]
             # log all the counters to wandb for each client
             for _, metric in metrics:
                 if "counter_z" in metric:

@@ -1,6 +1,3 @@
-# ABOUTME: Unit tests for FairnessMetrics.
-# ABOUTME: Covers dictionary-like access and error handling for backward compatibility.
-
 import pytest
 
 from puffle.Utils.fairness_metrics import FairnessMetrics

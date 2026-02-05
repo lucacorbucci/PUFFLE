@@ -1,3 +1,4 @@
+# ruff: noqa: S101, T201, PERF401, PLR2004, RUF043
 """Test binary validation in FairnessPartitioner."""
 
 import sys

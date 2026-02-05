@@ -1,3 +1,10 @@
+"""
+Data structures for fairness formula components.
+
+This module defines the FormulaComponents dataclass, which holds confusion matrix
+statistics for both privileged and unprivileged groups in fairness computations.
+"""
+
 from dataclasses import dataclass, field
 
 

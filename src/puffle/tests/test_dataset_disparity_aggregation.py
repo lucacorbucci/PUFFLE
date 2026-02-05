@@ -46,8 +46,6 @@ class TestDatasetDisparityAggregation:
         # Total Y=1|Z=0: 10 (from A) -> P(Y=1|Z=0) = 1.0
         # Expected Disparity = |1.0 - 0.0| = 1.0
 
-        print(f"Aggregated Results: {agg_results}")
-
         assert "Validation Dataset Disparity" in agg_results
         disparity = agg_results["Validation Dataset Disparity"]
         assert disparity == 1.0, f"Expected 1.0, got {disparity}"

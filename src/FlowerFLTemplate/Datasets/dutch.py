@@ -150,12 +150,21 @@ def prepare_dutch(
     return x_train, np.array(z_train), np.array(y_train), scaler
 
 
-
-def prepare_dutch_FL(
+def prepare_dutch_fl(
     dutch_df: pd.DataFrame,
     scaler: MinMaxScaler | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, MinMaxScaler]:
+    """
+    Prepare Dutch census dataset for federated learning.
 
+    Args:
+        dutch_df: Input DataFrame with Dutch census data.
+        scaler: Optional pre-fitted MinMaxScaler for features.
+
+    Returns:
+        Tuple of (features, targets, sensitive_attributes, scaler).
+
+    """
     # 1. Create Targets
     if "sex" in dutch_df.columns:
         dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
@@ -168,12 +177,12 @@ def prepare_dutch_FL(
 
     y_train = dutch_df["occupation_binary"].astype(int).values
     z_train = dutch_df["sex_binary"].astype(int).values
-    
+
     # 2. FIX LEAKAGE: Drop the sensitive attribute from input
     del dutch_df["occupation_binary"]
     del dutch_df["sex_binary"]
 
-    # 4. SCALING 
+    # 4. SCALING
     if scaler is None:
         scaler = MinMaxScaler()
         x_train = scaler.fit_transform(dutch_df)
@@ -186,6 +195,18 @@ def prepare_dutch_FL(
 def prepare_dutch_for_fairness(
     preferences: Preferences, dataset_dict: Any, partition_id: int
 ) -> Any:
+    """
+    Prepare Dutch census data for fairness partitioner.
+
+    Args:
+        preferences: Configuration preferences.
+        dataset_dict: Dictionary containing dataset splits.
+        partition_id: ID of the partition to prepare.
+
+    Returns:
+        Processed dataset dictionary.
+
+    """
     # Preprocess for fairness partitioner if needed
 
     data = dataset_dict.get("train", None)

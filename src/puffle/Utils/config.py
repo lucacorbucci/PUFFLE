@@ -1,5 +1,4 @@
-# ABOUTME: Configuration management using Pydantic for validation.
-# ABOUTME: Centralizes hyperparameters and training settings.
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -9,6 +8,13 @@ from puffle.Utils.constants import (
     DEFAULT_WEIGHT_DECAY_ALPHA,
 )
 from puffle.Utils.lambda_updater import LambdaUpdateStrategy
+
+
+class FairnessMetric(str, Enum):
+    """Supported fairness metrics for PUFFLE."""
+
+    DISPARITY = "disparity"
+    ERROR_RATE = "error_rate"
 
 
 class PUFFLEConfig(BaseModel):
@@ -25,6 +31,7 @@ class PUFFLEConfig(BaseModel):
     )
     tunable_lambda: bool = False
     lambda_update_strategy: LambdaUpdateStrategy = LambdaUpdateStrategy.GRADIENT
+    fairness_metric: FairnessMetric = FairnessMetric.DISPARITY
 
     # PID-specific parameters
     lambda_kp: float = Field(default=0.01, ge=0.0)
