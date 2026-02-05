@@ -536,7 +536,7 @@ class PUFFLEModel:
                 if isinstance(z_batch, torch.Tensor)
                 else torch.tensor(z_batch, device=self.device),
                 y=predicted,
-                # sigma_update_lambda=self.config.sigma_update_lambda,
+                sigma_update_lambda=self.config.sigma_update_lambda,
                 average_probabilities=self.average_probabilities,
             )
 

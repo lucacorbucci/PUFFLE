@@ -1,6 +1,7 @@
 import torch
 
 from puffle.Utils.metric_utils import compute_binary_statistics
+from puffle.Utils.privacy import get_noise
 
 
 def _compute_p_y_given_group_with_fallback(
@@ -37,6 +38,7 @@ def compute_demographic_disparity(
     y: torch.Tensor,
     average_probabilities: dict | None = None,
     is_validation: bool = False,
+    sigma_update_lambda: float | None = None
 ):
     """
     Compute the demographic disparity of a model.
@@ -88,7 +90,7 @@ def compute_demographic_disparity(
         # Compute statistics for FL aggregation with validation
         # Validation only makes sense if we can uniquely identify binary groups 0 and 1
         statistics = compute_binary_statistics(
-            num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y
+            num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y,
         )
         return max_disparity, statistics
 
@@ -99,6 +101,24 @@ def compute_demographic_disparity(
         else:
             msg = f"At least two unique values for the sensitive attribute z are required to compute disparity. Only {num_z} found. {z}"
         raise ValueError(msg)
+
+    if sigma_update_lambda is not None:
+        pair_counts += get_noise(
+            mechanism_type="gaussian",
+            sigma=sigma_update_lambda,
+        )
+        z_counts += get_noise(
+            mechanism_type="gaussian",
+            sigma=sigma_update_lambda,
+        )
+        count_not_z_y += get_noise(
+            mechanism_type="gaussian",
+            sigma=sigma_update_lambda,
+        )
+        count_not_z += get_noise(
+            mechanism_type="gaussian",
+            sigma=sigma_update_lambda,
+        )
 
     # Compute the two conditional probabilities
     p_y_given_z = _compute_p_y_given_group_with_fallback(
@@ -126,7 +146,7 @@ def compute_demographic_disparity(
     # Compute statistics for FL aggregation with validation
     # Validation only makes sense if we can uniquely identify binary groups 0 and 1
     statistics = compute_binary_statistics(
-        num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y
+        num_z, unique_z, unique_y, z_counts, pair_counts, total_samples, z, y,
     )
 
     return max_disparity, statistics

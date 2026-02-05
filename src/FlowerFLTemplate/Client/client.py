@@ -1,4 +1,8 @@
+# ABOUTME: Flower client implementation for federated learning.
+# ABOUTME: Supports lazy data loading for efficient simulation registration.
+
 import os
+from collections.abc import Callable
 from logging import INFO
 from typing import Any
 
@@ -13,8 +17,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 
 from FlowerFLTemplate.Models.utils import get_model
-
-# from Training.training import test, train
 from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_optimizer, get_params, set_params
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel
@@ -29,23 +31,35 @@ from puffle.Utils.constants import (
 
 
 class FlowerClient(NumPyClient):
+    """
+    Flower client with lazy initialization.
+
+    This client defers heavy operations (data loading, model creation) until the first
+    fit() or evaluate() call. This allows get_properties() to respond instantly during
+    registration, enabling proper partition_id-to-cid mapping.
+    """
+
     def __init__(
         self,
-        trainloader: DataLoader,
-        valloader: DataLoader,
-        preferences: Preferences,
         partition_id: int,
+        preferences: Preferences,
+        data_loader_fn: Callable[[], tuple[DataLoader, DataLoader]] | None = None,
+        trainloader: DataLoader | None = None,
+        valloader: DataLoader | None = None,
     ) -> None:
         """
         Initializes a Flower client instance for federated learning.
 
-        Sets up data loaders, device, preferences, and model (SimpleModel for classification or RegressionModel for regression).
+        If data_loader_fn is provided, data loading is deferred (lazy mode).
+        If trainloader/valloader are provided directly, operates in eager mode.
 
         Args:
-            trainloader (DataLoader): DataLoader for training data.
-            valloader (DataLoader): DataLoader for validation data.
-            preferences (Preferences): Configuration preferences for the FL setup.
             partition_id (int): Unique identifier for this client's data partition.
+            preferences (Preferences): Configuration preferences for the FL setup.
+            data_loader_fn (Callable): Function that returns (trainloader, valloader).
+                                       If provided, enables lazy loading.
+            trainloader (DataLoader): DataLoader for training data (eager mode).
+            valloader (DataLoader): DataLoader for validation data (eager mode).
 
         Returns:
             None
@@ -54,25 +68,57 @@ class FlowerClient(NumPyClient):
         super().__init__()
 
         self.partition_id = partition_id
+        self.preferences = preferences
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        # Lazy loading support
+        self._data_loader_fn = data_loader_fn
+        self._initialized = False
+
+        # These will be set during initialization
         self.trainloader = trainloader
         self.valloader = valloader
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-        self.preferences = preferences
-
+        self.model: PUFFLEModel | None = None
         self.train_node = False
+        self.sampling_frequency: int | None = None
+        self.privacy_engine: PrivacyEngine | None = None
 
-        with open(f"{self.preferences.fed_dir}/counter_sampling.pkl", "rb") as f:
-            counter_sampling = dill.load(f)
-            if str(self.partition_id) in counter_sampling:
-                self.train_node = True
-                self.sampling_frequency = counter_sampling[str(self.partition_id)]
+        # If dataloaders were provided directly, we're in eager mode
+        if trainloader is not None and valloader is not None:
+            self._initialize_model()
 
+    def _initialize_model(self) -> None:
+        """
+        Performs the heavy initialization: model creation, privacy engine setup, etc.
+        Called lazily on first fit()/evaluate() or eagerly if dataloaders provided.
+        """
+        if self._initialized:
+            return
+
+        # If using lazy loading, load data now
+        if self._data_loader_fn is not None and self.trainloader is None:
+            self.trainloader, self.valloader = self._data_loader_fn()
+
+        if self.trainloader is None or self.valloader is None:
+            msg = "Data loaders not available. Provide data_loader_fn or trainloader/valloader."
+            raise ValueError(msg)
+
+        # Load counter sampling info
+        counter_sampling_path = f"{self.preferences.fed_dir}/counter_sampling.pkl"
+        if os.path.exists(counter_sampling_path):
+            with open(counter_sampling_path, "rb") as f:
+                counter_sampling = dill.load(f)
+                if str(self.partition_id) in counter_sampling:
+                    self.train_node = True
+                    self.sampling_frequency = counter_sampling[str(self.partition_id)]
+
+        # Create and wrap model with privacy engine
         trained_model = get_model(
             model_name=self.preferences.model,
             num_classes=self.preferences.num_classes,
             in_channels=self.preferences.in_channels,
         )
-        optimizer = get_optimizer(trained_model, preferences)
+        optimizer = get_optimizer(trained_model, self.preferences)
         criterion = MixLoss(
             model_loss=nn.CrossEntropyLoss(),
             unfairness_loss=DisparityRegularizationLoss(),
@@ -80,7 +126,7 @@ class FlowerClient(NumPyClient):
         self.privacy_engine = PrivacyEngine(accountant="rdp")
 
         noise_multiplier = (
-            self.get_noise_multiplier(
+            self._get_noise_multiplier_internal(
                 dataset=self.trainloader, target_epsilon=self.preferences.epsilon
             )
             if self.preferences.private_training
@@ -106,28 +152,31 @@ class FlowerClient(NumPyClient):
         delta = (1 / len(self.trainloader.dataset)) / 2
 
         if self.preferences.epsilon_lambda is not None:
-            sample_rate = self.preferences.batch_size / len(self.trainloader.dataset)
-            iterations = self.preferences.num_epochs * len(self.trainloader) * 4
-            epsilon_lambda = float(self.preferences.epsilon_lambda)
+            sampling_ratio = 1 / len(self.trainloader)
+
+            iterations = (
+                self.sampling_frequency
+                * self.train_parameters.epochs
+                * len(self.trainloader)
+                * 4
+            )
             sigma_update_lambda = get_noise_multiplier(
-                target_epsilon=epsilon_lambda,
+                target_epsilon=self.preferences.epsilon_lambda,
                 target_delta=delta,
-                sample_rate=sample_rate,
+                sample_rate=sampling_ratio,
                 steps=iterations,
                 accountant="rdp",
             )
 
         if self.preferences.epsilon_statistics is not None:
-            sample_rate = 1.0
-            num_rounds = (
-                self.preferences.num_rounds if self.preferences.num_rounds else 1
-            )
-            iterations = num_rounds * 2
+            sampling_ratio = 1
+            # we multiply by 2 because every time we send two values
+            iterations = self.sampling_frequency * 2 * 2
             epsilon_statistics = float(self.preferences.epsilon_statistics)
             sigma_statistics = get_noise_multiplier(
                 target_epsilon=epsilon_statistics,
                 target_delta=delta,
-                sample_rate=sample_rate,
+                sample_rate=sampling_ratio,
                 steps=iterations,
                 accountant="rdp",
             )
@@ -155,25 +204,68 @@ class FlowerClient(NumPyClient):
             ),
         )
 
+        self._initialized = True
+        log(INFO, f"Client {self.partition_id} initialized (lazy)")
+
+    def _get_noise_multiplier_internal(
+        self, dataset: DataLoader, target_epsilon: float | None = None
+    ) -> float:
+        """
+        Calculate the noise multiplier for a given target epsilon.
+        Internal version used during initialization.
+        """
+        if not self.train_node or self.sampling_frequency is None:
+            return 0.0
+
+        model_noise = get_model(
+            model_name=self.preferences.model,
+            num_classes=self.preferences.num_classes,
+            in_channels=self.preferences.in_channels,
+        )
+        privacy_engine = PrivacyEngine(accountant="rdp")
+        optimizer_noise = torch.optim.SGD(model_noise.parameters(), lr=0.1)
+
+        delta = (1 / len(dataset.dataset)) / 2  # type: ignore[arg-type]
+
+        (
+            _,
+            private_optimizer,
+            _,
+        ) = privacy_engine.make_private_with_epsilon(  # type: ignore[misc]
+            module=model_noise,
+            optimizer=optimizer_noise,
+            data_loader=dataset,
+            epochs=self.sampling_frequency * self.preferences.num_epochs,
+            target_epsilon=self.preferences.epsilon
+            if target_epsilon is None
+            else target_epsilon,
+            target_delta=delta,
+            max_grad_norm=self.preferences.max_grad_norm,
+        )
+
+        return private_optimizer.noise_multiplier
+
     def fit(
         self, parameters: NDArrays, config: dict[str, Scalar]
     ) -> tuple[NDArrays, int, dict[str, Any]]:
         """
         Performs local training on the client's data using parameters received from the server.
 
-        Updates the local model parameters over the specified number of epochs and returns updated parameters along with training metrics.
+        Updates the local model parameters over the specified number of epochs and returns
+        updated parameters along with training metrics.
 
         Args:
             parameters (NDArrays): Model parameters from the server.
             config (dict[str, Scalar]): Configuration dictionary from the server.
 
         Returns:
-            tuple[NDArrays, int, dict[str, Any]]: Updated model parameters, number of training examples, and training result dictionary (e.g., containing loss and accuracy).
-
-        Raises:
-            RuntimeError: If training fails due to device or model issues.
+            tuple[NDArrays, int, dict[str, Any]]: Updated model parameters, number of
+                training examples, and training result dictionary.
 
         """
+        # Lazy initialization on first fit() call
+        self._initialize_model()
+
         avg_probs = None
         # Load average probabilities for DP statistics
         if self.preferences.fed_dir:
@@ -183,7 +275,7 @@ class FlowerClient(NumPyClient):
                     with open(avg_probs_path, "rb") as f:
                         avg_probs = dill.load(f)
                     self.model.set_average_probabilities(avg_probs)
-                except Exception as e:
+                except (OSError, ValueError, KeyError) as e:
                     log(INFO, f"Failed to load average probabilities: {e}")
             else:
                 avg_probs = {
@@ -195,7 +287,6 @@ class FlowerClient(NumPyClient):
         set_params(self.model.model, parameters)
 
         # do local training (call same function as centralised setting)
-        # Note: PUFFLEModel.train() returns dict[str, list[float]] with metrics per epoch
         result_dict = self.model.train(
             train_loader=self.trainloader,
             epochs=self.preferences.num_epochs,
@@ -203,7 +294,6 @@ class FlowerClient(NumPyClient):
         )
 
         # Flower expects dict[str, Scalar] where Scalar is bool|bytes|float|int|str
-        # PUFFLEModel.train() returns lists (one value per epoch), extract final epoch values
         metrics: dict[str, Any] = {}
         for key, value in result_dict.items():
             if isinstance(value, list) and len(value) > 0:
@@ -215,7 +305,6 @@ class FlowerClient(NumPyClient):
                 metrics[key] = value
 
         metrics["client_id"] = self.partition_id
-        # return the model parameters to the server as well as extra info (number of training examples in this case)
         return get_params(self.model.model), len(self.trainloader), metrics
 
     def evaluate(
@@ -224,38 +313,34 @@ class FlowerClient(NumPyClient):
         """
         Evaluates the model using parameters received from the server on the client's validation set.
 
-        Computes loss and other metrics (e.g., accuracy for classification, rmse/mae for regression).
-
         Args:
             parameters (NDArrays): Model parameters from the server.
             config (dict[str, Scalar]): Configuration dictionary from the server.
 
         Returns:
-            tuple[float, int, dict[str, Any]]: Evaluation loss, number of validation examples, and evaluation result dictionary with metrics.
-
-        Raises:
-            RuntimeError: If evaluation fails due to device or model issues.
+            tuple[float, int, dict[str, Any]]: Evaluation loss, number of validation
+                examples, and evaluation result dictionary with metrics.
 
         """
+        # Lazy initialization on first evaluate() call
+        self._initialize_model()
 
         set_params(self.model.model, parameters)
         result = self.model.evaluate(data_loader=self.valloader, _is_validation=True)
-        # FairnessMetrics includes loss, accuracy, f1, disparity, and statistics
-        # Flower expects dict[str, Scalar] where Scalar is bool|bytes|float|int|str
-        # We include the counters from statistics for computing aggregated disparity
+
         metrics: dict[str, Any] = {
             "loss": result.loss,
             "accuracy": result.accuracy,
             "f1": result.f1,
             "disparity": result.disparity,
         }
+
         # Add counters for aggregating disparity with statistics
         if result.statistics:
             metrics["counter_z"] = result.statistics.get("counter_z", 0)
             metrics["counter_not_z"] = result.statistics.get("counter_not_z", 0)
             metrics["counter_y_z"] = result.statistics.get("counter_y_z", 0)
             metrics["counter_y_not_z"] = result.statistics.get("counter_y_not_z", 0)
-
             metrics["counter_not_y_z"] = result.statistics.get("counter_not_y_z", 0)
             metrics["counter_not_y_not_z"] = result.statistics.get(
                 "counter_not_y_not_z", 0
@@ -278,44 +363,35 @@ class FlowerClient(NumPyClient):
 
         return float(result.loss), len(self.valloader), metrics
 
-    def get_noise_multiplier(self, dataset, target_epsilon=None):
+    def get_noise_multiplier(
+        self, dataset: DataLoader, target_epsilon: float | None = None
+    ) -> float:
         """
         Calculate the noise multiplier for a given target epsilon.
 
         Args:
             dataset (Dataset): The dataset used for training.
-            target_epsilon (float, optional): The target epsilon for differential privacy. Defaults to None.
+            target_epsilon (float, optional): The target epsilon for differential privacy.
 
         Returns:
             float: The calculated noise multiplier.
 
         """
-        model_noise = get_model(
-            model_name=self.preferences.model,
-            num_classes=self.preferences.num_classes,
-            in_channels=self.preferences.in_channels,
-        )
-        privacy_engine = PrivacyEngine(accountant="rdp")
-        optimizer_noise = torch.optim.SGD(model_noise.parameters(), lr=0.1)
+        return self._get_noise_multiplier_internal(dataset, target_epsilon)
 
-        (
-            _,
-            private_optimizer,
-            _,
-        ) = privacy_engine.make_private_with_epsilon(  # type: ignore
-            module=model_noise,
-            optimizer=optimizer_noise,
-            data_loader=dataset,
-            epochs=self.sampling_frequency * self.train_parameters.epochs,
-            target_epsilon=self.train_parameters.epsilon
-            if target_epsilon is None
-            else target_epsilon,
-            target_delta=self.delta,
-            max_grad_norm=self.clipping,
-        )
+    def get_properties(self, config: dict[str, Scalar]) -> dict[str, Scalar]:
+        """
+        Return client's properties. This is called during registration.
 
-        return private_optimizer.noise_multiplier
+        This method is intentionally lightweight and does NOT trigger initialization.
+        It only returns the partition_id, allowing fast registration.
 
-    def get_properties(self, config):
-        log(INFO, f"DEBUG: Client {self.partition_id} get_properties called!")
+        Args:
+            config: Configuration parameters requested by the server.
+
+        Returns:
+            dict: Properties including partition_id.
+
+        """
+        log(INFO, f"Client {self.partition_id} get_properties called")
         return {"partition_id": self.partition_id}

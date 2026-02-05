@@ -66,7 +66,8 @@ def client_fn(context: Context) -> Any:
     """
     Generates a Flower client instance with its assigned data partition.
 
-    Loads the partition based on the global partitioner and prepares data for the specified FL setting (cross-device or cross-silo).
+    Uses lazy loading: data is not loaded until the first fit()/evaluate() call.
+    This allows get_properties() to respond instantly during registration.
 
     Args:
         context (Context): The Flower context with node configuration including partition ID.
@@ -79,18 +80,25 @@ def client_fn(context: Context) -> Any:
 
     """
     partition_id = int(context.node_config["partition-id"])
-    partition = partitioner.load_partition(partition_id) if partitioner else None
 
     if preferences is None:
         msg = "Preferences not initialized"
         raise ValueError(msg)
 
     if preferences.cross_device:
+        # Use lazy loading: pass partitioner instead of loading partition now
         return prepare_data_for_cross_device(
-            context, partition, preferences, partition_id
+            context,
+            partition=None,  # Don't load partition now
+            preferences=preferences,
+            partition_id=partition_id,
+            partitioner=partitioner,  # Pass partitioner for lazy loading
         )
 
+    # Cross-silo still loads data eagerly (more complex train/val splits)
+    partition = partitioner.load_partition(partition_id) if partitioner else None
     return prepare_data_for_cross_silo(context, partition, preferences, partition_id)
+
 
 
 def server_fn(context: Context) -> ServerAppComponents:

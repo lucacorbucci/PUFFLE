@@ -1,4 +1,6 @@
+
 import os
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
@@ -135,25 +137,80 @@ def get_model_info_from_dataset(dataset_name: str) -> dict[str, int]:
         return {
             "in_channels": 3,
             "num_classes": 2,
-        }  # Attributes to predict is usually 1 (e.g. smiling) but CelebaNet might expect 2 output for CrossEntropy? Or is it Binary? Checking CelebaNet usage.
+        }
     if dataset_name == "mnist":
         return {"in_channels": 1, "num_classes": 10, "pixel": 28}
     return {}
 
 
+def _create_dutch_dataloaders(
+    partition: Any, preferences: Preferences
+) -> tuple[DataLoader, DataLoader]:
+    """Create DataLoaders for Dutch dataset from a partition."""
+    train = partition.to_pandas()
+    x_train, z_train, y_train, _ = prepare_dutch_FL(
+        dutch_df=train,
+        scaler=preferences.scaler,
+    )
+    train_dataset = DutchDataset(
+        x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
+        z=z_train.astype(np.float32),
+        y=y_train.astype(np.float32),
+    )
+
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
+    # For cross-device, use same loader for train/val
+    return trainloader, trainloader
+
+
+def _create_abalone_dataloaders(
+    partition: Any, preferences: Preferences
+) -> tuple[DataLoader, DataLoader]:
+    """Create DataLoaders for Abalone dataset from a partition."""
+    train = partition.to_pandas()
+    x_train, y_train, _ = prepare_abalone(
+        abalone_df=train,
+        scaler=preferences.scaler,
+    )
+    train_dataset = AbaloneDataset(
+        x=x_train,
+        y=y_train,
+    )
+    trainloader = DataLoader(
+        train_dataset, batch_size=preferences.batch_size, shuffle=True
+    )
+    return trainloader, trainloader
+
+
+def _create_celeba_dataloaders(
+    partition: Any, preferences: Preferences
+) -> tuple[DataLoader, DataLoader]:
+    """Create DataLoaders for CelebA dataset from a partition."""
+    train = partition.to_pandas()
+    trainloader = prepare_celeba(train, preferences)
+    return trainloader, trainloader
+
+
 def prepare_data_for_cross_device(
-    context: Context, partition: Any, preferences: Preferences, partition_id: int
+    context: Context,
+    partition: Any,
+    preferences: Preferences,
+    partition_id: int,
+    partitioner: Any = None,
 ) -> Any:
     """
     Prepares data for cross-device federated learning from a partition.
 
-    Handles dataset-specific preparation (Dutch, MNIST, Abalone), creates DataLoader and FlowerClient; uses same loader for train/val.
+    Uses lazy loading: the actual data loading is deferred until first fit()/evaluate().
 
     Args:
         context (Context): Flower context (unused).
-        partition (Any): Data partition for this client.
+        partition (Any): Data partition for this client (may be None if using lazy loading).
         preferences (Preferences): FL configuration including dataset_name, batch_size, scaler.
         partition_id (int): Client partition ID.
+        partitioner (Any): Optional partitioner for lazy loading.
 
     Returns:
         Any: FlowerClient instance wrapped as .to_client().
@@ -162,53 +219,42 @@ def prepare_data_for_cross_device(
         ValueError: If unsupported dataset_name.
 
     """
-    if preferences.dataset_name == "dutch":
-        train = partition.to_pandas()
-        x_train, z_train, y_train, _ = prepare_dutch_FL(
-            dutch_df=train,
-            scaler=preferences.scaler,
-        )
-        train_dataset = DutchDataset(
-            x=np.hstack((x_train, np.ones((x_train.shape[0], 1)))).astype(np.float32),
-            z=z_train.astype(np.float32),
-            y=y_train.astype(np.float32),
-        )
 
-        trainloader = DataLoader(
-            train_dataset, batch_size=preferences.batch_size, shuffle=True
-        )
-    elif preferences.dataset_name == "mnist":
-        trainloader = prepare_mnist(partition, preferences)
-    elif preferences.dataset_name == "abalone":
-        train = partition.to_pandas()
-        x_train, y_train, _ = prepare_abalone(
-            abalone_df=train,
-            scaler=preferences.scaler,
-        )
-        train_dataset = AbaloneDataset(
-            x=x_train,
-            y=y_train,
-        )
-        trainloader = DataLoader(
-            train_dataset, batch_size=preferences.batch_size, shuffle=True
-        )
-    elif preferences.dataset_name == "celeba":
-        train = partition.to_pandas()
-        trainloader = prepare_celeba(train, preferences)
-    else:
-        msg = f"Unsupported dataset: {preferences.dataset_name}"
-        raise ValueError(msg)
+    # Create a lazy loader function that captures the partition or partitioner
+    def create_data_loader_fn() -> Callable[[], tuple[DataLoader, DataLoader]]:
+        def load_data() -> tuple[DataLoader, DataLoader]:
+            # Load partition if we have a partitioner
+            data_partition = partition
+            if data_partition is None and partitioner is not None:
+                data_partition = partitioner.load_partition(partition_id)
+
+            if preferences.dataset_name == "dutch":
+                return _create_dutch_dataloaders(data_partition, preferences)
+            if preferences.dataset_name == "mnist":
+                trainloader = prepare_mnist(data_partition, preferences)
+                return trainloader, trainloader
+            if preferences.dataset_name == "abalone":
+                return _create_abalone_dataloaders(data_partition, preferences)
+            if preferences.dataset_name == "celeba":
+                return _create_celeba_dataloaders(data_partition, preferences)
+            msg = f"Unsupported dataset: {preferences.dataset_name}"
+            raise ValueError(msg)
+
+        return load_data
 
     return FlowerClient(
-        trainloader=trainloader,
-        valloader=trainloader,
-        preferences=preferences,
         partition_id=partition_id,
+        preferences=preferences,
+        data_loader_fn=create_data_loader_fn(),
     ).to_client()
 
 
 def prepare_data_for_cross_silo(
-    context: Context, partition: Any, preferences: Preferences, partition_id: int
+    context: Context,
+    partition: Any,
+    preferences: Preferences,
+    partition_id: int,
+    partitioner: Any = None,
 ) -> Any:
     """
     Prepares data for cross-silo federated learning by delegating to dataset-specific functions.
@@ -220,6 +266,7 @@ def prepare_data_for_cross_silo(
         partition (Any): Data partition for this client (unused for income).
         preferences (Preferences): FL configuration including dataset_name.
         partition_id (int): Client partition ID (passed to specific functions).
+        partitioner (Any): Optional partitioner for lazy loading (not used in cross-silo).
 
     Returns:
         Any: FlowerClient instance from specific preparation function.
@@ -228,6 +275,8 @@ def prepare_data_for_cross_silo(
         ValueError: If unsupported dataset_name.
 
     """
+    # Cross-silo functions handle their own data loading
+    # These are kept as-is for now since they have more complex train/val splits
     if preferences.dataset_name == "dutch":
         return prepare_dutch_for_cross_silo(preferences, partition, partition_id)
     if preferences.dataset_name == "mnist":
