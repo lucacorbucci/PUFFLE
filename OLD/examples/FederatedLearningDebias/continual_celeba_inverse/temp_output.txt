@@ -1,4 +1,0 @@
-wandb: Creating sweep from: tunable_DP_inverse.yaml
-wandb: Created sweep with ID: z44fdifb
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_continual/sweeps/z44fdifb
-wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_continual/z44fdifb

@@ -1,4 +1,0 @@
-wandb: Creating sweep from: fixed_005_DP_2.yaml
-wandb: Created sweep with ID: 2hm3m1bt
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Inverse_Shift/sweeps/2hm3m1bt
-wandb: Run sweep agent with: wandb agent lucacorbucci/Inverse_Shift/2hm3m1bt

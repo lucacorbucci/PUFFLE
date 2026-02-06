@@ -1,4 +1,0 @@
-wandb: Creating sweep from: fixed_0.15_eq_odds_dp.yaml
-wandb: Created sweep with ID: fz5suy2x
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Income_equalised/sweeps/fz5suy2x
-wandb: Run sweep agent with: wandb agent lucacorbucci/Income_equalised/fz5suy2x

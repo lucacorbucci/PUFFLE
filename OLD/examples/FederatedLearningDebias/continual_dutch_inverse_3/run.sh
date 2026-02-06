@@ -1,9 +1,0 @@
-for i in $(seq 1 3);
-do
-    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_3/../main.py --run_name Baseline_inverse_3 --project_name Shift_test_new_data --node_shuffle_seed $i --batch_size=78 --clipping=2.5397441979908457 --epochs=5 --lr=0.05228047848126845 --optimizer=adam --dataset continual_dutch --num_rounds 40 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 150 --sampled_clients 0.18 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_3/ --dataset_path ../../../../data/continual_dutch_inverse_3/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated --switch_dataset 21 --ratio_unfair_nodes 0.5 --epsilon 2
-done
-
-for i in $(seq 1 3);
-do
-    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_4/../main.py --run_name Baseline_inverse_4 --project_name Shift_test_new_data --node_shuffle_seed $i --batch_size=122 --clipping=2.5314326389703368 --epochs=5 --lr=0.08654140267264188 --optimizer=adam --dataset continual_dutch --num_rounds 40 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 150 --sampled_clients 0.18 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_4/ --dataset_path ../../../../data/continual_dutch_inverse_4/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated --switch_dataset 21 --ratio_unfair_nodes 0.5 --epsilon 2
-done

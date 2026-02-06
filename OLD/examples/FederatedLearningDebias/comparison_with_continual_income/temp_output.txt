@@ -1,4 +1,0 @@
-wandb: Creating sweep from: baseline_dp_1.0.yaml
-wandb: Created sweep with ID: sphylk16
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Income_equalised/sweeps/sphylk16
-wandb: Run sweep agent with: wandb agent lucacorbucci/Income_equalised/sphylk16

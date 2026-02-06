@@ -1,4 +1,0 @@
-wandb: Creating sweep from: i_4_tunable_005_DP_2_old_grad.yaml
-wandb: Created sweep with ID: j8s7rbgn
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Inverse_Shift_Prova/sweeps/j8s7rbgn
-wandb: Run sweep agent with: wandb agent lucacorbucci/Inverse_Shift_Prova/j8s7rbgn

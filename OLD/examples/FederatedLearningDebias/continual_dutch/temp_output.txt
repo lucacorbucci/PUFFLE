@@ -1,4 +1,0 @@
-wandb: Creating sweep from: SM_fixed_005_DP_2_2.yaml
-wandb: Created sweep with ID: pof841z9
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Sweep_Continual_Dutch/sweeps/pof841z9
-wandb: Run sweep agent with: wandb agent lucacorbucci/Sweep_Continual_Dutch/pof841z9

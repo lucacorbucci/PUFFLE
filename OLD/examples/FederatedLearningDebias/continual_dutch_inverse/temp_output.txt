@@ -1,4 +1,0 @@
-wandb: Creating sweep from: tunable_005_NO_DP_2.yaml
-wandb: Created sweep with ID: d0exmx9k
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Inverse_Shift/sweeps/d0exmx9k
-wandb: Run sweep agent with: wandb agent lucacorbucci/Inverse_Shift/d0exmx9k

@@ -1,4 +1,0 @@
-wandb: Creating sweep from: tunable_DP_11_OLD_method.yaml
-wandb: Created sweep with ID: 8x2cuatp
-wandb: View sweep at: https://wandb.ai/lucacorbucci/Celeba_continual_comparison_OLD/sweeps/8x2cuatp
-wandb: Run sweep agent with: wandb agent lucacorbucci/Celeba_continual_comparison_OLD/8x2cuatp
