@@ -32,5 +32,4 @@ agents.md
 .vscode/
 OLD/
 .coverage
-uv.lock
 .venv/
