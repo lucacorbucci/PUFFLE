@@ -32,3 +32,4 @@ agents.md
 .ruff_cache/
 .vscode/
 OLD/
+.coverage
