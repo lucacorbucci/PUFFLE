@@ -1,0 +1,99 @@
+program: ../../../../FlowerFLTemplate/main.py
+method: bayes
+metric:
+  name: Validation_Accuracy
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  batch_size:
+    min: 32
+    max: 512
+  lr:
+    min: 0.0001
+    max: 0.1
+  optimizer:
+    values: ["adam", "sgd"]
+  regularization_lambda:
+    min: 0.05
+    max: 0.9     
+  max_grad_norm:
+    distribution: uniform
+    max: 20
+    min: 1 
+    
+command:
+  - ${env}
+  - uv 
+  - run 
+  - python
+  - ${program}
+  - ${args}
+  - --dataset_name
+  - dutch
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0
+  - --num_rounds
+  - 10
+  - --num_clients 
+  - 150
+  - --FL_setting 
+  - cross_device 
+  - --sampled_train_nodes_per_round
+  - 0.3
+  - --sampled_validation_nodes_per_round
+  - 1.0
+  - --sampled_test_nodes_per_round
+  - 0.0
+  - --fed_dir 
+  - ./training_data/ 
+  - --project_name 
+  - TestTemplateFL 
+  - --run_name 
+  - Test 
+  - --wandb 
+  - True 
+  - --dataset_path 
+  - ../../data/dutch_csv/dutch.csv 
+  - --partitioner_type 
+  - fairness
+  - --sweep
+  - True
+  - --unfairness_reduction 
+  - True
+  - --fairness_metric
+  - disparity
+  - --regularization_mode
+  - fixed
+  - --target
+  - 0.05
+  - --num_train_nodes 
+  - 70
+  - --num_validation_nodes
+  - 30
+  - --num_test_nodes 
+  - 50
+  - --task
+  - unfairness_reduction
+  - --epsilon
+  - 1.7
+  - --epsilon_statistics
+  - 0.3
+  - --ratio_unfair_clients
+  - 0.5
+  - --group_to_reduce
+  - 1
+  - 0
+  - --group_to_increment
+  - 1 
+  - 1
+  - --ratio_unfairness
+  - 0.5
+  - 0.6
+  - --target_attribute
+  - occupation
+  - --sensitive_attribute
+  - sex
