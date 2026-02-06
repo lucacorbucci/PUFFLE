@@ -315,12 +315,14 @@ class FairnessPartitioner(Partitioner):
                 ).reset_index(drop=True)
 
                 # We distribute as evenly as possible
-                chunks = np.array_split(total_clean_df, number_fair_nodes)
+                # Split by index to maintain DataFrame type
+                index_chunks = np.array_split(total_clean_df.index, number_fair_nodes)
 
                 for i in range(number_fair_nodes):
-                    if i < len(chunks):
-                        to_add = chunks[i]
-                        if not to_add.empty:
+                    if i < len(index_chunks):
+                        chunk_indices = index_chunks[i]
+                        if len(chunk_indices) > 0:
+                            to_add = total_clean_df.loc[chunk_indices]
                             fair_nodes[i] = pd.concat(
                                 [fair_nodes[i], to_add], ignore_index=True
                             )

@@ -720,7 +720,7 @@ def main():
         "num_cpus": ray_num_cpus,
         "num_gpus": ray_num_gpus,
         "_memory": ram_memory,
-        "_redis_max_memory": 10000000,
+        # "_redis_max_memory": 10000000,
         "object_store_memory": 78643200,
         "logging_level": logging.ERROR,
         "log_to_driver": True,
@@ -729,12 +729,14 @@ def main():
     client_resources = {
         "num_cpus": args.num_client_cpus,
         "num_gpus": args.num_client_gpus,
+        
     }
 
     configuration = {
         "client_resources": client_resources,
         "init_args": ray_init_args,
     }
+
 
     run_simulation(
         server_app=server_app,
