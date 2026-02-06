@@ -1,0 +1,1 @@
+poetry run python test_celeba_hair.py --batch_size 4000 --lr 0.1 --optimizer adam

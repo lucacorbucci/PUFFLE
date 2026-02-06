@@ -1,0 +1,15 @@
+
+for i in $(seq 4 6);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_filtered/../main.py --run_name Fixed_filtered --project_name Shift_Comparison --node_shuffle_seed $i --batch_size=121 --clipping=5.323051074340176 --epochs=4 --lr=0.08654626226780983 --optimizer=sgd --regularization_lambda=0.5971528373487149 --dataset continual_dutch --num_rounds 60 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 107 --sampled_clients 0.17 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_filtered/ --dataset_path ../../../../data/continual_dutch_inverse_filtered/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated_2 --switch_dataset 21 --ratio_unfair_nodes 0.5 --regularization_mode fixed --regularization True --target 0.05 --epsilon 2 --epsilon_lambda 3
+done
+
+for i in $(seq 4 6);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_filtered/../main.py --run_name Fixed_filtered --project_name Shift_Comparison --node_shuffle_seed $i --batch_size=42 --clipping=4.265826295537865 --epochs=4 --lr=0.0035220287669688152 --optimizer=adam --regularization_lambda=0.02700995775542115 --dataset continual_dutch --num_rounds 60 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 107 --sampled_clients 0.17 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_filtered/ --dataset_path ../../../../data/continual_dutch_inverse_filtered/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated_2 --switch_dataset 21 --ratio_unfair_nodes 0.5 --regularization_mode fixed --regularization True --target 0.05 --epsilon 2 --epsilon_lambda 3
+done
+
+for i in $(seq 4 6);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_filtered/../main.py --run_name Fixed_filtered --project_name Shift_Comparison --node_shuffle_seed $i --batch_size=119 --clipping=7.374291829129573 --epochs=4 --lr=0.09653040676654706 --optimizer=adam --regularization_lambda=0.6716592196792505 --dataset continual_dutch --num_rounds 60 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 107 --sampled_clients 0.17 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_filtered/ --dataset_path ../../../../data/continual_dutch_inverse_filtered/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated_2 --switch_dataset 21 --ratio_unfair_nodes 0.5 --regularization_mode fixed --regularization True --target 0.05 --epsilon 2 --epsilon_lambda 3
+done

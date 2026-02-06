@@ -1,0 +1,10 @@
+
+for i in $(seq 4 6);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_2/../main.py --run_name Tunable_Inverse_Tunable_Mid_NO_DP --project_name Shift_Comparison --node_shuffle_seed $i --alpha_target_lambda=3.3424404764862077 --batch_size=85 --epochs=4 --lr=0.07623225651184909 --momentum=0.6842332598348077 --optimizer=sgd --weight_decay_lambda=0.5245780936612421 --dataset continual_dutch --num_rounds 50 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 150 --sampled_clients 0.18 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_2/ --dataset_path ../../../../data/continual_dutch_inverse_2/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated --switch_dataset 21 --ratio_unfair_nodes 0.5 --regularization_mode tunable --regularization True --target 0.05
+done
+
+for i in $(seq 4 6);
+do
+    poetry run python /home/lcorbucci/Unfairness-Regularization/examples/FederatedLearningDebias/continual_dutch_inverse_2/../main.py --run_name Tunable_Inverse_Tunable_Mid_NO_DP --project_name Shift_Comparison --node_shuffle_seed $i --alpha_target_lambda=3.4333278401885683 --batch_size=86 --epochs=6 --lr=0.039053847768027734 --momentum=0.7477652498502495 --optimizer=sgd --weight_decay_lambda=0.51125609997316 --dataset continual_dutch --num_rounds 50 --num_client_cpus 1 --num_client_gpus 0.05 --pool_size 150 --sampled_clients 0.18 --sampled_clients_test 1 --debug False --base_path ../../../../data/continual_dutch_inverse_2/ --dataset_path ../../../../data/continual_dutch_inverse_2/ --seed 42 --wandb True  --training_nodes 0.67 --test_nodes 0.335 --tabular_data True --metric disparity --splitted_data_dir federated --switch_dataset 21 --ratio_unfair_nodes 0.5 --regularization_mode tunable --regularization True --target 0.05
+done

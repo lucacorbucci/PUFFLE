@@ -27,3 +27,7 @@ changelog_cleanup.md
 .coverage
 agents.md
 .agent/
+.complexipy_cache/
+.pytest_cache/
+.ruff_cache/
+.vscode/
