@@ -87,7 +87,7 @@ class FlowerClient(NumPyClient):
         if trainloader is not None and valloader is not None:
             self._initialize_model()
 
-    def _initialize_model(self) -> None:
+    def _initialize_model(self, phase: str) -> None:
         """
         Performs the heavy initialization: model creation, privacy engine setup, etc.
         Called lazily on first fit()/evaluate() or eagerly if dataloaders provided.
@@ -158,7 +158,7 @@ class FlowerClient(NumPyClient):
 
         delta = (1 / len(self.trainloader.dataset)) / 2
 
-        if self.preferences.epsilon_lambda is not None:
+        if self.preferences.epsilon_lambda is not None and phase == "train":
             sampling_ratio = 1 / len(self.trainloader)
 
             iterations = (
@@ -175,7 +175,7 @@ class FlowerClient(NumPyClient):
                 accountant="rdp",
             )
 
-        if self.preferences.epsilon_statistics is not None:
+        if self.preferences.epsilon_statistics is not None and phase == "train":
             sampling_ratio = 1
             # we multiply by 2 because every time we send two values
             iterations = self.sampling_frequency * 2 * 2
@@ -271,7 +271,7 @@ class FlowerClient(NumPyClient):
 
         """
         # Lazy initialization on first fit() call
-        self._initialize_model()
+        self._initialize_model(phase="train")
 
         avg_probs = None
         # Load average probabilities for DP statistics
@@ -330,7 +330,7 @@ class FlowerClient(NumPyClient):
 
         """
         # Lazy initialization on first evaluate() call
-        self._initialize_model()
+        self._initialize_model(phase="evaluate")
 
         set_params(self.model.model, parameters)
         result = self.model.evaluate(data_loader=self.valloader, _is_validation=True)
