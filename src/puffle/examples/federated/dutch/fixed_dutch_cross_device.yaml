@@ -18,7 +18,9 @@ parameters:
   regularization_lambda:
     min: 0.05
     max: 0.9     
-    
+  num_epochs:
+    min: 1
+    max: 3  
 command:
   - ${env}
   - uv 
