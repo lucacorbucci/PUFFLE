@@ -340,6 +340,7 @@ class FlowerClient(NumPyClient):
                 metrics[key] = value
 
         metrics["client_id"] = self.partition_id
+        metrics["lambda"] = self.model.lambda_regularization
 
         # We need to store the state of the privacy engine and all the
         # details about the private training

@@ -421,6 +421,17 @@ class Aggregation:
 
             agg_metrics["Train Disparity with statistics"] = counter_disparity
 
+        # Handle lambda from PUFFLEModel
+        lambda_values = []
+        for n_examples, metric in metrics:
+            if "lambda" in metric:
+                lambda_values.append(metric["lambda"])
+                current_client_id = metric["client_id"]
+                agg_metrics[f"lambda_{current_client_id}"] = metric["lambda"]
+
+        if lambda_values:
+            agg_metrics["Average lambda"] = sum(lambda_values) / len(lambda_values)
+
         # Handle DP statistics aggregation
         has_noisy_counters = any("counter_y_z_noise" in m for _, m in metrics)
         if has_noisy_counters:
