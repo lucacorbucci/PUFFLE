@@ -43,6 +43,7 @@ class Aggregation:
         metrics: list,
         server_round: int,
         wandb_run: Any,
+        target: float | None = None,
     ) -> dict:
         """
         Aggregates (evaluation) metrics from multiple clients using weighted averages.
@@ -65,6 +66,7 @@ class Aggregation:
             server_round=server_round,
             wandb_run=wandb_run,
             mode=mode,
+            target=target,
         )
 
     @staticmethod
@@ -73,6 +75,7 @@ class Aggregation:
         server_round: int,
         wandb_run: Any,
         mode: MetricMode,
+        target: float | None = None,
     ) -> dict:
         """
         Internal helper to aggregate evaluation/test metrics.
@@ -288,6 +291,17 @@ class Aggregation:
                             }
                         )
 
+        custom_metric = agg_metrics.get(f"{mode.name.title()}_Accuracy", 0)
+        if target:
+            # TODO: we need to update this when adding the error rate
+            # The current implementation only works for demographic disparity
+            # Instead of using disparity_with_statistics we should use the error rate
+            distance = target - disparity_with_statistics
+            penalty = 0 if distance > 0 else -float("inf")
+
+            custom_metric += penalty
+
+        wandb_run.log({"custom_metric": custom_metric})
         # Log metrics
         if accuracy_values:
             log(

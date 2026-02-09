@@ -106,6 +106,7 @@ class FedAvg(Strategy):
         test_metrics_aggregation_fn: MetricsAggregationFn | None = None,
         inplace: bool = True,
         wandb_run: Any = None,
+        target: float | None = None,
     ) -> None:
         """
         Initializes the FedAvg strategy with sampling and aggregation parameters.
@@ -161,6 +162,7 @@ class FedAvg(Strategy):
         self.test_metrics_aggregation_fn = test_metrics_aggregation_fn
         self.wandb_run = wandb_run
         self.fed_dir = preferences.fed_dir
+        self.target = target
 
     def __repr__(self) -> str:
         """
@@ -491,6 +493,7 @@ class FedAvg(Strategy):
                 metrics=eval_metrics,
                 server_round=server_round,
                 wandb_run=self.wandb_run,
+                target=self.target,
             )
         elif server_round == 1:  # Only log this warning once
             log(WARNING, "No evaluate_metrics_aggregation_fn provided")

@@ -1,7 +1,7 @@
 program: ../../../../FlowerFLTemplate/main.py
 method: bayes
 metric:
-  name: Validation_Accuracy
+  name: custom_metric
   goal: maximize
 early_terminate:
   type: hyperband

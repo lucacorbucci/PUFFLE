@@ -149,6 +149,7 @@ def server_fn(context: Context) -> ServerAppComponents:
         test_metrics_aggregation_fn=Aggregation.agg_metrics_test,
         preferences=preferences,
         wandb_run=wandb_run,
+        target=preferences.target,
     )
 
     config = ServerConfig(num_rounds=preferences.num_rounds or 1)

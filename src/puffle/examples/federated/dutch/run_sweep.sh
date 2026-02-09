@@ -18,6 +18,7 @@ run_sweep_and_agent () {
   uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 10
 }
 
+# run_sweep_and_agent "baseline_dutch_cross_device"
 # run_sweep_and_agent "private_baseline_dutch_cross_device"
 
 run_sweep_and_agent "private_fixed_dutch_cross_device"
@@ -25,13 +26,3 @@ run_sweep_and_agent "private_tunable_dutch_cross_device"
 
 run_sweep_and_agent "tunable_dutch_cross_device"
 run_sweep_and_agent "fixed_dutch_cross_device"
-
-# run_sweep_and_agent "baseline_dutch_cross_device"
-
-# run_sweep_and_agent "private_baseline_dutch_cross_device_NON_iid"
-# run_sweep_and_agent "private_fixed_dutch_cross_device_NON_iid"
-# run_sweep_and_agent "private_tunable_dutch_cross_device_NON_iid"
-# run_sweep_and_agent "dutch_cross_device_iid"
-# run_sweep_and_agent "dutch_cross_silo_iid"
-# run_sweep_and_agent "dutch_cross_device_NON_iid"
-# run_sweep_and_agent "dutch_cross_silo_NON_iid"
