@@ -87,12 +87,12 @@ class LambdaUpdater:
     ) -> float:
         """
         Momentum-based update (original algorithm).
-
-        Uses velocity accumulation to smooth updates but can overshoot.
         """
         delta = target - unfairness
         self.velocity = self.momentum * self.velocity + delta
-        return current_lambda - self.velocity * self.alpha
+        new_lambda = current_lambda - self.alpha * self.velocity
+
+        return new_lambda
 
     def _update_gradient(
         self,
@@ -105,7 +105,10 @@ class LambdaUpdater:
 
         Simple proportional response to error.
         """
-        return current_lambda + self.alpha * (unfairness - target)
+        delta = target - unfairness
+        self.velocity = self.momentum * self.velocity + delta
+
+        return current_lambda - self.alpha * self.velocity
 
     def _update_pid(
         self,
