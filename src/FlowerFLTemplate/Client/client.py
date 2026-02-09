@@ -132,6 +132,15 @@ class FlowerClient(NumPyClient):
         )
         self.privacy_engine = PrivacyEngine(accountant="rdp")
 
+        if os.path.exists(
+            f"{self.preferences.fed_dir}/accountant_{self.partition_id}.pkl"
+        ):
+            with open(
+                f"{self.preferences.fed_dir}/accountant_{self.partition_id}.pkl", "rb"
+            ) as file:
+                accountant = dill.load(file)
+                self.privacy_engine.accountant = accountant
+
         noise_multiplier = (
             self._get_noise_multiplier_internal(
                 dataset=self.trainloader, target_epsilon=self.preferences.epsilon
@@ -161,6 +170,8 @@ class FlowerClient(NumPyClient):
         if self.preferences.epsilon_lambda is not None and phase == "train":
             sampling_ratio = 1 / len(self.trainloader)
 
+            # TODO: we should probably add + self.sampling_frequency*4
+            # to support the first update of the lambda
             iterations = (
                 self.sampling_frequency
                 * self.train_parameters.epochs
@@ -293,6 +304,23 @@ class FlowerClient(NumPyClient):
         # copy parameters sent by the server into client's local model
         set_params(self.model.model, parameters)
 
+        # Initialize lambda from inference (skipped if avg_probs is None or has first_round flag)
+        if self.model.tunable_lambda:
+            # Determine if this is first round
+            is_first_round = avg_probs is None or avg_probs.get("first_round", False)
+            avg_probs_for_init = None if is_first_round else avg_probs
+
+            initial_lambda = self.model.initialize_lambda_from_inference(
+                data_loader=self.trainloader,
+                average_probabilities=avg_probs_for_init,
+                sigma_update_lambda=self.model.config.sigma_update_lambda,
+            )
+            log(
+                INFO,
+                f"Client {self.partition_id} initialized lambda={initial_lambda:.4f} "
+                f"(first_round={is_first_round})",
+            )
+
         # do local training (call same function as centralised setting)
         result_dict = self.model.train(
             train_loader=self.trainloader,
@@ -312,6 +340,14 @@ class FlowerClient(NumPyClient):
                 metrics[key] = value
 
         metrics["client_id"] = self.partition_id
+
+        # We need to store the state of the privacy engine and all the
+        # details about the private training
+        with open(
+            f"{self.preferences.fed_dir}/accountant_{self.partition_id}.pkl", "wb"
+        ) as f:
+            dill.dump(self.privacy_engine.accountant, f)
+
         return get_params(self.model.model), len(self.trainloader), metrics
 
     def evaluate(

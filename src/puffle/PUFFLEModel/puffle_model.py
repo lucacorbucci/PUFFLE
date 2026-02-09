@@ -98,6 +98,100 @@ class PUFFLEModel:
         """Set the average probabilities."""
         self.average_probabilities = average_probabilities
 
+    def initialize_lambda_from_inference(
+        self,
+        data_loader: DataLoader,
+        average_probabilities: dict | None = None,
+        sigma_update_lambda: float | None = None,
+        *,
+        reset_updater_state: bool = True,
+    ) -> float:
+        """
+        Initialize lambda by running inference and computing unfairness.
+
+        If average_probabilities is None, this indicates first round - skip
+        initialization and keep lambda at 0.
+
+        Args:
+            data_loader: Training data loader
+            average_probabilities: Global FL statistics (None = first round)
+            sigma_update_lambda: Noise for differential privacy protection
+            reset_updater_state: Reset lambda updater internal state
+
+        Returns:
+            The initialized lambda value
+
+        """
+        # Skip if not tunable or no target
+        if not self.tunable_lambda or self.target is None:
+            return self.lambda_regularization
+
+        # First round detection: if no average_probabilities, keep lambda=0
+        if average_probabilities is None:
+            return self.lambda_regularization
+
+        if reset_updater_state:
+            self.lambda_updater.reset()
+
+        # Compute unfairness from inference
+        unfairness = self._compute_unfairness_from_inference(
+            data_loader,
+            average_probabilities,
+            sigma_update_lambda,
+        )
+
+        # Use existing update mechanism
+        self.update_lambda(unfairness)
+        return self.lambda_regularization
+
+    def _compute_unfairness_from_inference(
+        self,
+        data_loader: DataLoader,
+        average_probabilities: dict | None,
+        sigma_update_lambda: float | None,
+    ) -> float:
+        """
+        Run inference and compute unfairness metric.
+
+        Currently uses demographic disparity. Designed to be extended for
+        error rate by adding a metric_type parameter and switching computation.
+
+        Args:
+            data_loader: Training data loader
+            average_probabilities: Global FL statistics
+            sigma_update_lambda: Noise for differential privacy
+
+        Returns:
+            Computed unfairness value
+
+        """
+        y_pred_list = []
+        z_list = []
+
+        with self.evaluation_mode():
+            for batch in data_loader:
+                x_batch = ensure_tensor(batch[0], self.device, dtype=torch.float32)
+                z_batch = ensure_tensor(batch[1], self.device)
+
+                outputs = self.model(x_batch)
+                _, predicted = torch.max(outputs, 1)
+
+                y_pred_list.append(predicted.detach().cpu())
+                z_list.append(z_batch.detach().cpu())
+
+        y_pred = torch.cat(y_pred_list)
+        z = torch.cat(z_list)
+
+        # Compute disparity (supports DP via sigma_update_lambda)
+        disparity, _ = compute_demographic_disparity(
+            z,
+            y_pred,
+            average_probabilities=average_probabilities,
+            sigma_update_lambda=sigma_update_lambda,
+        )
+
+        return float(disparity)
+
     @contextmanager
     def evaluation_mode(self):
         """Context manager to set model to evaluation mode and disable gradients."""

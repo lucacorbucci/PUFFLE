@@ -729,14 +729,12 @@ def main():
     client_resources = {
         "num_cpus": args.num_client_cpus,
         "num_gpus": args.num_client_gpus,
-        
     }
 
     configuration = {
         "client_resources": client_resources,
         "init_args": ray_init_args,
     }
-
 
     run_simulation(
         server_app=server_app,
