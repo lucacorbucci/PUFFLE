@@ -19,8 +19,8 @@ run_sweep_and_agent () {
 }
 
 # run_sweep_and_agent "baseline_dutch_cross_device"
-# run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_0.5"
-run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_1.0"
+run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_0.5"
+# run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_1.0"
 
 # run_sweep_and_agent "private_tunable_dutch_cross_device"
 # run_sweep_and_agent "tunable_dutch_cross_device"

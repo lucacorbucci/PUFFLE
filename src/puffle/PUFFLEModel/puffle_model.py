@@ -299,49 +299,56 @@ class PUFFLEModel:
                     if isinstance(item, torch.Tensor):
                         metrics[key][i] = item.item()
 
-        if statistics:
-            metrics["counter_z"] = statistics[-1].get("counter_z", 0)
-            metrics["counter_not_z"] = statistics[-1].get("counter_not_z", 0)
-            metrics["counter_y_z"] = statistics[-1].get("counter_y_z", 0)
-            metrics["counter_y_not_z"] = statistics[-1].get("counter_y_not_z", 0)
+        # Run inference on the full training set to get counters
+        # This provides counters based on model predictions across the entire training dataset
+        try:
+            inference_result = self.evaluate(train_loader)
 
-            metrics["counter_not_y_z"] = statistics[-1].get("counter_not_y_z", 0)
-            metrics["counter_not_y_not_z"] = statistics[-1].get(
-                "counter_not_y_not_z", 0
-            )
-            metrics["counter_y"] = statistics[-1].get("counter_y", 0)
-            metrics["counter_not_y"] = statistics[-1].get("counter_not_y", 0)
-            metrics["total_samples"] = statistics[-1].get("total_samples", 0)
+            if inference_result.statistics:
+                stats = inference_result.statistics
+                metrics["counter_z"] = stats.get("counter_z", 0)
+                metrics["counter_not_z"] = stats.get("counter_not_z", 0)
+                metrics["counter_y_z"] = stats.get("counter_y_z", 0)
+                metrics["counter_y_not_z"] = stats.get("counter_y_not_z", 0)
+
+                metrics["counter_not_y_z"] = stats.get("counter_not_y_z", 0)
+                metrics["counter_not_y_not_z"] = stats.get("counter_not_y_not_z", 0)
+                metrics["counter_y"] = stats.get("counter_y", 0)
+                metrics["counter_not_y"] = stats.get("counter_not_y", 0)
+                metrics["total_samples"] = stats.get("total_samples", 0)
+
+                # Add DP noise to statistics if configured
+                metrics["counter_y_z_noise"] = stats.get("counter_y_z", 0) + (
+                    get_noise(
+                        mechanism_type="gaussian",
+                        sigma=self.config.sigma_statistics,
+                    )
+                    if self.tunable_lambda and self.config.sigma_statistics
+                    else 0
+                )
+                metrics["counter_y_not_z_noise"] = stats.get("counter_y_not_z", 0) + (
+                    get_noise(
+                        mechanism_type="gaussian",
+                        sigma=self.config.sigma_statistics,
+                    )
+                    if self.tunable_lambda and self.config.sigma_statistics
+                    else 0
+                )
 
             # Dataset Statistics (Ground Truth)
-            # Extracted from nested 'dataset_statistics' key pushed in _run_training_loop
-            ds_stats = statistics[-1].get("dataset_statistics", {})
-            metrics["dataset_counter_z"] = ds_stats.get("counter_z", 0)
-            metrics["dataset_counter_not_z"] = ds_stats.get("counter_not_z", 0)
-            metrics["dataset_counter_y_z"] = ds_stats.get("counter_y_z", 0)
-            metrics["dataset_counter_y_not_z"] = ds_stats.get("counter_y_not_z", 0)
+            if inference_result.dataset_statistics:
+                ds_stats = inference_result.dataset_statistics
+                metrics["dataset_counter_z"] = ds_stats.get("counter_z", 0)
+                metrics["dataset_counter_not_z"] = ds_stats.get("counter_not_z", 0)
+                metrics["dataset_counter_y_z"] = ds_stats.get("counter_y_z", 0)
+                metrics["dataset_counter_y_not_z"] = ds_stats.get("counter_y_not_z", 0)
 
-            metrics["dataset_counter_y"] = ds_stats.get("counter_y", 0)
-            metrics["dataset_counter_not_y"] = ds_stats.get("counter_not_y", 0)
-
-            metrics["counter_y_z_noise"] = statistics[-1].get("counter_y_z", 0) + (
-                get_noise(
-                    mechanism_type="gaussian",
-                    sigma=self.config.sigma_statistics,
-                )
-                if self.tunable_lambda and self.config.sigma_statistics
-                else 0
-            )
-            metrics["counter_y_not_z_noise"] = statistics[-1].get(
-                "counter_y_not_z", 0
-            ) + (
-                get_noise(
-                    mechanism_type="gaussian",
-                    sigma=self.config.sigma_statistics,
-                )
-                if self.tunable_lambda and self.config.sigma_statistics
-                else 0
-            )
+                metrics["dataset_counter_y"] = ds_stats.get("counter_y", 0)
+                metrics["dataset_counter_not_y"] = ds_stats.get("counter_not_y", 0)
+        except (ValueError, RuntimeError):
+            # Handle edge cases where dataset is too small or lacks diversity
+            # Set all counters to 0 as fallback
+            pass
 
         return metrics
 

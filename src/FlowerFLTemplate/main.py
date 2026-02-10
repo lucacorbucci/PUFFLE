@@ -255,6 +255,8 @@ def get_partitioner(preferences: Preferences) -> Any:
                 else (0.8, 0.9),
                 group_to_increment=preferences.group_to_increment,
                 seed=preferences.seed,
+                samples_per_client=preferences.samples_per_client,
+                distribution_mode=preferences.distribution_mode,
             )
         case _:
             error = f"Unsupported partitioner type: {partitioner_type}"
@@ -547,7 +549,7 @@ parser.add_argument(
 parser.add_argument(
     "--num_client_gpus", type=float, default=0.0
 )  # Percentage of GPUs used by each client
-parser.add_argument("--ray_num_cpus", type=int, default=20)
+parser.add_argument("--ray_num_cpus", type=int, default=40)
 parser.add_argument("--ray_num_gpus", type=int, default=1)
 
 
@@ -559,6 +561,15 @@ parser.add_argument("--ratio_unfair_clients", type=float, default=None)
 parser.add_argument("--group_to_reduce", type=int, nargs="+", default=None)
 parser.add_argument("--group_to_increment", type=int, nargs="+", default=None)
 parser.add_argument("--ratio_unfairness", type=float, nargs="+", default=None)
+parser.add_argument("--samples_per_client", type=int, default=None)
+parser.add_argument(
+    "--distribution_mode",
+    type=str,
+    default="per_group",
+    choices=["per_group", "representative"],
+    help="Distribution mode: 'per_group' for deterministic per-group allocation, "
+         "'representative' for random sampling (matches old implementation)",
+)
 
 
 # Initialize global variables for client_fn/server_fn access
@@ -626,6 +637,8 @@ def main():
         ratio_unfairness=tuple(args.ratio_unfairness)
         if args.ratio_unfairness
         else None,
+        samples_per_client=args.samples_per_client,
+        distribution_mode=args.distribution_mode,
         batch_size=args.batch_size,
         lr=args.lr,
         optimizer=args.optimizer,

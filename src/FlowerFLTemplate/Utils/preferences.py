@@ -43,6 +43,8 @@ class Preferences:
     group_to_reduce: Any = None
     group_to_increment: Any = None
     ratio_unfairness: Any = None
+    samples_per_client: int | None = None
+    distribution_mode: str = "per_group"
     encoder: TargetEncoder | None = None
 
     task: str = "classification"

@@ -71,19 +71,23 @@ command:
   - --num_test_nodes 
   - 50
   - --ratio_unfair_clients
-  - 0.5
+  - 0.3
   - --group_to_reduce
-  - 1
   - 0
+  - 1
   - --group_to_increment
   - 1 
   - 1
   - --ratio_unfairness
-  - 0.5
   - 0.6
+  - 0.8
   - --target_attribute
   - occupation
   - --sensitive_attribute
   - sex
   - --epsilon
-  - 2.0
+  - 0.5
+  - --samples_per_client 
+  - 343
+  - --distribution_mode  
+  - per_group

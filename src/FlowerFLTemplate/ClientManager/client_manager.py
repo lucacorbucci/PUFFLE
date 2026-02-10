@@ -72,7 +72,11 @@ class SimpleClientManager(ClientManager):
         if phase == "training":
             return len(self.training_clients_list)
         if phase == "validation":
-            return len(self.validation_clients_list)
+            return (
+                len(self.validation_clients_list)
+                if self.validation_clients_list is not None
+                else len(self.test_clients_list)
+            )
         return len(self.test_clients_list)
 
     def wait_for(self, num_clients: int, timeout: int = 86400) -> bool:
@@ -267,7 +271,8 @@ class SimpleClientManager(ClientManager):
         log(INFO, f"Test clients: {self.test_clients_list}")
 
         log(INFO, f"Training clients per round: {sampled_nodes_train}")
-        log(INFO, f"Validation clients per round: {sampled_nodes_validation}")
+        if self.preferences.sampled_validation_nodes_per_round > 0:
+            log(INFO, f"Validation clients per round: {sampled_nodes_validation}")
         log(INFO, f"Test clients per round: {sampled_nodes_test}")
 
         self._save_counter_sampling(sampled_nodes_train)
@@ -410,7 +415,11 @@ class SimpleClientManager(ClientManager):
                 time.sleep(0.1)
 
         wait_file(f"{self.preferences.fed_dir}/train_nodes_per_round.pkl")
-        wait_file(f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl")
+        if (
+            self.preferences.sweep
+            and self.preferences.sampled_validation_nodes_per_round > 0
+        ):
+            wait_file(f"{self.preferences.fed_dir}/validation_nodes_per_round.pkl")
         wait_file(f"{self.preferences.fed_dir}/test_nodes_per_round.pkl")
 
         # Sample clients which meet the criterion
@@ -421,7 +430,9 @@ class SimpleClientManager(ClientManager):
             ) as f:
                 train_nodes = dill.load(f)
 
-            sampled_clients = [self.clients[str(node)] for node in train_nodes[0]]
+            sampled_clients = [
+                self.clients[str(node)] for node in train_nodes[self.num_round_train]
+            ]
             self.num_round_train += 1
 
         elif phase == "validation":
