@@ -15,14 +15,14 @@ run_sweep_and_agent () {
 #   rm temp_output.txt
   
   # Run the wandb agent command
-  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 10
+  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 50
 }
 
 # run_sweep_and_agent "baseline_dutch_cross_device"
 # run_sweep_and_agent "private_baseline_dutch_cross_device"
 
-run_sweep_and_agent "private_fixed_dutch_cross_device"
 run_sweep_and_agent "private_tunable_dutch_cross_device"
-
 run_sweep_and_agent "tunable_dutch_cross_device"
+
+run_sweep_and_agent "private_fixed_dutch_cross_device"
 run_sweep_and_agent "fixed_dutch_cross_device"

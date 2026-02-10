@@ -174,10 +174,10 @@ class FlowerClient(NumPyClient):
             # to support the first update of the lambda
             iterations = (
                 self.sampling_frequency
-                * self.train_parameters.epochs
+                * self.preferences.num_epochs
                 * len(self.trainloader)
                 * 4
-            )
+            ) + self.sampling_frequency * 4
             sigma_update_lambda = get_noise_multiplier(
                 target_epsilon=self.preferences.epsilon_lambda,
                 target_delta=delta,
