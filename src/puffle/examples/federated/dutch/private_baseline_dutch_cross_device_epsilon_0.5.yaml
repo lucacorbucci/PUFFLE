@@ -71,7 +71,7 @@ command:
   - --num_test_nodes 
   - 50
   - --ratio_unfair_clients
-  - 0.3
+  - 0.5
   - --group_to_reduce
   - 0
   - 1
@@ -79,15 +79,13 @@ command:
   - 1 
   - 1
   - --ratio_unfairness
-  - 0.6
-  - 0.8
+  - 0.2
+  - 0.4
   - --target_attribute
   - occupation
   - --sensitive_attribute
   - sex
   - --epsilon
   - 0.5
-  - --samples_per_client 
-  - 343
   - --distribution_mode  
-  - per_group
+  - representative

@@ -79,7 +79,7 @@ command:
   - 1 
   - 1
   - --ratio_unfairness
-  - 0.3
+  - 0.2
   - 0.4
   - --target_attribute
   - occupation
@@ -88,4 +88,4 @@ command:
   - --epsilon
   - 1.0
   - --distribution_mode
-  - per_group
+  - representative
