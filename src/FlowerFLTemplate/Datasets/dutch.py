@@ -92,7 +92,7 @@ def get_dutch_scaler(
         msg = "dutch_df cannot be None"
         raise ValueError(msg)
 
-    _, _, _, scaler = prepare_dutch(
+    _, _, _, scaler = prepare_dutch_fl(
         dutch_df=dutch_df,
     )
     return scaler
@@ -127,6 +127,10 @@ def prepare_dutch(
         error_message = "There are still missing values in the dataset"
         raise ValueError(error_message)
 
+    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    dutch_df = dutch_df[columns]
+    
+
     if "sex" in dutch_df.columns:
         dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
         del dutch_df["sex"]
@@ -138,7 +142,7 @@ def prepare_dutch(
     y_train = dutch_df["occupation_binary"].astype(int).values
     z_train = dutch_df["sex_binary"].astype(int).values
     del dutch_df["occupation_binary"]
-    dutch_df = pd.get_dummies(dutch_df, columns=None, drop_first=False)
+    # dutch_df = pd.get_dummies(dutch_df, columns=None, drop_first=False)
 
     if scaler is None:
         del dutch_df["sex_binary"]
@@ -165,6 +169,9 @@ def prepare_dutch_fl(
         Tuple of (features, targets, sensitive_attributes, scaler).
 
     """
+    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    dutch_df = dutch_df[columns]
+    
     # 1. Create Targets
     if "sex" in dutch_df.columns:
         dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
@@ -178,11 +185,9 @@ def prepare_dutch_fl(
     y_train = dutch_df["occupation_binary"].astype(int).values
     z_train = dutch_df["sex_binary"].astype(int).values
 
-    # 2. FIX LEAKAGE: Drop the sensitive attribute from input
     del dutch_df["occupation_binary"]
     del dutch_df["sex_binary"]
 
-    # 4. SCALING
     if scaler is None:
         scaler = MinMaxScaler()
         x_train = scaler.fit_transform(dutch_df)
@@ -212,12 +217,15 @@ def prepare_dutch_for_fairness(
     data = dataset_dict.get("train", None)
     df = data.to_pandas()
 
+    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    df = df[columns]
+
     # Binarize sex: 1 -> 1 (male/privileged), 2 -> 0 (female)
     df["sex_binary"] = np.where(df["sex"] == 1, 1, 0)
 
     df["occupation_binary"] = np.where(df["occupation"] >= 300, 1, 0)
 
-    df = pd.get_dummies(df, drop_first=False)
+    # df = pd.get_dummies(df, drop_first=False)
 
     # Convert back to Dataset
     data = hfDataset.from_pandas(df)
