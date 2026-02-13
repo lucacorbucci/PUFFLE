@@ -15,11 +15,11 @@ run_sweep_and_agent () {
 #   rm temp_output.txt
   
   # Run the wandb agent command
-  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 50
+  uv run wandb agent $SWEEP_ID --project "$PROJECT_NAME" --count 30
 }
 
 # run_sweep_and_agent "baseline_dutch_cross_device"
-run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_0.5"
+# run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_0.5"
 # run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_1.0"
 
 # run_sweep_and_agent "private_tunable_dutch_cross_device"
@@ -27,3 +27,15 @@ run_sweep_and_agent "private_baseline_dutch_cross_device_epsilon_0.5"
 
 # run_sweep_and_agent "private_fixed_dutch_cross_device"
 # run_sweep_and_agent "fixed_dutch_cross_device"
+
+# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_10"
+# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_25"
+# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_50"
+# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_65"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_75"
+
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_10"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_25"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_50"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_65"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_75"
