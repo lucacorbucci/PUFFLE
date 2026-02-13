@@ -37,7 +37,7 @@ command:
   - --num_client_gpus
   - 0
   - --num_rounds
-  - 10
+  - 20
   - --num_clients 
   - 150
   - --FL_setting 
@@ -52,8 +52,7 @@ command:
   - ./training_data/ 
   - --project_name 
   - TestTemplateFL 
-  - --run_name 
-  - Test 
+
   - --wandb 
   - True 
   - --dataset_path 

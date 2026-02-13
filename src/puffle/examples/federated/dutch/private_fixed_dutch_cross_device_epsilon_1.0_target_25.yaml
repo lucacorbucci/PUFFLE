@@ -15,26 +15,17 @@ parameters:
     max: 0.1
   optimizer:
     values: ["adam", "sgd"]
-  momentum:
-    min: 0.0
-    max: 0.9
-  weight_decay:
-    min: 0.00001
-    max: 0.001
-  num_epochs:
-    min: 1
-    max: 3
-  weight_decay_alpha:
-    min: 0.001
-    max: 1.0
-  alpha:
-    min: 0.1
-    max: 4.0  
+  regularization_lambda:
+    min: 0.05
+    max: 0.9     
   max_grad_norm:
     distribution: uniform
     max: 20
     min: 1 
-
+  num_epochs:
+    min: 1
+    max: 3
+    
 command:
   - ${env}
   - uv 
@@ -49,7 +40,7 @@ command:
   - --num_client_gpus
   - 0
   - --num_rounds
-  - 10
+  - 20
   - --num_clients 
   - 150
   - --FL_setting 
@@ -64,8 +55,7 @@ command:
   - ./training_data/ 
   - --project_name 
   - TestTemplateFL 
-  - --run_name 
-  - Test 
+
   - --wandb 
   - True 
   - --dataset_path 
@@ -79,9 +69,9 @@ command:
   - --fairness_metric
   - disparity
   - --regularization_mode
-  - tunable
+  - fixed
   - --target
-  - 0.05
+  - 0.15
   - --num_train_nodes 
   - 70
   - --num_validation_nodes
@@ -91,23 +81,23 @@ command:
   - --task
   - unfairness_reduction
   - --epsilon
-  - 1.0
-  - --epsilon_lambda
   - 0.7
   - --epsilon_statistics
   - 0.3
   - --ratio_unfair_clients
   - 0.5
   - --group_to_reduce
-  - 1
   - 0
+  - 1
   - --group_to_increment
   - 1 
   - 1
   - --ratio_unfairness
-  - 0.5
-  - 0.6
+  - 0.2
+  - 0.4
   - --target_attribute
   - occupation
   - --sensitive_attribute
   - sex
+  - --distribution_mode  
+  - representative

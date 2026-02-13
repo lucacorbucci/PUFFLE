@@ -8,21 +8,33 @@ early_terminate:
   min_iter: 3
 parameters:
   batch_size:
-    min: 64
-    max: 256
+    min: 32
+    max: 512
   lr:
     min: 0.0001
     max: 0.1
   optimizer:
     values: ["adam", "sgd"]
+  momentum:
+    min: 0.0
+    max: 0.9
+  weight_decay:
+    min: 0.00001
+    max: 0.001
   num_epochs:
     min: 1
     max: 3
+  weight_decay_alpha:
+    min: 0.001
+    max: 1.0
+  alpha:
+    min: 0.1
+    max: 4.0  
   max_grad_norm:
     distribution: uniform
     max: 20
     min: 1 
-    
+
 command:
   - ${env}
   - uv 
@@ -61,14 +73,28 @@ command:
   - fairness
   - --sweep
   - True
+  - --unfairness_reduction 
+  - True
   - --fairness_metric
   - disparity
+  - --regularization_mode
+  - tunable
+  - --target
+  - 0.15
   - --num_train_nodes 
   - 70
   - --num_validation_nodes
   - 30
   - --num_test_nodes 
   - 50
+  - --task
+  - unfairness_reduction
+  - --epsilon
+  - 0.3
+  - --epsilon_statistics
+  - 0.1
+  - --epsilon_lambda
+  - 0.1
   - --ratio_unfair_clients
   - 0.5
   - --group_to_reduce
@@ -84,7 +110,5 @@ command:
   - occupation
   - --sensitive_attribute
   - sex
-  - --epsilon
-  - 1.0
-  - --distribution_mode
+  - --distribution_mode  
   - representative

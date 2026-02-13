@@ -8,20 +8,23 @@ early_terminate:
   min_iter: 3
 parameters:
   batch_size:
-    min: 64
-    max: 256
+    min: 32
+    max: 512
   lr:
     min: 0.0001
     max: 0.1
   optimizer:
     values: ["adam", "sgd"]
-  num_epochs:
-    min: 1
-    max: 3
+  regularization_lambda:
+    min: 0.05
+    max: 0.9     
   max_grad_norm:
     distribution: uniform
     max: 20
     min: 1 
+  num_epochs:
+    min: 1
+    max: 3
     
 command:
   - ${env}
@@ -49,7 +52,7 @@ command:
   - --sampled_test_nodes_per_round
   - 0.0
   - --fed_dir 
-  - ./training_data_2/ 
+  - ./training_data/ 
   - --project_name 
   - TestTemplateFL 
 
@@ -61,14 +64,26 @@ command:
   - fairness
   - --sweep
   - True
+  - --unfairness_reduction 
+  - True
   - --fairness_metric
   - disparity
+  - --regularization_mode
+  - fixed
+  - --target
+  - 0.06
   - --num_train_nodes 
   - 70
   - --num_validation_nodes
   - 30
   - --num_test_nodes 
   - 50
+  - --task
+  - unfairness_reduction
+  - --epsilon
+  - 0.7
+  - --epsilon_statistics
+  - 0.3
   - --ratio_unfair_clients
   - 0.5
   - --group_to_reduce
@@ -84,7 +99,5 @@ command:
   - occupation
   - --sensitive_attribute
   - sex
-  - --epsilon
-  - 1.0
-  - --distribution_mode
+  - --distribution_mode  
   - representative
