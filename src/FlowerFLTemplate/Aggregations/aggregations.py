@@ -157,74 +157,75 @@ class Aggregation:
             counter_y_z = sum(m.get("counter_y_z", 0) for _, m in metrics)
             counter_y_not_z = sum(m.get("counter_y_not_z", 0) for _, m in metrics)
             # log all the counters to wandb for each client
-            for _, metric in metrics:
-                if "counter_z" in metric:
-                    wandb_run.log(
-                        {f"counter_z_{metric['client_id']}": metric["counter_z"]}
-                    )
-                if "counter_not_z" in metric:
-                    wandb_run.log(
-                        {
-                            f"counter_not_z_{metric['client_id']}": metric[
-                                "counter_not_z"
-                            ]
-                        }
-                    )
-                if "counter_y_z" in metric:
-                    wandb_run.log(
-                        {f"counter_y_z_{metric['client_id']}": metric["counter_y_z"]}
-                    )
-                if "counter_y_not_z" in metric:
-                    wandb_run.log(
-                        {
-                            f"counter_y_not_z_{metric['client_id']}": metric[
-                                "counter_y_not_z"
-                            ]
-                        }
-                    )
+            if wandb_run:
+                for _, metric in metrics:
+                    if "counter_z" in metric:
+                        wandb_run.log(
+                            {f"counter_z_{metric['client_id']}": metric["counter_z"]}
+                        )
+                    if "counter_not_z" in metric:
+                        wandb_run.log(
+                            {
+                                f"counter_not_z_{metric['client_id']}": metric[
+                                    "counter_not_z"
+                                ]
+                            }
+                        )
+                    if "counter_y_z" in metric:
+                        wandb_run.log(
+                            {f"counter_y_z_{metric['client_id']}": metric["counter_y_z"]}
+                        )
+                    if "counter_y_not_z" in metric:
+                        wandb_run.log(
+                            {
+                                f"counter_y_not_z_{metric['client_id']}": metric[
+                                    "counter_y_not_z"
+                                ]
+                            }
+                        )
 
-                if "counter_not_y_z" in metric:
-                    wandb_run.log(
-                        {
-                            f"counter_not_y_z_{metric['client_id']}": metric[
-                                "counter_not_y_z"
-                            ]
-                        }
-                    )
-                if "counter_not_y_not_z" in metric:
-                    wandb_run.log(
-                        {
-                            f"counter_not_y_not_z_{metric['client_id']}": metric[
-                                "counter_not_y_not_z"
-                            ]
-                        }
-                    )
-                if "counter_y" in metric:
-                    wandb_run.log(
-                        {f"counter_y_{metric['client_id']}": metric["counter_y"]}
-                    )
-                if "counter_not_y" in metric:
-                    wandb_run.log(
-                        {
-                            f"counter_not_y_{metric['client_id']}": metric[
-                                "counter_not_y"
-                            ]
-                        }
-                    )
-                if "total_samples" in metric:
-                    wandb_run.log(
-                        {
-                            f"total_samples_{metric['client_id']}": metric[
-                                "total_samples"
-                            ]
-                        }
-                    )
+                    if "counter_not_y_z" in metric:
+                        wandb_run.log(
+                            {
+                                f"counter_not_y_z_{metric['client_id']}": metric[
+                                    "counter_not_y_z"
+                                ]
+                            }
+                        )
+                    if "counter_not_y_not_z" in metric:
+                        wandb_run.log(
+                            {
+                                f"counter_not_y_not_z_{metric['client_id']}": metric[
+                                    "counter_not_y_not_z"
+                                ]
+                            }
+                        )
+                    if "counter_y" in metric:
+                        wandb_run.log(
+                            {f"counter_y_{metric['client_id']}": metric["counter_y"]}
+                        )
+                    if "counter_not_y" in metric:
+                        wandb_run.log(
+                            {
+                                f"counter_not_y_{metric['client_id']}": metric[
+                                    "counter_not_y"
+                                ]
+                            }
+                        )
+                    if "total_samples" in metric:
+                        wandb_run.log(
+                            {
+                                f"total_samples_{metric['client_id']}": metric[
+                                    "total_samples"
+                                ]
+                            }
+                        )
 
-                disparity_client = abs(
-                    metric["counter_y_z"] / metric["counter_z"]
-                    - metric["counter_y_not_z"] / metric["counter_not_z"]
-                )
-                wandb_run.log({f"disparity_{metric['client_id']}": disparity_client})
+                    disparity_client = abs(
+                        metric["counter_y_z"] / metric["counter_z"]
+                        - metric["counter_y_not_z"] / metric["counter_not_z"]
+                    )
+                    wandb_run.log({f"disparity_{metric['client_id']}": disparity_client})
 
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
             p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
@@ -292,7 +293,7 @@ class Aggregation:
                         )
 
         custom_metric = agg_metrics.get(f"{mode.name.title()}_Accuracy", 0)
-        if target:
+        if target and has_counters:
             # TODO: we need to update this when adding the error rate
             # The current implementation only works for demographic disparity
             # Instead of using disparity_with_statistics we should use the error rate
@@ -301,7 +302,8 @@ class Aggregation:
 
             custom_metric += penalty
 
-        wandb_run.log({"custom_metric": custom_metric})
+        if wandb_run:
+            wandb_run.log({"custom_metric": custom_metric})
         # Log metrics
         if accuracy_values:
             log(
