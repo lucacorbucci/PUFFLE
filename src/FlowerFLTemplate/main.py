@@ -37,6 +37,8 @@ from FlowerFLTemplate.Strategy.fed_avg import FedAvg
 from FlowerFLTemplate.Utils.preferences import Preferences
 from FlowerFLTemplate.Utils.utils import get_params, seed_everything
 
+# hide ray logs
+os.environ["RAY_LOG_LEVEL"] = "ERROR"
 
 def signal_handler(sig: int, frame: Any) -> None:
     """
