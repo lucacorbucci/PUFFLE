@@ -1,0 +1,11 @@
+# ABOUTME: Ruff configuration for MMD-Fair tests.
+# ABOUTME: Allows test-specific patterns like asserts and private member access.
+
+[lint]
+ignore = [
+    "S101",      # Allow assert in tests
+    "SLF001",    # Allow private member access in tests
+    "PLC0415",   # Allow imports inside functions in tests
+    "PLR2004",   # Allow magic values in tests
+    "N806",      # Allow uppercase variable names (Y_0, Y_1 match paper notation)
+]
