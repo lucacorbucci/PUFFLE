@@ -1,0 +1,7 @@
+# ABOUTME: Ruff configuration for MMD-Fair competitor package.
+# ABOUTME: Allows Fair-FL reference naming conventions and patterns.
+
+[lint]
+ignore = [
+    "NPY002",    # Allow legacy np.random (matches Fair-FL reference)
+]

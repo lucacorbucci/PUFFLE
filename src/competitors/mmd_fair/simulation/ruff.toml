@@ -1,0 +1,12 @@
+# ABOUTME: Ruff configuration for MMD-Fair simulation.
+# ABOUTME: Allows Y_0/Y_1 naming convention matching Fair-FL reference.
+
+[lint]
+ignore = [
+    "N806",      # Allow Y_0, Y_1, N naming (matches Fair-FL reference)
+    "PGH003",    # Allow generic type: ignore comments
+    "PLR0915",   # Allow many statements in main()
+    "PLC0415",   # Allow imports not at top level (lazy imports)
+    "PTH",       # Allow os.path usage (matches FlowerFLTemplate)
+    "NPY002",    # Allow legacy np.random (matches Fair-FL reference)
+]
