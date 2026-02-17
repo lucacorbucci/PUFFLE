@@ -33,3 +33,5 @@ agents.md
 OLD/
 .coverage
 .venv/
+.agents/
+prd.md
