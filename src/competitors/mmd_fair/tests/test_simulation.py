@@ -2,6 +2,7 @@
 # ABOUTME: Tests end-to-end Flower simulation with synthetic binary classification data.
 
 import tempfile
+from typing import Any, cast
 
 import numpy as np
 import torch
@@ -93,7 +94,7 @@ class TestMMDFairSimulation:
                 from torch.utils.data import DataLoader, TensorDataset
 
                 partition = partitioner.load_partition(0)
-                df = partition.to_pandas()  # type: ignore
+                df = cast(Any, partition.to_pandas())
 
                 X = torch.tensor(np.array(df["features"].tolist()), dtype=torch.float32)
                 Z = torch.tensor(df["sensitive"].values, dtype=torch.long)
@@ -253,7 +254,7 @@ class TestMMDFairSimulation:
                     from torch.utils.data import DataLoader, Dataset
 
                     partition = partitioner.load_partition(pid)
-                    df = partition.to_pandas()  # type: ignore
+                    df = cast(Any, partition.to_pandas())
 
                     X = torch.tensor(
                         np.array(df["features"].tolist()), dtype=torch.float32
