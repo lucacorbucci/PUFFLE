@@ -127,9 +127,21 @@ def prepare_dutch(
         error_message = "There are still missing values in the dataset"
         raise ValueError(error_message)
 
-    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    columns = [
+        "sex",
+        "age",
+        "household_position",
+        "household_size",
+        "prev_residence_place",
+        "citizenship",
+        "country_birth",
+        "edu_level",
+        "economic_status",
+        "cur_eco_activity",
+        "Marital_status",
+        "occupation",
+    ]
     dutch_df = dutch_df[columns]
-    
 
     if "sex" in dutch_df.columns:
         dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
@@ -169,9 +181,22 @@ def prepare_dutch_fl(
         Tuple of (features, targets, sensitive_attributes, scaler).
 
     """
-    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    columns = [
+        "sex",
+        "age",
+        "household_position",
+        "household_size",
+        "prev_residence_place",
+        "citizenship",
+        "country_birth",
+        "edu_level",
+        "economic_status",
+        "cur_eco_activity",
+        "Marital_status",
+        "occupation",
+    ]
     dutch_df = dutch_df[columns]
-    
+
     # 1. Create Targets
     if "sex" in dutch_df.columns:
         dutch_df["sex_binary"] = np.where(dutch_df["sex"] == 1, 1, 0)
@@ -217,7 +242,20 @@ def prepare_dutch_for_fairness(
     data = dataset_dict.get("train", None)
     df = data.to_pandas()
 
-    columns = ["sex", "age", "household_position", "household_size", "prev_residence_place", "citizenship", "country_birth", "edu_level", "economic_status", "cur_eco_activity", "Marital_status", "occupation"]
+    columns = [
+        "sex",
+        "age",
+        "household_position",
+        "household_size",
+        "prev_residence_place",
+        "citizenship",
+        "country_birth",
+        "edu_level",
+        "economic_status",
+        "cur_eco_activity",
+        "Marital_status",
+        "occupation",
+    ]
     df = df[columns]
 
     # Binarize sex: 1 -> 1 (male/privileged), 2 -> 0 (female)

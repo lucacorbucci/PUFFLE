@@ -105,7 +105,9 @@ class FairnessPartitioner(Partitioner):
                 )
                 raise ValueError(msg)
 
-    def _representative_distribution(self) -> tuple[list[pd.DataFrame], dict[tuple[Any, Any], pd.DataFrame]]:
+    def _representative_distribution(
+        self,
+    ) -> tuple[list[pd.DataFrame], dict[tuple[Any, Any], pd.DataFrame]]:
         """
         Implements representative diversity approach (OLD behavior).
 
@@ -151,11 +153,7 @@ class FairnessPartitioner(Partitioner):
         remaining_df = df_shuffled.iloc[remaining_start:].copy()
 
         # Initialize with all possible groups
-        remaining_data_by_group = {
-            (t, s): []
-            for t in [0, 1]
-            for s in [0, 1]
-        }
+        remaining_data_by_group = {(t, s): [] for t in [0, 1] for s in [0, 1]}
 
         if len(remaining_df) > 0:
             # Group remaining samples
@@ -252,7 +250,11 @@ class FairnessPartitioner(Partitioner):
                 number_of_samples_to_add_per_node.append(samples_to_remove_count)
 
             # Step 2: Distribute removed samples to fair nodes
-            all_removed = pd.concat(removed_samples, ignore_index=True) if removed_samples else pd.DataFrame()
+            all_removed = (
+                pd.concat(removed_samples, ignore_index=True)
+                if removed_samples
+                else pd.DataFrame()
+            )
 
             if len(all_removed) > 0 and number_fair_nodes > 0:
                 samples_per_fair_node = len(all_removed) // number_fair_nodes
@@ -266,24 +268,32 @@ class FairnessPartitioner(Partitioner):
                         to_add = all_removed.iloc[current_idx:end_idx]
 
                     if len(to_add) > 0:
-                        fair_nodes[i] = pd.concat([fair_nodes[i], to_add], ignore_index=True)
+                        fair_nodes[i] = pd.concat(
+                            [fair_nodes[i], to_add], ignore_index=True
+                        )
                     current_idx = end_idx
 
             # Step 3: Remove samples from fair nodes (group_to_increment) to give to unfair nodes
             if group_to_increment and number_fair_nodes > 0:
                 total_samples_needed = sum(number_of_samples_to_add_per_node)
-                samples_to_remove_per_fair_node = total_samples_needed // number_fair_nodes
+                samples_to_remove_per_fair_node = (
+                    total_samples_needed // number_fair_nodes
+                )
 
                 samples_for_unfair = []
 
                 for idx, fair_node_df in enumerate(fair_nodes):
-                    mask = (fair_node_df[self._target_attribute] == group_to_increment[0]) & (
+                    mask = (
+                        fair_node_df[self._target_attribute] == group_to_increment[0]
+                    ) & (
                         fair_node_df[self._sensitive_attribute] == group_to_increment[1]
                     )
 
                     # Remove samples from fair node
                     available = fair_node_df[mask]
-                    to_remove_count = min(samples_to_remove_per_fair_node, len(available))
+                    to_remove_count = min(
+                        samples_to_remove_per_fair_node, len(available)
+                    )
 
                     if to_remove_count > 0:
                         indices_to_remove = available.sample(
@@ -297,7 +307,11 @@ class FairnessPartitioner(Partitioner):
                         fair_nodes[idx] = fair_node_df.drop(indices_to_remove)
 
                 # Step 4: Add samples to unfair nodes
-                all_for_unfair = pd.concat(samples_for_unfair, ignore_index=True) if samples_for_unfair else pd.DataFrame()
+                all_for_unfair = (
+                    pd.concat(samples_for_unfair, ignore_index=True)
+                    if samples_for_unfair
+                    else pd.DataFrame()
+                )
 
                 if len(all_for_unfair) > 0:
                     current_idx = 0
@@ -321,12 +335,13 @@ class FairnessPartitioner(Partitioner):
                     node_df = node_df.drop(columns=["_group_temp"])
                 self._partitions[i] = Dataset.from_pandas(node_df)
 
-            self._discarded_samples_count = 0  # Representative mode doesn't discard in the old way
+            self._discarded_samples_count = (
+                0  # Representative mode doesn't discard in the old way
+            )
             return  # Representative mode is complete
 
-
         # "per_group" mode - Balanced fair clients, consistent unfair clients
-        
+
         # Add temporary column for group id
         df["_group_temp"] = groups
 
@@ -364,38 +379,40 @@ class FairnessPartitioner(Partitioner):
 
         # === FAIR CLIENTS: Balanced distribution with small variance ===
         fair_nodes = []
-        
+
         for i in range(number_fair_nodes):
             # Add small random variance (±2 samples per group) while maintaining balance
             variance = np.random.randint(-2, 3, size=4, dtype=np.int32)
             # Ensure sum is 0 to maintain total sample count
             variance = variance - int(variance.mean())
-            
+
             node_parts = []
             for idx, group in enumerate(unique_groups):
                 # Calculate samples for this group
                 n_samples = samples_per_group_base + int(variance[idx])
-                
+
                 # Distribute remainder to first groups
                 if idx < remainder:
                     n_samples += 1
-                
+
                 # Ensure we don't request more samples than available
                 available = len(data_by_group[group])
                 if n_samples > available:
                     n_samples = available
-                
+
                 # Sample from this group
                 if n_samples > 0:
                     group_samples = data_by_group[group].sample(
                         n=n_samples,
                         random_state=self._seed + i * 4 + idx,
-                        replace=False
+                        replace=False,
                     )
                     node_parts.append(group_samples)
                     # Remove sampled data to avoid reuse
-                    data_by_group[group] = data_by_group[group].drop(group_samples.index)
-            
+                    data_by_group[group] = data_by_group[group].drop(
+                        group_samples.index
+                    )
+
             # Combine all groups for this client
             if node_parts:
                 fair_node = pd.concat(node_parts, ignore_index=True)
@@ -404,41 +421,38 @@ class FairnessPartitioner(Partitioner):
                 fair_nodes.append(pd.DataFrame())
 
         # === UNFAIR CLIENTS: Consistent unfairness with small variance ===
-        
+
         # Calculate base reduction ratio (same for all unfair clients)
         base_reduction_ratio = np.random.uniform(
-            self._ratio_unfairness[0],
-            self._ratio_unfairness[1]
+            self._ratio_unfairness[0], self._ratio_unfairness[1]
         )
-        
+
         unfair_nodes = []
-        
+
         for i in range(number_unfair_nodes):
             # Add small variance to reduction ratio (±5%)
             reduction_ratio = base_reduction_ratio + np.random.uniform(-0.05, 0.05)
             # Clip to ensure it stays within bounds
             reduction_ratio = np.clip(
-                reduction_ratio,
-                self._ratio_unfairness[0],
-                self._ratio_unfairness[1]
+                reduction_ratio, self._ratio_unfairness[0], self._ratio_unfairness[1]
             )
-            
+
             # Calculate samples for each group
             samples_reduce = int(samples_per_group_base * (1 - reduction_ratio))
             samples_increment = int(samples_per_group_base * (1 + reduction_ratio))
             samples_other = samples_per_group_base
-            
+
             # Adjust to maintain total sample count
             total = samples_reduce + samples_increment + 2 * samples_other
             adjustment = samples_per_client - total
-            
+
             # Distribute adjustment to "other" groups
             samples_other_1 = samples_other + adjustment // 2
             samples_other_2 = samples_other + (adjustment - adjustment // 2)
-            
+
             node_parts = []
             other_idx = 0
-            
+
             for group in unique_groups:
                 if group == self._group_to_reduce:
                     n_samples = samples_reduce
@@ -448,23 +462,28 @@ class FairnessPartitioner(Partitioner):
                     # Distribute to other groups
                     n_samples = samples_other_1 if other_idx == 0 else samples_other_2
                     other_idx += 1
-                
+
                 # Ensure we don't request more samples than available
                 available = len(data_by_group[group])
                 if n_samples > available:
                     n_samples = available
-                
+
                 # Sample from this group
                 if n_samples > 0:
                     group_samples = data_by_group[group].sample(
                         n=n_samples,
-                        random_state=self._seed + number_fair_nodes + i * 4 + unique_groups.index(group),
-                        replace=False
+                        random_state=self._seed
+                        + number_fair_nodes
+                        + i * 4
+                        + unique_groups.index(group),
+                        replace=False,
                     )
                     node_parts.append(group_samples)
                     # Remove sampled data to avoid reuse
-                    data_by_group[group] = data_by_group[group].drop(group_samples.index)
-            
+                    data_by_group[group] = data_by_group[group].drop(
+                        group_samples.index
+                    )
+
             # Combine all groups for this client
             if node_parts:
                 unfair_node = pd.concat(node_parts, ignore_index=True)
@@ -487,9 +506,8 @@ class FairnessPartitioner(Partitioner):
 
         # Store partitions - Convert back to HF Dataset
         all_nodes = fair_nodes + unfair_nodes
-        
+
         for i, df_part in enumerate(all_nodes):
             # Ensure index is reset
             df_part = df_part.reset_index(drop=True)
             self._partitions[i] = Dataset.from_pandas(df_part)
-

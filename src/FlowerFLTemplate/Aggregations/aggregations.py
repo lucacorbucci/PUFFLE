@@ -168,72 +168,88 @@ class Aggregation:
             if wandb_run:
                 for _, metric in metrics:
                     if "counter_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
-                            {f"counter_z_{metric['client_id']}": metric["counter_z"]}
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
+                            {f"counter_z_{metric['client_id']}": metric["counter_z"]},
                         )
                     if "counter_not_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"counter_not_z_{metric['client_id']}": metric[
                                     "counter_not_z"
                                 ]
-                            }
+                            },
                         )
                     if "counter_y_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
-                            {f"counter_y_z_{metric['client_id']}": metric["counter_y_z"]}
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
+                            {
+                                f"counter_y_z_{metric['client_id']}": metric[
+                                    "counter_y_z"
+                                ]
+                            },
                         )
                     if "counter_y_not_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"counter_y_not_z_{metric['client_id']}": metric[
                                     "counter_y_not_z"
                                 ]
-                            }
+                            },
                         )
 
                     if "counter_not_y_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"counter_not_y_z_{metric['client_id']}": metric[
                                     "counter_not_y_z"
                                 ]
-                            }
+                            },
                         )
                     if "counter_not_y_not_z" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"counter_not_y_not_z_{metric['client_id']}": metric[
                                     "counter_not_y_not_z"
                                 ]
-                            }
+                            },
                         )
                     if "counter_y" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
-                            {f"counter_y_{metric['client_id']}": metric["counter_y"]}
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
+                            {f"counter_y_{metric['client_id']}": metric["counter_y"]},
                         )
                     if "counter_not_y" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"counter_not_y_{metric['client_id']}": metric[
                                     "counter_not_y"
                                 ]
-                            }
+                            },
                         )
                     if "total_samples" in metric:
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"total_samples_{metric['client_id']}": metric[
                                     "total_samples"
                                 ]
-                            }
+                            },
                         )
 
                     disparity_client = abs(
                         metric["counter_y_z"] / metric["counter_z"]
                         - metric["counter_y_not_z"] / metric["counter_not_z"]
                     )
-                    Aggregation._safe_wandb_log(wandb_run, {f"disparity_{metric['client_id']}": disparity_client})
+                    Aggregation._safe_wandb_log(
+                        wandb_run,
+                        {f"disparity_{metric['client_id']}": disparity_client},
+                    )
 
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
             p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
@@ -274,12 +290,13 @@ class Aggregation:
 
             # Log dataset counters to wandb
             if wandb_run:
-                Aggregation._safe_wandb_log(wandb_run,
+                Aggregation._safe_wandb_log(
+                    wandb_run,
                     {
                         f"{mode.name.title()}_Dataset_Disparity": dataset_disparity,
                         f"{mode.name.title()}_Dataset_Counter_Z": d_counter_z,
                         f"{mode.name.title()}_Dataset_Counter_Y_Z": d_counter_y_z,
-                    }
+                    },
                 )
 
                 # Log dataset disparity per client
@@ -294,10 +311,11 @@ class Aggregation:
                         p_y_not_z = d_c_y_not_z / d_c_not_z if d_c_not_z > 0 else 0
 
                         d_disp_client = abs(p_y_z - p_y_not_z)
-                        Aggregation._safe_wandb_log(wandb_run,
+                        Aggregation._safe_wandb_log(
+                            wandb_run,
                             {
                                 f"dataset_disparity_{metric.get('client_id', 'unknown')}": d_disp_client
-                            }
+                            },
                         )
 
         custom_metric = agg_metrics.get(f"{mode.name.title()}_Accuracy", 0)

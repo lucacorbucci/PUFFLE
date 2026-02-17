@@ -40,6 +40,7 @@ from FlowerFLTemplate.Utils.utils import get_params, seed_everything
 # hide ray logs
 os.environ["RAY_LOG_LEVEL"] = "ERROR"
 
+
 def signal_handler(sig: int, frame: Any) -> None:
     """
     Handles interrupt signals to gracefully terminate the experiment.
@@ -570,7 +571,7 @@ parser.add_argument(
     default="per_group",
     choices=["per_group", "representative"],
     help="Distribution mode: 'per_group' for deterministic per-group allocation, "
-         "'representative' for random sampling (matches old implementation)",
+    "'representative' for random sampling (matches old implementation)",
 )
 
 

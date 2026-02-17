@@ -82,7 +82,9 @@ def test_per_group_mode_deterministic():
         fair_client_sizes.append(len(partition))
 
     # All fair clients should have the same size
-    assert len(set(fair_client_sizes)) == 1, "Fair clients should all have same size in per_group mode"
+    assert len(set(fair_client_sizes)) == 1, (
+        "Fair clients should all have same size in per_group mode"
+    )
 
 
 def test_representative_mode_variance():
@@ -109,14 +111,17 @@ def test_representative_mode_variance():
         partition = partitioner.load_partition(i).to_pandas()
         # Count samples from group (1,1)
         count_11 = sum(
-            1 for _, row in partition.iterrows()
+            1
+            for _, row in partition.iterrows()
             if row["target"] == 1 and row["sensitive"] == 1
         )
         fair_client_group_counts.append(count_11)
 
     # There should be some variance (not all identical)
     # In representative mode, random sampling creates natural variance
-    assert len(set(fair_client_group_counts)) > 1, "Fair clients should have variance in representative mode"
+    assert len(set(fair_client_group_counts)) > 1, (
+        "Fair clients should have variance in representative mode"
+    )
 
 
 def test_mode_switching():
@@ -201,6 +206,6 @@ def test_representative_with_samples_per_client():
     for i in range(num_clients):
         partition = partitioner.load_partition(i)
         # Allow wide tolerance due to fairness manipulation
-        assert (
-            samples_per_client * 0.5 <= len(partition) <= samples_per_client * 1.5
-        ), f"Client {i} has {len(partition)} samples"
+        assert samples_per_client * 0.5 <= len(partition) <= samples_per_client * 1.5, (
+            f"Client {i} has {len(partition)} samples"
+        )

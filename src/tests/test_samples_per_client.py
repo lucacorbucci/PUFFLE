@@ -60,9 +60,9 @@ def test_samples_per_client_basic():
         # Allow wider tolerance due to rounding and fairness manipulation
         # Fair clients should be close to samples_per_client
         # Unfair clients may have more due to group_to_increment additions
-        assert (
-            samples_per_client * 0.7 <= len(partition) <= samples_per_client * 1.5
-        ), f"Client {i} has {len(partition)} samples, expected ~{samples_per_client}"
+        assert samples_per_client * 0.7 <= len(partition) <= samples_per_client * 1.5, (
+            f"Client {i} has {len(partition)} samples, expected ~{samples_per_client}"
+        )
 
 
 def test_samples_per_client_validation_error():
