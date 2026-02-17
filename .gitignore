@@ -35,3 +35,5 @@ OLD/
 .venv/
 .agents/
 prd.md
+Fair-FL/
+*.pyc/
