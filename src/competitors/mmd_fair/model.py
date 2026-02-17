@@ -95,6 +95,9 @@ class MMDFairModel(PUFFLEModel):
         self.Y_0: torch.Tensor | None = None
         self.Y_1: torch.Tensor | None = None
 
+        # MMD loss accumulator for metrics
+        self.running_mmd_loss: float = 0.0
+
         # Alpha weights for sampling proportions (not used in loss)
         self.alpha_0: float = 1.0
         self.alpha_1: float = 1.0
@@ -107,6 +110,48 @@ class MMDFairModel(PUFFLEModel):
             return 0
 
         self.tracking_function = _default_tracking
+
+    def _initialize_metrics_dict(self):
+        """Initialize metrics dict with MMD loss support."""
+        metrics = super()._initialize_metrics_dict()
+        metrics["train_mmd_loss"] = []
+        metrics["validation_mmd_loss"] = []
+        metrics["test_mmd_loss"] = []
+        return metrics
+
+    def _update_metrics_dict(self, metrics, prefix, epoch_metrics):
+        """Update metrics dict with MMD loss."""
+        super()._update_metrics_dict(metrics, prefix, epoch_metrics)
+        # Handle both dict and FairnessMetrics (via getattr or getitem)
+        mmd_loss = (
+            epoch_metrics.get("mmd_loss")
+            if isinstance(epoch_metrics, dict)
+            else getattr(epoch_metrics, "mmd_loss", None)
+        )
+
+        if mmd_loss is not None:
+            # Ensure prefix is string
+            from puffle.Utils.modes import MetricMode
+
+            prefix_str = prefix.value if isinstance(prefix, MetricMode) else prefix
+            metrics.setdefault(f"{prefix_str}_mmd_loss", []).append(mmd_loss)
+
+    def _train_one_epoch(self, train_loader, **kwargs):
+        """Train one epoch and capture MMD loss."""
+        self.running_mmd_loss = 0.0
+        # Call parent
+        metrics = super()._train_one_epoch(train_loader, **kwargs)
+
+        # Add MMD loss to metrics (convert to dict if it's FairnessMetrics)
+        if hasattr(metrics, "to_dict"):
+            metrics = metrics.to_dict()
+
+        # Calculate average MMD loss
+        num_batches = len(train_loader)
+        avg_mmd_loss = self.running_mmd_loss / num_batches if num_batches > 0 else 0.0
+
+        metrics["mmd_loss"] = avg_mmd_loss
+        return metrics
 
     def set_server_predictions(self, y_0: torch.Tensor, y_1: torch.Tensor) -> None:
         """
@@ -273,6 +318,12 @@ class MMDFairModel(PUFFLEModel):
 
         loss.backward()
         optimizer.step()
+
+        # Accumulate MMD loss for metrics
+        if isinstance(fairness_penalty, torch.Tensor):
+            self.running_mmd_loss += fairness_penalty.item()
+        else:
+            self.running_mmd_loss += float(fairness_penalty)
 
         # 4. Compute metrics
         with torch.no_grad():

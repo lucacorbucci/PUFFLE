@@ -1,4 +1,3 @@
-
 import argparse
 import logging
 import os
@@ -21,6 +20,10 @@ from flwr.simulation import run_simulation
 
 # Import MMD-Fair components
 from competitors.mmd_fair.simulation.client import MMDFairFlowerClient
+from competitors.mmd_fair.simulation.metrics import (
+    aggregate_evaluate_metrics,
+    aggregate_fit_metrics,
+)
 from competitors.mmd_fair.simulation.strategy import MMDFairFedAvg
 
 # Hide Ray logs
@@ -140,6 +143,8 @@ def server_fn(context: Context) -> ServerAppComponents:
         mu=mu_val,
         ny=ny_val,
         lambda_fairness=preferences.regularization_lambda,
+        fit_metrics_aggregation_fn=aggregate_fit_metrics,
+        evaluate_metrics_aggregation_fn=aggregate_evaluate_metrics,
     )
 
     config = ServerConfig(num_rounds=preferences.num_rounds or 1)
@@ -201,11 +206,12 @@ def main():
     parser.add_argument("--ray_num_cpus", type=int, default=40)
     parser.add_argument("--ray_num_gpus", type=int, default=1)
 
-
     parser.add_argument("--num_test_nodes", type=int, default=None)
     parser.add_argument("--num_validation_nodes", type=int, default=None)
     parser.add_argument("--num_train_nodes", type=int, default=None)
-    parser.add_argument("--sampled_validation_nodes_per_round", type=float, default=None)
+    parser.add_argument(
+        "--sampled_validation_nodes_per_round", type=float, default=None
+    )
     parser.add_argument("--sampled_train_nodes_per_round", type=float, default=None)
     parser.add_argument("--sampled_test_nodes_per_round", type=float, default=None)
 
@@ -343,4 +349,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
