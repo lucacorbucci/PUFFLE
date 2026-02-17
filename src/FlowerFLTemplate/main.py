@@ -57,7 +57,7 @@ def signal_handler(sig: int, frame: Any) -> None:
     print("Gracefully stopping your experiment! Keep calm!")
     if wandb_run:
         wandb_run.finish()
-    sys.exit(0)
+    os._exit(0)
 
 
 def client_fn(context: Context) -> Any:

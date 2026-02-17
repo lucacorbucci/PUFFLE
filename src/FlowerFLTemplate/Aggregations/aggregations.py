@@ -10,6 +10,14 @@ from puffle.Utils.modes import MetricMode
 
 class Aggregation:
     @staticmethod
+    def _safe_wandb_log(wandb_run: Any, data: dict) -> None:
+        """Log to wandb, silently skipping if the run is already finished."""
+        try:
+            wandb_run.log(data)
+        except Exception:  # noqa: BLE001
+            pass
+
+    @staticmethod
     def agg_metrics_test(
         metrics: list,
         server_round: int,
@@ -160,11 +168,11 @@ class Aggregation:
             if wandb_run:
                 for _, metric in metrics:
                     if "counter_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {f"counter_z_{metric['client_id']}": metric["counter_z"]}
                         )
                     if "counter_not_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"counter_not_z_{metric['client_id']}": metric[
                                     "counter_not_z"
@@ -172,11 +180,11 @@ class Aggregation:
                             }
                         )
                     if "counter_y_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {f"counter_y_z_{metric['client_id']}": metric["counter_y_z"]}
                         )
                     if "counter_y_not_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"counter_y_not_z_{metric['client_id']}": metric[
                                     "counter_y_not_z"
@@ -185,7 +193,7 @@ class Aggregation:
                         )
 
                     if "counter_not_y_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"counter_not_y_z_{metric['client_id']}": metric[
                                     "counter_not_y_z"
@@ -193,7 +201,7 @@ class Aggregation:
                             }
                         )
                     if "counter_not_y_not_z" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"counter_not_y_not_z_{metric['client_id']}": metric[
                                     "counter_not_y_not_z"
@@ -201,11 +209,11 @@ class Aggregation:
                             }
                         )
                     if "counter_y" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {f"counter_y_{metric['client_id']}": metric["counter_y"]}
                         )
                     if "counter_not_y" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"counter_not_y_{metric['client_id']}": metric[
                                     "counter_not_y"
@@ -213,7 +221,7 @@ class Aggregation:
                             }
                         )
                     if "total_samples" in metric:
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"total_samples_{metric['client_id']}": metric[
                                     "total_samples"
@@ -225,7 +233,7 @@ class Aggregation:
                         metric["counter_y_z"] / metric["counter_z"]
                         - metric["counter_y_not_z"] / metric["counter_not_z"]
                     )
-                    wandb_run.log({f"disparity_{metric['client_id']}": disparity_client})
+                    Aggregation._safe_wandb_log(wandb_run, {f"disparity_{metric['client_id']}": disparity_client})
 
             # Compute P(Y=1|Z=1) and P(Y=1|Z=0)
             p_y_given_z = counter_y_z / counter_z if counter_z > 0 else 0
@@ -266,7 +274,7 @@ class Aggregation:
 
             # Log dataset counters to wandb
             if wandb_run:
-                wandb_run.log(
+                Aggregation._safe_wandb_log(wandb_run,
                     {
                         f"{mode.name.title()}_Dataset_Disparity": dataset_disparity,
                         f"{mode.name.title()}_Dataset_Counter_Z": d_counter_z,
@@ -286,7 +294,7 @@ class Aggregation:
                         p_y_not_z = d_c_y_not_z / d_c_not_z if d_c_not_z > 0 else 0
 
                         d_disp_client = abs(p_y_z - p_y_not_z)
-                        wandb_run.log(
+                        Aggregation._safe_wandb_log(wandb_run,
                             {
                                 f"dataset_disparity_{metric.get('client_id', 'unknown')}": d_disp_client
                             }
@@ -298,12 +306,12 @@ class Aggregation:
             # The current implementation only works for demographic disparity
             # Instead of using disparity_with_statistics we should use the error rate
             distance = target - disparity_with_statistics
-            penalty = 0 if distance > 0 else -float("inf")
+            penalty = 0 if distance > 0 else -1e18
 
             custom_metric += penalty
 
         if wandb_run:
-            wandb_run.log({"custom_metric": custom_metric})
+            Aggregation._safe_wandb_log(wandb_run, {"custom_metric": custom_metric})
         # Log metrics
         if accuracy_values:
             log(
@@ -313,7 +321,7 @@ class Aggregation:
             )
 
         if wandb_run:
-            wandb_run.log(agg_metrics)
+            Aggregation._safe_wandb_log(wandb_run, agg_metrics)
 
         return agg_metrics
 
@@ -477,6 +485,6 @@ class Aggregation:
             log(INFO, f"Train Loss: {agg_metrics.get('Train Loss', 0):.4f}")
 
         if wandb_run:
-            wandb_run.log(agg_metrics)
+            Aggregation._safe_wandb_log(wandb_run, agg_metrics)
 
         return agg_metrics

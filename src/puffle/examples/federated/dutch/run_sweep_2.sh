@@ -30,8 +30,8 @@ run_sweep_and_agent () {
 
 # run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_10"
 # run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_25"
-# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_50"
-# run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_65"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_50"
+run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_65"
 run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_0.5_target_75"
 
 run_sweep_and_agent "private_tunable_dutch_cross_device_epsilon_1.0_target_10"
