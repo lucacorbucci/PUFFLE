@@ -271,7 +271,7 @@ class SimpleClientManager(ClientManager):
         log(INFO, f"Test clients: {self.test_clients_list}")
 
         log(INFO, f"Training clients per round: {sampled_nodes_train}")
-        if self.preferences.sampled_validation_nodes_per_round > 0:
+        if self.preferences.sweep and self.preferences.num_validation_nodes > 0:
             log(INFO, f"Validation clients per round: {sampled_nodes_validation}")
         log(INFO, f"Test clients per round: {sampled_nodes_test}")
 

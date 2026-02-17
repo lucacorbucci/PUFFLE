@@ -97,12 +97,19 @@ class MMDFairFlowerClient(NumPyClient):
             else 0.0,
         )
 
-        # Wrap BCE loss to handle tuple input from PUFFLEModel.evaluate
-        # Parent class passes (outputs, z_batch, lambda) but BCE only needs (outputs, target)
-        class BCEWrapper(nn.Module):
-            def __init__(self):
+        # Select loss based on model output dimension (1=BCE, >1=CE)
+        use_bce = (self.preferences.num_classes is None) or (self.preferences.num_classes == 1)
+
+        # Wrap loss to handle tuple input from PUFFLEModel.evaluate
+        # Parent class passes (outputs, z_batch, lambda) but standard loss only needs (outputs, target)
+        class LossWrapper(nn.Module):
+            def __init__(self, use_bce_loss: bool):
                 super().__init__()
-                self.bce = nn.BCEWithLogitsLoss()
+                self.use_bce_loss = use_bce_loss
+                if self.use_bce_loss:
+                    self.criterion = nn.BCEWithLogitsLoss()
+                else:
+                    self.criterion = nn.CrossEntropyLoss()
 
             def forward(self, inputs, target):
                 # inputs is a tuple: (outputs, z_batch, lambda_reg)
@@ -110,9 +117,12 @@ class MMDFairFlowerClient(NumPyClient):
                     outputs = inputs[0]
                 else:
                     outputs = inputs
-                return self.bce(outputs, target.float())
 
-        criterion = BCEWrapper()
+                if self.use_bce_loss:
+                    return self.criterion(outputs, target.float())
+                return self.criterion(outputs, target.long())
+
+        criterion = LossWrapper(use_bce_loss=use_bce)
 
         # Create MMDFairModel
         config = PUFFLEConfig(

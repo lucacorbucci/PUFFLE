@@ -1,5 +1,3 @@
-# ABOUTME: Main entry point for MMD-Fair FL simulation.
-# ABOUTME: Reuses FlowerFLTemplate's data pipeline with custom MMD-Fair client and strategy.
 
 import argparse
 import logging
@@ -203,6 +201,14 @@ def main():
     parser.add_argument("--ray_num_cpus", type=int, default=40)
     parser.add_argument("--ray_num_gpus", type=int, default=1)
 
+
+    parser.add_argument("--num_test_nodes", type=int, default=None)
+    parser.add_argument("--num_validation_nodes", type=int, default=None)
+    parser.add_argument("--num_train_nodes", type=int, default=None)
+    parser.add_argument("--sampled_validation_nodes_per_round", type=float, default=None)
+    parser.add_argument("--sampled_train_nodes_per_round", type=float, default=None)
+    parser.add_argument("--sampled_test_nodes_per_round", type=float, default=None)
+
     args = parser.parse_args()
 
     seed_everything(args.seed)
@@ -214,8 +220,12 @@ def main():
         num_rounds=args.num_rounds,
         cross_device=True,  # Always cross-device for MMD-Fair
         num_epochs=args.num_epochs,
-        sampled_training_nodes_per_round=1.0,  # All clients participate
-        sampled_validation_nodes_per_round=0.0,
+        num_test_nodes=args.num_test_nodes,
+        num_validation_nodes=args.num_validation_nodes,
+        num_train_nodes=args.num_train_nodes,
+        sampled_validation_nodes_per_round=args.sampled_validation_nodes_per_round,
+        sampled_training_nodes_per_round=args.sampled_train_nodes_per_round,
+        sampled_test_nodes_per_round=args.sampled_test_nodes_per_round,
         seed=args.seed,
         fed_dir=args.fed_dir,
         fl_setting="cross_device",
@@ -333,3 +343,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
