@@ -331,7 +331,8 @@ class MMDFairModel(PUFFLEModel):
                 _, predicted = torch.max(F.softmax(outputs, dim=1), 1)
             else:
                 threshold = 0.5
-                predicted = (torch.sigmoid(outputs) > threshold).long().squeeze()
+                # Squeeze only last dimension to preserve batch dimension
+                predicted = (torch.sigmoid(outputs) > threshold).long().squeeze(-1)
 
             correct_batch = (predicted == y_batch).sum().item()
             total_batch = y_batch.size(0)

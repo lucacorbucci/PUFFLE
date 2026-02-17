@@ -8,7 +8,6 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import torch
-from puffle.Utils.config import PUFFLEConfig
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -98,8 +97,12 @@ class FairFLClient:
         # Create optimizer
         self.optimizer = torch.optim.SGD(model.parameters(), lr=stepsize)
 
-        # Create MMDFairModel
-        config = PUFFLEConfig(lambda_regularization=lambda_)
+        # Create MMDFairModel with default config, then override lambda
+        # We can't use PUFFLEConfig here because it has le=1.0 validation,
+        # but Fair-FL uses lambda values up to 100
+        from puffle.Utils.config import PUFFLEConfig
+
+        config = PUFFLEConfig()  # Use defaults
         self.model = MMDFairModel(
             model=model,
             optimizer=self.optimizer,
@@ -107,6 +110,8 @@ class FairFLClient:
             device=device,
             config=config,
         )
+        # Override lambda directly (bypassing validation)
+        self.model.lambda_regularization = lambda_
 
         # Test split
         self.X_test: torch.Tensor | None = None
