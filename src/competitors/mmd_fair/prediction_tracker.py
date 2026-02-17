@@ -60,6 +60,10 @@ class PredictionTracker:
         # Flatten and concatenate all new predictions
         updates = torch.cat([pred.flatten() for pred in new_predictions], dim=0)
 
+        # Move to tracker's device if needed
+        if updates.device != torch.device(self.device):
+            updates = updates.to(self.device)
+
         # Concatenate with existing predictions
         self.predictions = torch.cat((self.predictions, updates), dim=0)
 

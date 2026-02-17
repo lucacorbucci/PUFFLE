@@ -3,13 +3,12 @@
 
 import torch
 import torch.nn.functional as F
-from torch import nn
-
 from puffle.PUFFLEModel.puffle_model import PUFFLEModel, TrainingBatchResult
 from puffle.Utils.config import PUFFLEConfig
 from puffle.Utils.metric import compute_demographic_disparity
 from puffle.Utils.tensor_utils import ensure_tensor
 from puffle.Utils.types import DeviceType
+from torch import nn
 
 
 def distance_kernel(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -33,6 +32,10 @@ def distance_kernel(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         a = a.unsqueeze(1)
     if b.dim() == 1:
         b = b.unsqueeze(0)
+
+    # Ensure both tensors are on the same device
+    if a.device != b.device:
+        b = b.to(a.device)
 
     term1 = torch.abs(a - 1) + torch.abs(b - 1) - torch.abs(a - b)
     term2 = torch.abs(a) + torch.abs(b) - torch.abs(a - b)

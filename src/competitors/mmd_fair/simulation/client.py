@@ -6,16 +6,16 @@ from collections.abc import Callable
 from typing import Any
 
 import torch
+from FlowerFLTemplate.Models.utils import get_model
+from FlowerFLTemplate.Utils.preferences import Preferences
+from FlowerFLTemplate.Utils.utils import get_params, set_params
 from flwr.client import NumPyClient
 from flwr.common import NDArrays, Scalar
+from puffle.Utils.config import PUFFLEConfig
 from torch import nn
 from torch.utils.data import DataLoader
 
 from competitors.mmd_fair.model import MMDFairModel
-from FlowerFLTemplate.Models.utils import get_model
-from FlowerFLTemplate.Utils.preferences import Preferences
-from FlowerFLTemplate.Utils.utils import get_params, set_params
-from puffle.Utils.config import PUFFLEConfig
 
 
 class MMDFairFlowerClient(NumPyClient):
@@ -97,8 +97,22 @@ class MMDFairFlowerClient(NumPyClient):
             else 0.0,
         )
 
-        # Standard BCE loss (no MixLoss)
-        criterion = nn.BCEWithLogitsLoss()
+        # Wrap BCE loss to handle tuple input from PUFFLEModel.evaluate
+        # Parent class passes (outputs, z_batch, lambda) but BCE only needs (outputs, target)
+        class BCEWrapper(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.bce = nn.BCEWithLogitsLoss()
+
+            def forward(self, inputs, target):
+                # inputs is a tuple: (outputs, z_batch, lambda_reg)
+                if isinstance(inputs, tuple):
+                    outputs = inputs[0]
+                else:
+                    outputs = inputs
+                return self.bce(outputs, target.float())
+
+        criterion = BCEWrapper()
 
         # Create MMDFairModel
         config = PUFFLEConfig(
