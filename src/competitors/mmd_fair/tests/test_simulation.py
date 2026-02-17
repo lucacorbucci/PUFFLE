@@ -93,7 +93,7 @@ class TestMMDFairSimulation:
                 from torch.utils.data import DataLoader, TensorDataset
 
                 partition = partitioner.load_partition(0)
-                df = partition.to_pandas()
+                df = partition.to_pandas()  # type: ignore
 
                 X = torch.tensor(np.array(df["features"].tolist()), dtype=torch.float32)
                 Z = torch.tensor(df["sensitive"].values, dtype=torch.long)
@@ -253,7 +253,7 @@ class TestMMDFairSimulation:
                     from torch.utils.data import DataLoader, Dataset
 
                     partition = partitioner.load_partition(pid)
-                    df = partition.to_pandas()
+                    df = partition.to_pandas()  # type: ignore
 
                     X = torch.tensor(
                         np.array(df["features"].tolist()), dtype=torch.float32
