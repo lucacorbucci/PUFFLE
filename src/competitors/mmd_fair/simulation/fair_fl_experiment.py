@@ -543,7 +543,7 @@ def main():
     args = parser.parse_args()
 
     HOMEFOLDER = args.home
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    DEVICE = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using Device: {DEVICE}")
 
     # Lambda sweep

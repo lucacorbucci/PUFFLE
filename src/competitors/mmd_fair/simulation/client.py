@@ -48,7 +48,9 @@ class MMDFairFlowerClient(NumPyClient):
         """
         self.partition_id = partition_id
         self.preferences = preferences
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = (
+            "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )
 
         # Lazy loading support
         self._data_loader_fn = data_loader_fn

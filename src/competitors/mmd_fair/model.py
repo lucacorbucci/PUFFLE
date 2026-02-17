@@ -275,14 +275,14 @@ class MMDFairModel(PUFFLEModel):
             # Multi-class
             task_loss = criterion(outputs, y_batch.long())
         else:
-            # Binary
-            task_loss = criterion(outputs.squeeze(), y_batch.float())
+            # Binary - squeeze only the last dimension to preserve batch dimension
+            task_loss = criterion(outputs.squeeze(-1), y_batch.float())
 
         # Extract predicted probabilities for fairness computation
         if outputs.shape[1] > 1:
             probs = F.softmax(outputs, dim=1)[:, 1]
         else:
-            probs = torch.sigmoid(outputs).squeeze()
+            probs = torch.sigmoid(outputs).squeeze(-1)
 
         # 2. MMD fairness penalty
         fairness_penalty = torch.tensor(0.0, device=self.device)
