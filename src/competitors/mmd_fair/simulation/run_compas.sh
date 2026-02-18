@@ -2,7 +2,7 @@
 # Run COMPAS experiment matching Fair-FL's configuration.
 # Results saved to a separate directory for side-by-side comparison.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 OUTPUT_DIR="${SCRIPT_DIR}/results/ours"
 
 uv run python -m competitors.mmd_fair.simulation.fair_fl_experiment \
