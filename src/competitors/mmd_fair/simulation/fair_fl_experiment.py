@@ -538,7 +538,14 @@ def main():
     """Run Fair-FL experiment."""
     parser = argparse.ArgumentParser(description="Fair-FL Experiment Runner")
     parser.add_argument("--method", choices=["ours"], default="ours")
-    parser.add_argument("--home", required=True, help="Path to Fair-FL root directory")
+    parser.add_argument(
+        "--home", required=True, help="Path to Fair-FL root directory (for datasets)"
+    )
+    parser.add_argument(
+        "--output",
+        default=None,
+        help="Directory to save .npy results (default: <home>/results/<method>)",
+    )
     parser.add_argument("--numSeeds", default=10, type=int)
     parser.add_argument("--numComRnds", default=100, type=int)
     parser.add_argument("--numLambdas", default=50, type=int)
@@ -600,13 +607,14 @@ def main():
                 )
 
                 # Save results
-                os.makedirs(
-                    os.path.join(HOMEFOLDER, f"results/{args.method}"), exist_ok=True
+                output_dir = args.output or os.path.join(
+                    HOMEFOLDER, f"results/{args.method}"
                 )
+                os.makedirs(output_dir, exist_ok=True)
                 np.save(
                     os.path.join(
-                        HOMEFOLDER,
-                        f"results/{args.method}/{args.dataset}_p_{lambda_val}_{seed}_{NY}.npy",
+                        output_dir,
+                        f"{args.dataset}_p_{lambda_val}_{seed}_{NY}.npy",
                     ),
                     performances,
                 )
