@@ -278,11 +278,15 @@ class MMDFairModel(PUFFLEModel):
             # Binary - squeeze only the last dimension to preserve batch dimension
             task_loss = criterion(outputs.squeeze(-1), y_batch.float())
 
-        # Extract predicted probabilities for fairness computation
+        # Extract predictions for fairness computation (using raw logits to match Fair-FL)
         if outputs.shape[1] > 1:
-            probs = F.softmax(outputs, dim=1)[:, 1]
+            tracking_inputs = outputs[:, 1]
+            _probs = F.softmax(outputs, dim=1)[
+                :, 1
+            ]  # Keep probs for metrics/predictions
         else:
-            probs = torch.sigmoid(outputs).squeeze(-1)
+            tracking_inputs = outputs.squeeze(-1)
+            _probs = torch.sigmoid(outputs).squeeze(-1)
 
         # 2. MMD fairness penalty
         fairness_penalty = torch.tensor(0.0, device=self.device)
@@ -295,18 +299,18 @@ class MMDFairModel(PUFFLEModel):
             mask_0 = z_batch == 0
             mask_1 = z_batch == 1
 
-            probs_0 = probs[mask_0]
-            probs_1 = probs[mask_1]
+            tracking_0 = tracking_inputs[mask_0]
+            tracking_1 = tracking_inputs[mask_1]
 
             # Compute C(h_theta(x)) for each group
             c_0 = (
-                self.tracking_function(probs_0, demographic_group=0)
-                if len(probs_0) > 0
+                self.tracking_function(tracking_0, demographic_group=0)
+                if len(tracking_0) > 0
                 else 0
             )
             c_1 = (
-                self.tracking_function(probs_1, demographic_group=1)
-                if len(probs_1) > 0
+                self.tracking_function(tracking_1, demographic_group=1)
+                if len(tracking_1) > 0
                 else 0
             )
 

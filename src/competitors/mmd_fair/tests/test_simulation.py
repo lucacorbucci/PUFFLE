@@ -222,10 +222,7 @@ class TestMMDFairSimulation:
             initial_params = ndarrays_to_parameters(initial_params_ndarrays)
 
             # Create strategy
-            from competitors.mmd_fair.simulation.metrics import (
-                aggregate_evaluate_metrics,
-                aggregate_fit_metrics,
-            )
+            from FlowerFLTemplate.Aggregations.aggregations import Aggregation
 
             strategy = MMDFairFedAvg(
                 fraction_fit=1.0,
@@ -236,8 +233,8 @@ class TestMMDFairSimulation:
                 mu=1.0,
                 ny=50,
                 lambda_fairness=1.0,
-                fit_metrics_aggregation_fn=aggregate_fit_metrics,
-                evaluate_metrics_aggregation_fn=aggregate_evaluate_metrics,
+                fit_metrics_aggregation_fn=Aggregation.agg_metrics_train,
+                evaluate_metrics_aggregation_fn=Aggregation.agg_metrics_evaluation,
             )
 
             # Initialize trackers
@@ -359,14 +356,11 @@ class TestMMDFairSimulation:
                 # Check aggregation succeeded
                 assert aggregated_params is not None
 
-                # Check metrics aggregation
-                # Note: Test uses mock fit results, so we manually check if metrics would be passed
-                if "train_fairness" in metrics:
-                    # In a real run, aggregate_fit_metrics would be called
-                    # Here we just verify the client produced the metrics
-                    assert "unfairness" in metrics
-                    assert "fair_fl_p1" in metrics
-                    assert "mmd_loss" in metrics
+                # Verify client metric keys match PUFFLE format
+                assert "Pk_A0" in metrics
+                assert "client_id" in metrics
+                assert "counter_z" in metrics
+                assert 0.0 <= metrics["Pk_A0"] <= 1.0  # Valid demographic proportion
 
                 # Check trackers were updated
                 assert strategy.Y_0 is not None
@@ -375,21 +369,22 @@ class TestMMDFairSimulation:
                 assert len(strategy.Y_0) > 0
                 assert len(strategy.Y_1) > 0
 
-                # Verify Evaluate Metrics
-                # Mock EvaluateRes
+                # Verify Evaluate Metrics using PUFFLE-compatible keys
                 from flwr.common import EvaluateRes
 
                 val_metrics = {
                     "accuracy": 0.8,
                     "loss": 0.5,
-                    "unfairness": 0.1,
-                    "fair_fl_p1": 0.1,
-                    "mmd_loss": 0.05,
-                    "val_loss": 0.5,
-                    "val_acc": 0.8,
-                    "val_fairness": 0.1,
-                    "val_fair_fl_p1": 0.1,
-                    "val_mmd_loss": 0.05,
+                    "disparity": 0.1,
+                    "client_id": 0,
+                    "counter_z": 50,
+                    "counter_not_z": 50,
+                    "counter_y_z": 30,
+                    "counter_y_not_z": 40,
+                    "dataset_counter_z": 0,
+                    "dataset_counter_not_z": 0,
+                    "dataset_counter_y_z": 0,
+                    "dataset_counter_y_not_z": 0,
                 }
 
                 eval_res = EvaluateRes(
@@ -406,9 +401,10 @@ class TestMMDFairSimulation:
                     server_round=round_num, results=[(proxy, eval_res)], failures=[]
                 )
 
-                assert "val_fairness" in metrics_aggregated
-                assert "val_fair_fl_p1" in metrics_aggregated
-                assert "val_mmd_loss" in metrics_aggregated
+                # PUFFLE aggregation keys
+                assert "Validation_Accuracy" in metrics_aggregated or "accuracy" in str(
+                    metrics_aggregated
+                )
 
                 print(
                     f"Round {round_num}: Y_0={len(strategy.Y_0)}, Y_1={len(strategy.Y_1)}"

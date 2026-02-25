@@ -1,8 +1,9 @@
 # ABOUTME: Flower strategy for MMD-Fair FL simulation.
-# ABOUTME: Extends FedAvg with server-side Y_0/Y_1 tracking and alpha weight computation.
+# ABOUTME: Extends FedAvg with server-side Y_0/Y_1 tracking and proper alpha weight computation.
 
 import io
 from logging import INFO
+from typing import Any
 
 import numpy as np
 import torch
@@ -24,7 +25,7 @@ class MMDFairFedAvg(FedAvg):
 
     Extends the standard FedAvg strategy with:
     - Server-side Y_0/Y_1 prediction tracking
-    - Alpha weight computation per client
+    - Proper alpha weight computation per client (P_k(A=a) / P(A=a))
     - Prediction sampling and update protocol
     """
 
@@ -34,7 +35,7 @@ class MMDFairFedAvg(FedAvg):
         mu: float = 1.0,
         ny: int = 100,
         lambda_fairness: float = 1.0,
-        **kwargs,
+        **kwargs: Any,
     ):
         """
         Initialize MMD-Fair FedAvg strategy.
@@ -61,6 +62,9 @@ class MMDFairFedAvg(FedAvg):
         self.alpha_weights: dict[int, tuple[float, float]] = {}
         self.total_samples: int = 0
 
+        # Global P(A=0) for alpha computation
+        self._global_pa0: float = 0.5
+
     def initialize_parameters(self, client_manager) -> Parameters | None:
         """
         Initialize global parameters and prediction trackers.
@@ -72,10 +76,8 @@ class MMDFairFedAvg(FedAvg):
             Initial global parameters
 
         """
-        # Initialize parent (gets initial model parameters)
         params = super().initialize_parameters(client_manager)
 
-        # Initialize prediction trackers
         self.Y_0 = PredictionTracker(demographic_group=0, capacity=self.ny)
         self.Y_1 = PredictionTracker(demographic_group=1, capacity=self.ny)
 
@@ -85,7 +87,7 @@ class MMDFairFedAvg(FedAvg):
 
     def configure_fit(self, server_round, parameters, client_manager):
         """
-        Configure fit instructions with Y_0/Y_1 tracking sets.
+        Configure fit instructions with Y_0/Y_1 tracking sets and alpha weights.
 
         Args:
             server_round: Current round number
@@ -96,44 +98,36 @@ class MMDFairFedAvg(FedAvg):
             List of (client, fit_ins) pairs
 
         """
-        # Get base config from parent
         client_instructions = super().configure_fit(
             server_round, parameters, client_manager
         )
 
-        # Serialize Y_0/Y_1 into config
-        if self.Y_0 is not None and self.Y_1 is not None:
-            Y_0_buffer = io.BytesIO()
-            Y_1_buffer = io.BytesIO()
-            torch.save(self.Y_0.get_predictions(), Y_0_buffer)
-            torch.save(self.Y_1.get_predictions(), Y_1_buffer)
+        if self.Y_0 is None or self.Y_1 is None:
+            return client_instructions
 
-            # Add tracking sets to each client's config
-            updated_instructions = []
-            for client, fit_ins in client_instructions:
-                # Get client ID from properties
-                client_id = int(client.cid)
+        Y_0_buffer = io.BytesIO()
+        Y_1_buffer = io.BytesIO()
+        torch.save(self.Y_0.get_predictions(), Y_0_buffer)
+        torch.save(self.Y_1.get_predictions(), Y_1_buffer)
 
-                # Get alpha weights for this client (default to 1.0 if not computed yet)
-                alpha_0, alpha_1 = self.alpha_weights.get(client_id, (1.0, 1.0))
+        updated_instructions = []
+        for client, fit_ins in client_instructions:
+            client_id = int(client.cid)
+            alpha_0, alpha_1 = self.alpha_weights.get(client_id, (1.0, 1.0))
 
-                # Update config
-                config = dict(fit_ins.config)
-                config["Y_0_bytes"] = Y_0_buffer.getvalue()
-                config["Y_1_bytes"] = Y_1_buffer.getvalue()
-                config["alpha_0"] = alpha_0
-                config["alpha_1"] = alpha_1
-                config["N"] = self.total_samples if self.total_samples > 0 else 1
+            config = dict(fit_ins.config)
+            config["Y_0_bytes"] = Y_0_buffer.getvalue()
+            config["Y_1_bytes"] = Y_1_buffer.getvalue()
+            config["alpha_0"] = alpha_0
+            config["alpha_1"] = alpha_1
+            config["N"] = self.total_samples if self.total_samples > 0 else 1
 
-                # Create new FitIns with updated config
-                from flwr.common import FitIns
+            from flwr.common import FitIns
 
-                updated_fit_ins = FitIns(parameters=fit_ins.parameters, config=config)
-                updated_instructions.append((client, updated_fit_ins))
+            updated_fit_ins = FitIns(parameters=fit_ins.parameters, config=config)
+            updated_instructions.append((client, updated_fit_ins))
 
-            return updated_instructions
-
-        return client_instructions
+        return updated_instructions
 
     def aggregate_fit(
         self,
@@ -142,7 +136,7 @@ class MMDFairFedAvg(FedAvg):
         failures: list[tuple[ClientProxy, FitRes] | BaseException],
     ) -> tuple[Parameters | None, dict[str, Scalar]]:
         """
-        Aggregate fit results and update prediction trackers.
+        Aggregate fit results, update prediction trackers and alpha weights.
 
         Args:
             server_round: Current round
@@ -153,16 +147,13 @@ class MMDFairFedAvg(FedAvg):
             Aggregated parameters and metrics
 
         """
-        # Standard FedAvg aggregation
         aggregated_parameters, aggregated_metrics = super().aggregate_fit(
             server_round, results, failures
         )
 
-        # Update client weights and alpha values (first round)
         if server_round == 1:
             self._compute_client_statistics(results)
 
-        # Update prediction trackers (Algorithm 2)
         self._update_predictions(results)
 
         return aggregated_parameters, aggregated_metrics
@@ -171,30 +162,46 @@ class MMDFairFedAvg(FedAvg):
         self, results: list[tuple[ClientProxy, FitRes]]
     ) -> None:
         """
-        Compute client weights and alpha values.
+        Compute client weights and alpha values from client-reported demographics.
+
+        alpha_k_a = P_k(A=a) / P(A=a), where P(A=a) is the global proportion.
 
         Args:
             results: Fit results from clients
 
         """
-        # Compute client weights (proportional to dataset size)
         total_examples = sum(fit_res.num_examples for _, fit_res in results)
         self.total_samples = total_examples
 
+        # Compute per-client weights
+        per_client: dict[int, dict[str, float]] = {}
         for client, fit_res in results:
             client_id = int(client.cid)
-            self.client_weights[client_id] = fit_res.num_examples / total_examples
+            weight = fit_res.num_examples / total_examples
+            self.client_weights[client_id] = weight
 
-        # Compute alpha weights: alpha_k_a = P_k(A=a) / P(A=a)
-        # For now, use uniform alpha (would need client demographic info)
-        # In full implementation, clients would report P_k(A=0) and P_k(A=1)
-        # and we'd compute global P(A=0) and P(A=1) to calculate alpha weights
-        for client_id in self.client_weights:
-            alpha_0 = 1.0  # P_k(A=0) / P(A=0)
-            alpha_1 = 1.0  # P_k(A=1) / P(A=1)
+            pk_a0 = float(fit_res.metrics.get("Pk_A0", 0.5))
+            per_client[client_id] = {"weight": weight, "Pk_A0": pk_a0}
+
+        # Global P(A=0) as weighted average of client proportions
+        global_pa0 = sum(v["weight"] * v["Pk_A0"] for v in per_client.values())
+        global_pa0 = max(global_pa0, 1e-8)
+        global_pa1 = max(1.0 - global_pa0, 1e-8)
+        self._global_pa0 = global_pa0
+
+        # Compute alpha weights for each client
+        for client_id, v in per_client.items():
+            pk_a0 = v["Pk_A0"]
+            pk_a1 = max(1.0 - pk_a0, 1e-8)
+            alpha_0 = pk_a0 / global_pa0
+            alpha_1 = pk_a1 / global_pa1
             self.alpha_weights[client_id] = (alpha_0, alpha_1)
 
-        log(INFO, f"Computed weights for {len(self.client_weights)} clients")
+        log(
+            INFO,
+            f"Computed weights for {len(self.client_weights)} clients, "
+            f"global P(A=0)={global_pa0:.4f}",
+        )
 
     def _update_predictions(self, results: list[tuple[ClientProxy, FitRes]]) -> None:
         """
@@ -209,11 +216,9 @@ class MMDFairFedAvg(FedAvg):
         if self.Y_0 is None or self.Y_1 is None:
             return
 
-        # Drop old predictions
         self.Y_0.drop(self.mu)
         self.Y_1.drop(self.mu)
 
-        # Collect new predictions from clients
         new_preds_0 = []
         new_preds_1 = []
 
@@ -221,7 +226,6 @@ class MMDFairFedAvg(FedAvg):
             client_id = int(client.cid)
             metrics = fit_res.metrics
 
-            # Deserialize prediction samples
             if "pred_0_bytes" in metrics and "pred_1_bytes" in metrics:
                 pred_0_buffer = io.BytesIO(metrics["pred_0_bytes"])  # type: ignore
                 pred_1_buffer = io.BytesIO(metrics["pred_1_bytes"])  # type: ignore
@@ -229,11 +233,9 @@ class MMDFairFedAvg(FedAvg):
                 pred_0 = torch.load(pred_0_buffer, weights_only=False)
                 pred_1 = torch.load(pred_1_buffer, weights_only=False)
 
-                # Weight by client's alpha and sample proportionally
                 weight = self.client_weights.get(client_id, 1.0)
                 alpha_0, alpha_1 = self.alpha_weights.get(client_id, (1.0, 1.0))
 
-                # Sample predictions proportional to alpha * weight * mu * ny
                 n_sample_0 = int(alpha_0 * weight * self.mu * self.ny)
                 n_sample_1 = int(alpha_1 * weight * self.mu * self.ny)
 
@@ -251,10 +253,27 @@ class MMDFairFedAvg(FedAvg):
                     )
                     new_preds_1.append(pred_1[indices_1])
 
-        # Update trackers
         if new_preds_0:
             self.Y_0.update(new_preds_0)
         if new_preds_1:
             self.Y_1.update(new_preds_1)
 
         log(INFO, f"Updated trackers: Y_0={len(self.Y_0)}, Y_1={len(self.Y_1)}")
+
+    def _build_aggregation_fn(self, agg_fn):
+        """Wrap a PUFFLE aggregation function to match the FedAvg callback signature."""
+
+        def wrapped(
+            metrics,
+            server_round,
+            wandb_run=None,
+            fed_dir=None,
+            target=None,
+        ):
+            return agg_fn(
+                metrics=metrics,
+                server_round=server_round,
+                wandb_run=wandb_run,
+            )
+
+        return wrapped
