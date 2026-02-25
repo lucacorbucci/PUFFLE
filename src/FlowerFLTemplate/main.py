@@ -3,13 +3,11 @@ import logging
 import os
 import shutil
 import signal
-import sys
 import time
 from collections import Counter
 from typing import Any
 
 import matplotlib.pyplot as plt
-import wandb
 from datasets import load_dataset
 from flwr.client import ClientApp
 from flwr.common import Context, ndarrays_to_parameters
@@ -18,6 +16,7 @@ from flwr.simulation import run_simulation
 from flwr_datasets.partitioner import DirichletPartitioner, IidPartitioner
 from flwr_datasets.visualization import plot_label_distributions
 
+import wandb
 from FlowerFLTemplate.Aggregations.aggregations import Aggregation
 from FlowerFLTemplate.ClientManager.client_manager import SimpleClientManager
 from FlowerFLTemplate.ClientManager.fairness_client_manager import FairnessClientManager
@@ -431,7 +430,7 @@ def prepare_data(preferences: Preferences) -> Any:
             client_disparities = []
             client_ids = []
             client_types = []
-            num_partitions = 150
+            num_partitions = partitioner.num_partitions
 
             for i in range(num_partitions):
                 p_ds = partitioner.load_partition(i)

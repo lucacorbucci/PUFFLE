@@ -90,9 +90,7 @@ class LambdaUpdater:
         """
         delta = target - unfairness
         self.velocity = self.momentum * self.velocity + delta
-        new_lambda = current_lambda - self.alpha * self.velocity
-
-        return new_lambda
+        return current_lambda - self.alpha * self.velocity
 
     def _update_gradient(
         self,

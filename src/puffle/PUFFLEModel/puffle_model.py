@@ -276,12 +276,11 @@ class PUFFLEModel:
 
         """
         metrics = self._initialize_metrics_dict()
-        statistics = []
 
         effective_max_physical_batch_size = self._get_effective_batch_size(
             train_loader, max_physical_batch_size
         )
-        metrics, statistics = self._execute_training_loop(
+        metrics, _statistics = self._execute_training_loop(
             epochs,
             train_loader,
             metrics,

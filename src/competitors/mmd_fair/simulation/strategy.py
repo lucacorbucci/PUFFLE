@@ -259,21 +259,3 @@ class MMDFairFedAvg(FedAvg):
             self.Y_1.update(new_preds_1)
 
         log(INFO, f"Updated trackers: Y_0={len(self.Y_0)}, Y_1={len(self.Y_1)}")
-
-    def _build_aggregation_fn(self, agg_fn):
-        """Wrap a PUFFLE aggregation function to match the FedAvg callback signature."""
-
-        def wrapped(
-            metrics,
-            server_round,
-            wandb_run=None,
-            fed_dir=None,
-            target=None,
-        ):
-            return agg_fn(
-                metrics=metrics,
-                server_round=server_round,
-                wandb_run=wandb_run,
-            )
-
-        return wrapped

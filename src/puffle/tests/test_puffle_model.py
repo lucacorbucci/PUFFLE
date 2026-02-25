@@ -240,6 +240,9 @@ class TestPUFFLEModel:
         puffle_model.update_lambda(0.2)
         assert puffle_model.lambda_regularization > 0.5
 
+        # Reset state so momentum from previous step doesn't carry over
+        puffle_model.lambda_updater.reset()
+
         # Unfairness < target -> lambda should decrease
         current_lambda = puffle_model.lambda_regularization
         puffle_model.update_lambda(0.05)
@@ -697,9 +700,9 @@ class TestLambdaInitializationFromInference:
         )
 
         # State should be reset
-        assert tunable_puffle.lambda_updater.velocity == 0.0
-        assert tunable_puffle.lambda_updater.integral == 0.0
-        assert tunable_puffle.lambda_updater.prev_error == 0.0
+        assert tunable_puffle.lambda_updater.velocity == pytest.approx(0.0, abs=1e-8)
+        assert tunable_puffle.lambda_updater.integral == pytest.approx(0.0, abs=1e-8)
+        assert tunable_puffle.lambda_updater.prev_error == pytest.approx(0.0, abs=1e-8)
 
     def test_preserves_updater_state_when_requested(
         self, tunable_puffle, biased_dataset

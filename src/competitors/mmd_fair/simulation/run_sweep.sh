@@ -3,10 +3,10 @@
 # Phase 1: tune lr, batch_size, num_epochs, momentum with low lambda.
 
 PROJECT_NAME="MMDFairValidation"
+COUNT=10
 
 run_sweep_and_agent () {
   SWEEP_NAME="$1"
-  COUNT="${2:-30}"
 
   uv run wandb sweep --project "$PROJECT_NAME" --name "$SWEEP_NAME" "${SWEEP_NAME}.yaml" >temp_output.txt 2>&1
 

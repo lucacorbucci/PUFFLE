@@ -1,3 +1,4 @@
+import contextlib
 import os
 from logging import INFO
 from typing import Any
@@ -12,10 +13,8 @@ class Aggregation:
     @staticmethod
     def _safe_wandb_log(wandb_run: Any, data: dict) -> None:
         """Log to wandb, silently skipping if the run is already finished."""
-        try:
+        with contextlib.suppress(Exception):
             wandb_run.log(data)
-        except Exception:  # noqa: BLE001
-            pass
 
     @staticmethod
     def agg_metrics_test(
@@ -451,7 +450,7 @@ class Aggregation:
 
         # Handle lambda from PUFFLEModel
         lambda_values = []
-        for n_examples, metric in metrics:
+        for _n_examples, metric in metrics:
             if "lambda" in metric:
                 lambda_values.append(metric["lambda"])
                 current_client_id = metric["client_id"]

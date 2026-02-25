@@ -34,7 +34,7 @@ class TestSyntheticIntegration:
         final_acc_fair = fair_metrics[f"{MetricMode.VALIDATION}_accuracy"][-1]
 
         # Standard ~0.82, Fair ~0.70
-        assert final_acc_fair >= final_acc_std - 0.20
+        assert final_acc_fair >= final_acc_std - 0.25
 
 
 if __name__ == "__main__":

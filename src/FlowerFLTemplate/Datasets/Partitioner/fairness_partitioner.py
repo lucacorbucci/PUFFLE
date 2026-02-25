@@ -197,7 +197,7 @@ class FairnessPartitioner(Partitioner):
         # Choose distribution strategy based on mode
         if self._distribution_mode == "representative":
             # Use OLD representative diversity approach (random sampling)
-            nodes, remaining_data_by_group = self._representative_distribution()
+            nodes, _remaining_data_by_group = self._representative_distribution()
 
             # Continue with unfair node creation using OLD swap-based approach
             # This maintains samples_per_client by swapping samples between fair and unfair nodes
@@ -384,7 +384,16 @@ class FairnessPartitioner(Partitioner):
             # Add small random variance (±2 samples per group) while maintaining balance
             variance = np.random.randint(-2, 3, size=4, dtype=np.int32)
             # Ensure sum is 0 to maintain total sample count
-            variance = variance - int(variance.mean())
+            diff = int(variance.sum())
+            idx = 0
+            while diff != 0:
+                if diff > 0 and variance[idx % 4] > -2:
+                    variance[idx % 4] -= 1
+                    diff -= 1
+                elif diff < 0 and variance[idx % 4] < 2:
+                    variance[idx % 4] += 1
+                    diff += 1
+                idx += 1
 
             node_parts = []
             for idx, group in enumerate(unique_groups):
@@ -397,8 +406,7 @@ class FairnessPartitioner(Partitioner):
 
                 # Ensure we don't request more samples than available
                 available = len(data_by_group[group])
-                if n_samples > available:
-                    n_samples = available
+                n_samples = min(n_samples, available)
 
                 # Sample from this group
                 if n_samples > 0:
@@ -440,15 +448,34 @@ class FairnessPartitioner(Partitioner):
             # Calculate samples for each group
             samples_reduce = int(samples_per_group_base * (1 - reduction_ratio))
             samples_increment = int(samples_per_group_base * (1 + reduction_ratio))
-            samples_other = samples_per_group_base
 
-            # Adjust to maintain total sample count
-            total = samples_reduce + samples_increment + 2 * samples_other
-            adjustment = samples_per_client - total
+            # Bound by availability
+            if self._group_to_reduce in unique_groups:
+                avail = len(data_by_group[self._group_to_reduce])
+                samples_reduce = min(samples_reduce, avail)
 
-            # Distribute adjustment to "other" groups
-            samples_other_1 = samples_other + adjustment // 2
-            samples_other_2 = samples_other + (adjustment - adjustment // 2)
+            if self._group_to_increment in unique_groups:
+                avail = len(data_by_group[self._group_to_increment])
+                samples_increment = min(samples_increment, avail)
+
+            total_others_needed = (
+                samples_per_client - samples_reduce - samples_increment
+            )
+            other_groups = [
+                g
+                for g in unique_groups
+                if g not in (self._group_to_reduce, self._group_to_increment)
+            ]
+
+            # Default logic if no other groups
+            if not other_groups:
+                samples_others = []
+            else:
+                samples_others = [total_others_needed // len(other_groups)] * len(
+                    other_groups
+                )
+                if samples_others:
+                    samples_others[0] += total_others_needed % len(other_groups)
 
             node_parts = []
             other_idx = 0
@@ -459,19 +486,26 @@ class FairnessPartitioner(Partitioner):
                 elif group == self._group_to_increment:
                     n_samples = samples_increment
                 else:
-                    # Distribute to other groups
-                    n_samples = samples_other_1 if other_idx == 0 else samples_other_2
+                    n_samples = samples_others[other_idx]
                     other_idx += 1
 
-                # Ensure we don't request more samples than available
+                # Check if other groups can fulfill the request
                 available = len(data_by_group[group])
-                if n_samples > available:
-                    n_samples = available
+                actual_n_samples = min(n_samples, available)
+
+                # If we couldn't fulfill it, we might end up short. Let's try to pass the deficit to following other groups
+                deficit = n_samples - actual_n_samples
+                if (
+                    deficit > 0
+                    and group not in (self._group_to_reduce, self._group_to_increment)
+                    and other_idx < len(samples_others)
+                ):
+                    samples_others[other_idx] += deficit
 
                 # Sample from this group
-                if n_samples > 0:
+                if actual_n_samples > 0:
                     group_samples = data_by_group[group].sample(
-                        n=n_samples,
+                        n=actual_n_samples,
                         random_state=self._seed
                         + number_fair_nodes
                         + i * 4

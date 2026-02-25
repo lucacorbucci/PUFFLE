@@ -156,8 +156,9 @@ def prepare_dutch(
     del dutch_df["occupation_binary"]
     # dutch_df = pd.get_dummies(dutch_df, columns=None, drop_first=False)
 
+    del dutch_df["sex_binary"]
+
     if scaler is None:
-        del dutch_df["sex_binary"]
         scaler = MinMaxScaler()
         x_train = scaler.fit_transform(dutch_df)
     else:

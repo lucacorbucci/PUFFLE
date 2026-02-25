@@ -27,7 +27,9 @@ import numpy as np
 
 def load_results(
     results_dir: str, dataset: str
-) -> dict[float, list[tuple[float, float]]]:
+) -> tuple[
+    dict[float, list[tuple[float, float]]], dict[float, list[tuple[float, float]]]
+]:
     """
     Load all .npy result files for a dataset from a directory.
 
@@ -53,19 +55,31 @@ def load_results(
             seed = int(m.group(2))
             lambda_to_files[lambda_val].append((seed, os.path.join(results_dir, fname)))
 
-    # For each lambda, compute (acc, p1) averaged across clients, per seed
-    results: dict[float, list[tuple[float, float]]] = {}
-    for lambda_val, seed_files in sorted(lambda_to_files.items()):
-        seed_points = []
-        for seed, fpath in sorted(seed_files):
-            data = np.load(fpath)  # shape: (num_clients, 2)
-            # Simple mean across clients (Fair-FL uses equal weights here)
-            acc = float(data[:, 0].mean())
-            p1 = float(data[:, 1].mean())
-            seed_points.append((acc, p1))
-        results[lambda_val] = seed_points
+    # For each lambda, compute both Local and Global (acc, p1) per seed
+    results_local: dict[float, list[tuple[float, float]]] = {}
+    results_global: dict[float, list[tuple[float, float]]] = {}
 
-    return results
+    for lambda_val, seed_files in sorted(lambda_to_files.items()):
+        seed_points_local = []
+        seed_points_global = []
+        for seed, fpath in sorted(seed_files):
+            data = np.load(fpath)  # shape: (num_clients+1, 2)
+
+            # Local: Average across clients (excluding the last row which is global)
+            client_data = data[:-1, :]
+            acc_local = float(client_data[:, 0].mean())
+            p1_local = float(client_data[:, 1].mean())
+            seed_points_local.append((acc_local, p1_local))
+
+            # Global: Read directly from the appended last row
+            acc_global = float(data[-1, 0])
+            p1_global = float(data[-1, 1])
+            seed_points_global.append((acc_global, p1_global))
+
+        results_local[lambda_val] = seed_points_local
+        results_global[lambda_val] = seed_points_global
+
+    return results_local, results_global
 
 
 def compute_curve(
@@ -180,18 +194,67 @@ def main() -> None:
 
     if args.fairfl:
         print(f"Loading Fair-FL results from: {args.fairfl}")
-        fairfl_results = load_results(args.fairfl, args.dataset)
-        print(f"  Found {len(fairfl_results)} lambda values")
-        p1_mean, p1_std, acc_mean, acc_std = compute_curve(fairfl_results)
-        curves.append(("Fair-FL (Ours)", "#1f4e79", p1_mean, p1_std, acc_mean, acc_std))
+        fairfl_results_local, fairfl_results_global = load_results(
+            args.fairfl, args.dataset
+        )
+        print(f"  Found {len(fairfl_results_local)} lambda values")
+
+        # Local Curve
+        p1_m_local, p1_s_local, acc_m_local, acc_s_local = compute_curve(
+            fairfl_results_local
+        )
+        curves.append(
+            (
+                "Fair-FL (Local Metrics)",
+                "#1f4e79",
+                p1_m_local,
+                p1_s_local,
+                acc_m_local,
+                acc_s_local,
+            )
+        )
+
+        # Global Curve
+        p1_m_global, p1_s_global, acc_m_global, acc_s_global = compute_curve(
+            fairfl_results_global
+        )
+        curves.append(
+            (
+                "Fair-FL (Global Metrics)",
+                "#c0392b",
+                p1_m_global,
+                p1_s_global,
+                acc_m_global,
+                acc_s_global,
+            )
+        )
 
     if args.puffle:
         print(f"Loading PUFFLE results from: {args.puffle}")
-        puffle_results = load_results(args.puffle, args.dataset)
-        print(f"  Found {len(puffle_results)} lambda values")
-        p1_mean, p1_std, acc_mean, acc_std = compute_curve(puffle_results)
+        puffle_results_local, puffle_results_global = load_results(
+            args.puffle, args.dataset
+        )
+        print(f"  Found {len(puffle_results_local)} lambda values")
+
+        # Local Curve
+        p1_m_loc, p1_s_loc, acc_m_loc, acc_s_loc = compute_curve(puffle_results_local)
         curves.append(
-            ("PUFFLE MMD-Fair", "#c0392b", p1_mean, p1_std, acc_mean, acc_std)
+            ("PUFFLE MMD (Local)", "#27ae60", p1_m_loc, p1_s_loc, acc_m_loc, acc_s_loc)
+        )
+
+        # Global Curve
+        p1_m_glob, p1_s_glob, acc_m_glob, acc_s_glob = compute_curve(
+            puffle_results_global
+        )
+        curves.append(
+            (
+                "PUFFLE MMD (Global)",
+                "#f39c12",
+                p1_m_glob,
+                p1_s_glob,
+                acc_m_glob,
+                acc_s_glob,
+            )
         )
 
     plot_tradeoff(curves, args.output, title=args.title)

@@ -80,16 +80,16 @@ class TestFairnessPartitioner:
         counts = df_part.groupby(["target", "sensitive"]).size()
         assert len(counts) == 4
         for count in counts:
-            assert count == 50
+            assert 48 <= count <= 52, f"Count {count} is not near 50"
 
     def test_unfair_nodes_bias(self):
         """Test that unfair nodes are correctly biased."""
-        # 1000 samples, 2 partitions, 50% unfair (1 fair, 1 unfair)
-        # Groups: (0,0):250, (0,1):250, (1,0):250, (1,1):250
+        # 2000 samples, 2 partitions, 50% unfair (1 fair, 1 unfair)
+        # Groups: (0,0):500, (0,1):500, (1,0):500, (1,1):500
         df = pd.DataFrame(
             {
-                "target": [0] * 250 + [0] * 250 + [1] * 250 + [1] * 250,
-                "sensitive": [0] * 250 + [1] * 250 + [0] * 250 + [1] * 250,
+                "target": [0] * 500 + [0] * 500 + [1] * 500 + [1] * 500,
+                "sensitive": [0] * 500 + [1] * 500 + [0] * 500 + [1] * 500,
             }
         )
         dataset = Dataset.from_pandas(df)
@@ -105,6 +105,7 @@ class TestFairnessPartitioner:
             ratio_unfairness=(ratio_reduce, ratio_reduce),  # Exact 0.2
             group_to_increment=(1, 1),  # Add to this
             dataset=dataset,
+            samples_per_client=500,  # fix the samples per client since available pool is larger
         )
 
         # Client 0 should be Fair

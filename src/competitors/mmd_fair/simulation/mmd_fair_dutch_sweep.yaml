@@ -1,4 +1,4 @@
-program: src/competitors/mmd_fair/simulation/main.py
+program: main.py
 method: bayes
 metric:
   name: Validation_Accuracy
@@ -13,8 +13,6 @@ parameters:
   lr:
     min: 0.0001
     max: 0.1
-  optimizer:
-    values: ["sgd"]
   num_epochs:
     min: 1
     max: 5
@@ -37,7 +35,7 @@ command:
   - --dataset_name
   - dutch
   - --dataset_path
-  - ./src/puffle/examples/data/dutch_csv/dutch.csv
+  - ../../../puffle/examples/data/dutch_csv/dutch.csv
   - --num_client_cpus
   - 1
   - --num_client_gpus
