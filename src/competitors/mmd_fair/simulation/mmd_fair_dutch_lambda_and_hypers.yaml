@@ -1,0 +1,94 @@
+program: main.py
+method: bayes
+metric:
+  name: Validation_Accuracy
+  goal: maximize
+early_terminate:
+  type: hyperband
+  min_iter: 3
+parameters:
+  batch_size:
+    min: 64
+    max: 256
+  lr:
+    min: 0.0001
+    max: 0.1
+  num_epochs:
+    min: 1
+    max: 5
+  momentum:
+    min: 0.5
+    max: 0.95
+  mu:
+    min: 0.5
+    max: 1.0
+  ny:
+    values: [50, 100]
+  lambda_fairness:
+    min: 0.001
+    max: 1000
+
+command:
+  - ${env}
+  - uv
+  - run
+  - python
+  - ${program}
+  - ${args}
+  - --dataset_name
+  - dutch
+  - --dataset_path
+  - ../../../puffle/examples/data/dutch_csv/dutch.csv
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0
+  - --num_rounds
+  - 20
+  - --num_clients
+  - 150
+  - --FL_setting
+  - cross_device
+  - --sampled_train_nodes_per_round
+  - 0.3
+  - --sampled_validation_nodes_per_round
+  - 1.0
+  - --sampled_test_nodes_per_round
+  - 0.0
+  - --fed_dir
+  - ./training_data_mmd/
+  - --project_name
+  - MMDFairValidation
+  - --wandb
+  - True
+  - --sweep
+  - True
+  - --partitioner_type
+  - fairness
+  - --distribution_mode
+  - representative
+  - --target_attribute
+  - occupation
+  - --sensitive_attribute
+  - sex
+  - --num_train_nodes
+  - 70
+  - --num_validation_nodes
+  - 30
+  - --num_test_nodes
+  - 50
+  - --ratio_unfair_clients
+  - 0.5
+  - --group_to_reduce
+  - 1
+  - 0
+  - --group_to_increment
+  - 1
+  - 1
+  - --ratio_unfairness
+  - 0.5
+  - 0.6
+  - --fairness_metric
+  - disparity
+  - --lambda_fairness
+  - 0.01

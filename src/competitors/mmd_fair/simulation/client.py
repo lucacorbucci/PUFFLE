@@ -118,9 +118,11 @@ class MMDFairFlowerClient(NumPyClient):
 
         criterion = LossWrapper(use_bce_loss=use_bce)
 
-        config = PUFFLEConfig(
-            lambda_regularization=self.preferences.regularization_lambda,
-        )
+        lambda_fairness = self.preferences.regularization_lambda or 0.0
+
+        # PUFFLEConfig enforces lambda ≤ 1, but MMD-Fair can use larger values.
+        # Pass 0 to satisfy the constraint, then set the real value directly.
+        config = PUFFLEConfig(lambda_regularization=0.0)
 
         self.model = MMDFairModel(
             model=trained_model,
@@ -129,6 +131,7 @@ class MMDFairFlowerClient(NumPyClient):
             device=self.device,
             config=config,
         )
+        self.model.lambda_regularization = lambda_fairness
 
         self._initialized = True
 

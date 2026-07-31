@@ -1,0 +1,83 @@
+program: main.py
+method: grid
+metric:
+  name: Validation_Accuracy
+  goal: maximize
+parameters:
+  lambda_fairness:
+    values: [100000, 10000, 1000, 100, 50, 25, 10, 5, 2, 1, 0.5, 0.1, 0.05, 0.01]
+
+command:
+  - ${env}
+  - uv
+  - run
+  - python
+  - ${program}
+  - ${args}
+  - --batch_size
+  - 74
+  - --lr
+  - 0.0933359006822605
+  - --momentum
+  - 0.5309603407722637
+  - --mu
+  - 0.8990077311856914
+  - --num_epochs
+  - 5
+  - --ny
+  - 100
+  - --dataset_name
+  - dutch
+  - --dataset_path
+  - ../../../puffle/examples/data/dutch_csv/dutch.csv
+  - --num_client_cpus
+  - 1
+  - --num_client_gpus
+  - 0
+  - --num_rounds
+  - 20
+  - --num_clients
+  - 150
+  - --FL_setting
+  - cross_device
+  - --sampled_train_nodes_per_round
+  - 0.3
+  - --sampled_validation_nodes_per_round
+  - 1
+  - --sampled_test_nodes_per_round
+  - 0
+  - --fed_dir
+  - ./training_data_mmd/
+  - --project_name
+  - MMDFairValidation
+  - --wandb
+  - True
+  - --sweep
+  - True
+  - --partitioner_type
+  - fairness
+  - --distribution_mode
+  - representative
+  - --target_attribute
+  - occupation
+  - --sensitive_attribute
+  - sex
+  - --num_train_nodes
+  - 70
+  - --num_validation_nodes
+  - 30
+  - --num_test_nodes
+  - 50
+  - --ratio_unfair_clients
+  - 0.5
+  - --group_to_reduce
+  - 1
+  - 0
+  - --group_to_increment
+  - 1
+  - 1
+  - --ratio_unfairness
+  - 0.5
+  - 0.6
+  - --fairness_metric
+  - disparity

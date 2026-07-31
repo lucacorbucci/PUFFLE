@@ -37,10 +37,13 @@ def distance_kernel(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     if a.device != b.device:
         b = b.to(a.device)
 
-    term1 = torch.abs(a - 1) + torch.abs(b - 1) - torch.abs(a - b)
-    term2 = torch.abs(a) + torch.abs(b) - torch.abs(a - b)
-
-    return (term1 + term2) / 4
+    # Since a and b are probabilities in [0, 1] (due to the bug fix), 
+    # the formula ((|a-1| + |b-1| - |a-b|) + (|a| + |b| - |a-b|)) / 4
+    # mathematically simplifies exactly to: (1 - |a-b|) / 2
+    # This prevents PyTorch from dropping the graph due to multiple
+    # unstable absolute value derivatives compounding at the boundaries.
+    
+    return (1.0 - torch.abs(a - b)) / 2.0
 
 
 class MMDFairModel(PUFFLEModel):
@@ -278,18 +281,16 @@ class MMDFairModel(PUFFLEModel):
             # Binary - squeeze only the last dimension to preserve batch dimension
             task_loss = criterion(outputs.squeeze(-1), y_batch.float())
 
-        # Extract predictions for fairness computation (using raw logits to match Fair-FL)
+        # Extract predictions for fairness computation (convert to probabilities to fix Fair-FL bug)
         if outputs.shape[1] > 1:
-            tracking_inputs = outputs[:, 1]
-            _probs = F.softmax(outputs, dim=1)[
-                :, 1
-            ]  # Keep probs for metrics/predictions
+            _probs = F.softmax(outputs, dim=1)[:, 1]
+            tracking_inputs = _probs  # Use probabilities, NOT raw logits
         else:
-            tracking_inputs = outputs.squeeze(-1)
             _probs = torch.sigmoid(outputs).squeeze(-1)
+            tracking_inputs = _probs  # Use probabilities, NOT raw logits
 
         # 2. MMD fairness penalty
-        fairness_penalty = torch.tensor(0.0, device=self.device)
+        fairness_penalty = torch.tensor(0.0, device=self.device, requires_grad=True)
 
         if (
             self.lambda_regularization > 0
@@ -303,15 +304,17 @@ class MMDFairModel(PUFFLEModel):
             tracking_1 = tracking_inputs[mask_1]
 
             # Compute C(h_theta(x)) for each group
+            # Must remain Tensors so the computation graph isn't broken
+            zero_tensor = torch.tensor(0.0, device=self.device, requires_grad=True)
             c_0 = (
                 self.tracking_function(tracking_0, demographic_group=0)
                 if len(tracking_0) > 0
-                else 0
+                else zero_tensor
             )
             c_1 = (
                 self.tracking_function(tracking_1, demographic_group=1)
                 if len(tracking_1) > 0
-                else 0
+                else zero_tensor
             )
 
             # Fairness penalty: C(A=0) - C(A=1)
